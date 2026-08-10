@@ -1,71 +1,57 @@
-# Hero Passport documentation
+# Documentation map
 
-**Baseline date:** 2026-08-10  
-**Status:** architecture/specification approved for implementation planning; product code not yet started.
+Hero Passport documentation is normative. When implementation changes architecture/contracts/rules/storage/privacy, update the relevant document in the same PR.
 
-This directory is the source of truth for Hero Passport. The documents deliberately separate product requirements, architecture, protocol contracts and implementation sequencing so agents only need to load the relevant slice of context.
+## Read in this order
 
-## Reading order
+1. [`PRODUCT-SPEC.md`](PRODUCT-SPEC.md) — what 0.1.0 is and is not.
+2. [`ARCHITECTURE.md`](ARCHITECTURE.md) — module boundaries, runtime/persistence/presentation decisions.
+3. [`MCP-CONTRACT.md`](MCP-CONTRACT.md) — exact four-tool model and schemas/annotations/token policy.
+4. [`ENGINE-SPEC.md`](ENGINE-SPEC.md) — deterministic RPG rules and goldens.
+5. [`DATA-MODEL.md`](DATA-MODEL.md) — SQLite schema, migrations, transactions/idempotency.
+6. [`CONFIGURATION.md`](CONFIGURATION.md) — config v1, paths, platform behavior and doctor.
+7. [`SECURITY-PRIVACY.md`](SECURITY-PRIVACY.md) — threat model and forbidden data.
+8. [`TESTING-QUALITY.md`](TESTING-QUALITY.md) — deterministic tests, protocol tests, Codex E2E and agent evals.
+9. [`integrations/CODEX.md`](integrations/CODEX.md) — current official Codex integration contract.
+10. [`DEPENDENCIES.md`](DEPENDENCIES.md) — accepted/rejected libraries and why.
+11. [`ECOSYSTEM-BENCHMARK.md`](ECOSYSTEM-BENCHMARK.md) — multi-pass research of mature MCP projects/apps.
+12. [`ROADMAP.md`](ROADMAP.md) — release/milestone order.
+13. [`DECISION-LOG.md`](DECISION-LOG.md) — decisions not to rediscover while coding.
+14. [`REFERENCES.md`](REFERENCES.md) — dated primary source baseline.
 
-### For product/design work
+## Consolidated execution docs
 
-1. [`PRODUCT-SPEC.md`](PRODUCT-SPEC.md)
-2. [`ENGINE-SPEC.md`](ENGINE-SPEC.md)
-3. [`ROADMAP.md`](ROADMAP.md)
+- [`superpowers/specs/2026-08-10-hero-passport-design.md`](superpowers/specs/2026-08-10-hero-passport-design.md) — compact consolidated design.
+- [`superpowers/plans/2026-08-10-hero-passport-implementation.md`](superpowers/plans/2026-08-10-hero-passport-implementation.md) — task-by-task implementation plan.
 
-### For implementation work
+Detailed specifications above win over a summary/plan if wording appears inconsistent. Fix the summary/plan immediately rather than coding against ambiguity.
 
-1. [`ARCHITECTURE.md`](ARCHITECTURE.md)
-2. the feature-specific specification (`MCP-CONTRACT.md`, `DATA-MODEL.md`, etc.)
-3. [`TESTING-QUALITY.md`](TESTING-QUALITY.md)
-4. [`DECISION-LOG.md`](DECISION-LOG.md)
-5. [`superpowers/plans/2026-08-10-hero-passport-implementation.md`](superpowers/plans/2026-08-10-hero-passport-implementation.md)
+## Source precedence
 
-### For Codex integration
+```text
+current official specification/docs
+> current official SDK/package docs/source
+> current production open-source repository behavior
+> reference/example repos
+> older Hero Passport reports/docs
+```
 
-1. [`integrations/CODEX.md`](integrations/CODEX.md)
-2. [`MCP-CONTRACT.md`](MCP-CONTRACT.md)
-3. [`SECURITY-PRIVACY.md`](SECURITY-PRIVACY.md)
+See `REFERENCES.md` for the actual dated sources.
 
-## Canonical ownership
+## Important v2 corrections
 
-| Concern | Canonical document |
-|---|---|
-| Product positioning, user loop, scope | `PRODUCT-SPEC.md` |
-| Project/module boundaries, flows, runtime topology | `ARCHITECTURE.md` |
-| MCP tools and schemas | `MCP-CONTRACT.md` |
-| XP/levels/skills/traits/trust-risk | `ENGINE-SPEC.md` |
-| Tables, constraints, migrations, transactions | `DATA-MODEL.md` |
-| Threat model, privacy, local data policy | `SECURITY-PRIVACY.md` |
-| Test strategy, CI/release gates | `TESTING-QUALITY.md` |
-| Codex setup and instructions | `integrations/CODEX.md` |
-| Delivery sequence | `ROADMAP.md` |
-| Architecture decisions | `DECISION-LOG.md` |
-| External authoritative sources | `REFERENCES.md` |
+Architecture v2 supersedes several first-draft assumptions:
 
-If two documents disagree, resolve the contradiction in the canonical owner and update the dependent document in the same change.
+```text
+explicit 4-tool MCP registration, no assembly scan
+no per-call locale/outputMode/schemaVersion/heroId/projectId/workspacePath
+server instructions instead of per-response agentHint
+Domain/Application return typed data; App renders displayText
+IDbContextFactory + short synchronous SQLite DB segments
+Windows LocalApplicationData rather than roaming APPDATA
+WAL + synchronous FULL
+EF built-in migration lock rather than a custom mutex
+agent evaluations in addition to unit/integration tests
+```
 
-## Document status vocabulary
-
-- **Accepted** — implementation may rely on it.
-- **Proposed** — requires review before implementation.
-- **Deferred** — intentionally post-MVP.
-- **Rejected** — evaluated and intentionally not selected.
-
-## Change policy
-
-Changes to any of these require an ADR/decision-log entry and compatibility review:
-
-- MCP tool names or required fields;
-- persisted schema semantics;
-- XP/trust/risk calculation order or constants;
-- privacy/data-retention boundary;
-- module dependency direction;
-- supported runtime/dependency baseline;
-- MVP scope exclusions.
-
-## Source policy
-
-For framework/protocol/tooling facts, prefer the latest official documentation available on the baseline date. Third-party material may inform product research but must not override official protocol/runtime documentation.
-
-The external source snapshot used for this architecture is catalogued in [`REFERENCES.md`](REFERENCES.md).
+If you encounter the superseded form in any normative file, treat it as documentation debt and fix it before implementation proceeds.

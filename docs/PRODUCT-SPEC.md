@@ -1,94 +1,162 @@
-# Hero Passport — Product Specification
+# Hero Passport — product specification
 
-**Status:** Accepted  
-**Baseline:** 2026-08-10  
-**Audience:** product, architecture, implementation, QA, AI coding agents
+**Status:** Accepted MVP product contract  
+**Snapshot:** 2026-08-10  
+**Target release:** 0.1.0
 
-## 1. Product thesis
+## 1. Product definition
 
-Hero Passport is a **local-first RPG passport for AI agents**. It adds a short game loop around meaningful agent work without turning the product into surveillance, agent orchestration or a second chat system.
+Hero Passport is a local-first RPG passport for AI coding agents.
 
-The product promise is deliberately narrow:
-
-> Start a quest, let the agent work normally, finish the quest, receive a compact and explainable RPG result, and keep the hero's progression locally.
-
-Hero Passport should feel like an entertaining companion/passport first. The engineering architecture may support deeper agent evolution later, but the MVP must not sell complexity as value.
-
-## 2. Primary user and environment
-
-Primary MVP user:
-
-- individual developer using Codex or another MCP-capable coding agent;
-- local machine on Windows, Linux or macOS;
-- wants persistent RPG progression with negligible interruption and token overhead;
-- expects local data ownership and no source-code upload.
-
-Primary client: Codex local clients through MCP stdio. Other MCP clients are compatibility targets after the Codex path works end-to-end.
-
-## 3. Core user journey
+It turns meaningful agent work into a lightweight quest loop:
 
 ```text
-1. User installs/configures Hero Passport locally.
-2. Codex launches `hero-passport mcp` as a stdio MCP server.
-3. For a meaningful task, the agent calls `hero.start_quest` once.
-4. Hero Passport resolves the hero/project and returns compact context.
-5. The agent performs the task with no Hero Passport step logging.
-6. The agent calls `hero.finish_quest` once with a concise self-report.
-7. Hero Passport validates the report and deterministically calculates rewards.
-8. One transaction stores the completed quest, report, reward ledger and projections.
-9. The tool returns structured data plus a ready-to-display `displayText`.
-10. The agent shows only the compact Hero Passport block to the user.
-11. Later, a local dashboard reads the same persisted state through application queries.
+start meaningful quest
+-> agent performs normal work
+-> finish explicit quest
+-> deterministic RPG progression
+-> compact result in the agent response
+-> durable local history
 ```
 
-## 4. Product principles
+The product is entertainment-first and companion-like. Its value is the feeling of persistent agent progression, not employee surveillance, code-quality scoring or enterprise productivity analytics.
 
-### 4.1 Local-first by default
+---
 
-The authoritative game state is local SQLite. No account, backend, cloud sync or telemetry service is required for the MVP.
+## 2. Primary user story
 
-### 4.2 Status-first, not dashboard-first
+A developer installs Hero Passport once, connects it to Codex as a local stdio MCP server, and then ordinary meaningful coding-agent sessions produce persistent progression without requiring a dashboard or cloud account.
 
-The end-of-session result is the first complete experience. Dashboard work begins only after MCP lifecycle, scoring, persistence and output formatting are stable.
+Example:
 
-### 4.3 Deterministic before intelligent
+```text
+User asks Codex to implement a feature.
+Codex calls hero.start_quest.
+Codex works normally.
+Codex calls hero.finish_quest once.
+Codex includes:
 
-Reward computation must be replayable and explainable from stored inputs + `ruleVersion`. No LLM judge controls XP, trust, risk or traits in MVP.
+Hero Passport: ✨ +95 XP · Nova ур.1 · XP 95/100 · Доверие 51 · Риск 19
+```
 
-### 4.4 Minimal agent interruption
+The next Codex process/server instance sees the same local hero state.
 
-The normal lifecycle is two write calls: start once, finish once. `current_quest` and `get_card` are recovery/query tools, not mandatory polling.
+---
 
-### 4.5 Data minimization
+## 3. Product principles
 
-Hero Passport consumes semantic quest metadata, not work artifacts. Source code, diffs, logs, prompts and secrets are out of contract.
+### 3.1 Status-first
 
-### 4.6 Canonical state, localized presentation
+The most important UI in 0.1.0 is the compact end-of-session status.
 
-Persist stable keys/enums/numbers. Render Russian/English labels at the edge. Historical data must not depend on the language used when it was created.
+Dashboard is not required to make the product useful.
 
-## 5. MVP capabilities
+### 3.2 Local-first
 
-### 5.1 Hero
+No account, cloud database, analytics backend or remote API is required.
 
-MVP has a default hero (`Nova`) and supports the underlying concept of multiple heroes without making hero administration central to the first-use flow.
+### 3.3 Deterministic game rules
 
-Hero state includes:
+An LLM may report compact metrics, but XP/skills/traits/Trust/Risk are calculated locally by deterministic versioned rules.
 
-- ID and display name;
-- total XP and level;
-- trust and risk;
-- skill progression;
-- trait progression/unlocks;
-- created/updated timestamps.
+### 3.4 Agent-context efficiency
 
-### 5.2 Project
+Hero Passport should not consume context continuously. Normal meaningful workflow is approximately two tool calls:
 
-A project represents a local workspace/repository identity. `projectId = auto` resolves locally from the active workspace. The persisted project record uses a display name plus a privacy-preserving workspace fingerprint; the full local path is not stored by default.
+```text
+start once
+finish once
+```
 
-### 5.3 Quest
+### 3.5 Data minimization
 
-A quest is one meaningful unit of agent work. MVP quest types:
+Hero Passport does not need the code to gamify the agent.
+
+### 3.6 Narrow interfaces
+
+MCP exposes only the operations useful inside agent reasoning. Administration/diagnostics belong to CLI; visual exploration belongs to future dashboard.
+
+---
+
+## 4. Target users
+
+Primary:
+
+- developers using Codex or compatible coding agents;
+- local-first/privacy-conscious users;
+- users who enjoy RPG progression around AI-agent work;
+- hackathon/demo users who need immediate visible payoff.
+
+Secondary after MVP:
+
+- users wanting a visual hero/dashboard;
+- users operating more than one AI agent/client locally;
+- users comparing project-specific progression.
+
+Not a target in MVP:
+
+- enterprise employee monitoring;
+- multi-tenant teams;
+- hosted SaaS analytics;
+- code-compliance enforcement;
+- security scanning.
+
+---
+
+## 5. MVP capability set
+
+### MCP
+
+Exactly:
+
+```text
+hero.start_quest
+hero.finish_quest
+hero.current_quest
+hero.get_card
+```
+
+### CLI
+
+Minimum useful operator surface:
+
+```text
+hero-passport init
+hero-passport mcp
+hero-passport doctor
+hero-passport card
+hero-passport quest current
+hero-passport export
+hero-passport data path
+```
+
+Additional explicit hero/project data-management commands may enter 0.1.0 only if needed for a usable fresh-install/reset workflow and must not expand MCP.
+
+### Local state
+
+```text
+heroes
+projects
+hero/project stats
+quest sessions/reports
+XP ledger
+skills
+traits
+Trust/Risk
+app state/settings
+```
+
+### Presentation
+
+```text
+Russian + English compact text
+compact default
+normal optional local presentation mode
+```
+
+---
+
+## 6. Meaningful quest types
 
 ```text
 planning
@@ -100,198 +168,376 @@ documentation
 maintenance
 ```
 
-Lifecycle:
+These are game categories, not a claim that Hero Passport independently verified the quality of the work.
+
+The agent chooses a suitable type from the closed enum.
+
+---
+
+## 7. What the model sends
+
+At start:
 
 ```text
-open -> completed
-open -> abandoned
+questType
+goal (short bounded text)
 ```
 
-`partial`, `failed`, and `blocked` are completion results, not additional lifecycle states.
-
-### 5.4 Reward/result
-
-On finish, the product returns:
-
-- gained XP;
-- total XP / level progress;
-- trust/risk after the quest;
-- up to three skill changes;
-- trait changes when applicable;
-- deterministic reward breakdown;
-- one compact `displayText` ready for the agent to show.
-
-### 5.5 History
-
-Persistence retains enough structured state for:
-
-- current card;
-- recent quest history;
-- reward audit/replay;
-- project-level statistics;
-- future dashboard projections.
-
-It does not retain raw work artifacts.
-
-## 6. MCP surface
-
-MVP exposes exactly four tools:
+At finish:
 
 ```text
-hero.start_quest       mutation, idempotent
-hero.finish_quest      mutation, idempotent
-hero.current_quest     read-only
-hero.get_card          read-only
+questId
+result
+short summary
+small quality metrics
+up to 3 canonical/recognized skills
 ```
 
-Detailed schemas and error semantics are owned by `MCP-CONTRACT.md`.
-
-## 7. First-use experience
-
-Target path after installation:
+The model does **not** send:
 
 ```text
+source code
+diff
+changed-file list
+raw build/test output
+prompt/chat transcript
+workspace path
+secrets
+environment
+arbitrary metadata
+```
+
+---
+
+## 8. Product state resolution
+
+The model should not repeatedly select stable local state.
+
+Hero Passport resolves locally:
+
+```text
+active/default hero
+current project identity
+locale
+presentation mode
+data path
+rule versions
+```
+
+This shrinks schemas and prevents model mistakes such as choosing a different hero ID on each call.
+
+---
+
+## 9. Hero
+
+Initial experience creates one default hero when needed:
+
+```text
+Nova
+```
+
+Initial stats:
+
+```text
+Level 1
+Total XP 0
+Trust 50
+Risk 20
+```
+
+Hero is global across projects; project-specific stats are separate projections.
+
+Multi-hero management can exist in CLI/product state, but the MCP core does not make the model choose `heroId` on every call.
+
+---
+
+## 10. Project identity
+
+Project is resolved locally from Git root/current working directory.
+
+Stored identity:
+
+```text
+display name
+opaque project ID
+versioned workspace fingerprint
+```
+
+Absolute workspace path is not stored by default.
+
+This supports project stats without turning Hero Passport into repository telemetry.
+
+---
+
+## 11. Quest lifecycle
+
+Canonical state machine:
+
+```text
+             start
+   none  ------------> open
+                         |
+                         | finish
+                         v
+                      finished
+```
+
+No reopen in rule/contract v1.
+
+### Start idempotency
+
+If the same normalized quest type + normalized goal is already open for the same hero/project, return it.
+
+If a conflicting open quest exists, return a clear conflict rather than silently creating multiple active quests.
+
+### Finish idempotency
+
+A finished quest always returns its persisted original result on retry.
+
+No second reward.
+
+---
+
+## 12. Result values
+
+```text
+success
+partial
+failed
+blocked
+abandoned
+```
+
+These feed deterministic game rules documented in `ENGINE-SPEC.md`.
+
+---
+
+## 13. RPG progression
+
+MVP includes:
+
+```text
+XP
+levels
+skill XP
+3 behavioral traits
+Trust
+Risk
+project stats
+quest history
+```
+
+MVP excludes:
+
+```text
+achievements
+items/artifacts
+random loot
+season pass
+currency/shop
+streak mechanics without full semantics
+LLM judge
+self-evolution
+```
+
+---
+
+## 14. Compact status UX
+
+Start target:
+
+```text
+🧭 Квест начат · Nova ур.1 · XP 0/100
+```
+
+Finish target:
+
+```text
+✨ +95 XP · Nova ур.1 · XP 95/100 · Доверие 51 · Риск 19
+```
+
+Card target:
+
+```text
+Nova · ур.1 · XP 95/100 · Доверие 51 · Риск 19
+```
+
+The exact punctuation can evolve as presentation without changing reward rules. Contract-level size budgets remain enforced.
+
+Russian terminology:
+
+```text
+scope_control -> Контроль
+clean scope bonus -> Бонус за контроль
+scope violation -> Выход за задачу
+```
+
+---
+
+## 15. Privacy promise
+
+Plain-language promise:
+
+> Hero Passport stores compact quest/game state locally. It does not need or intentionally collect source code, diffs, raw terminal logs, full prompts, secrets, environment variables or full workspace paths.
+
+The promise is enforced structurally through schemas/storage, not merely marketing text.
+
+---
+
+## 16. First-run experience
+
+Desired flow:
+
+```text
+install hero-passport
 hero-passport init
 codex mcp add hero-passport -- hero-passport mcp
 codex mcp list
+start meaningful Codex task
+see quest/progression status
 ```
 
-The product should not write Codex configuration automatically in the MVP. Codex already provides a native MCP registration command; Hero Passport documentation should use it rather than maintaining a second config mutator.
+`init` should be idempotent. If normal MCP startup can safely bootstrap an empty DB, first-run may become even simpler, but explicit `init` remains useful for diagnosis and predictable setup.
 
-`hero-passport init` is idempotent and:
+No browser/dashboard required for first success.
 
-- creates the application data directory;
-- creates/migrates the database;
-- seeds the default hero and canonical skills/traits;
-- prints the resolved local data location to normal CLI output;
-- never modifies another application's config.
+---
 
-## 8. CLI MVP
+## 17. Diagnostic UX
 
-Required commands:
+`hero-passport doctor` is the canonical support command.
+
+It checks:
 
 ```text
-hero-passport init
-hero-passport mcp
-hero-passport status
-hero-passport doctor
-hero-passport export --format json
-hero-passport data path
+version/runtime/platform
+app-data/config availability
+config validity
+database/migrations
+native SQLite version
+WAL/durability/FK state
+seed/default hero state
+MCP manifest
 ```
 
-Recommended shortly after the core loop:
+It does not dump secrets/environment/request contents.
+
+The user should receive actionable remediation rather than raw exception text.
+
+---
+
+## 18. Error UX
+
+Stable codes enable troubleshooting without exposing internals.
+
+Examples:
 
 ```text
-hero-passport hero list
-hero-passport hero create <name>
-hero-passport project list
-hero-passport quest recent
+HP132 quest_conflict
+HP202 database_busy
+HP301 invalid_config
+HP900 internal_error
 ```
 
-`mcp` is a special protocol mode: stdout is reserved exclusively for MCP protocol messages.
+Normal user message explains what happened and what action to take.
 
-## 9. Output UX
+Raw stack/SQL/local path is not an MCP response.
 
-### 9.1 Output modes
+---
+
+## 19. Dashboard 0.2.0
+
+Dashboard is a local Blazor read-focused experience over existing Application/read models.
+
+First dashboard:
 
 ```text
-compact  default; target <= 900 visible characters
-normal   target <= 1600 visible characters
-verbose  explicit user request/debug UX only
+hero card
+level/XP progress
+Trust/Risk
+skills
+traits
+last reward
+recent quests
+project stats
 ```
 
-These are product budgets, not wire-size guarantees. Structured fields should also remain bounded.
+It must not become a reason to move business rules into Razor/JavaScript or introduce a second backend.
 
-### 9.2 End-of-quest example
+---
+
+## 20. Explicit non-goals through 0.1.0
 
 ```text
-## Hero Passport
-
-✨ Квест завершён: +95 XP
-Nova · ур.1 · XP 95/100
-Доверие 51 · Риск 19
-Навыки: Кодинг +47, Контроль +29, Тесты +19
-Следующее: ур.2 через 5 XP
+remote HTTP MCP
+OAuth/auth
+cloud sync
+team/multi-user
+OpenAI Apps SDK/MCP Apps
+MCP Tasks
+runtime plugins
+achievement system
+artifact inventory
+continuous activity monitoring
+per-keystroke/per-line XP
+WakaTime compatibility
+source/diff ingestion
+LLM judge
+agent self-modification
+full REST API
+remote telemetry
 ```
 
-### 9.3 Russian terminology
+---
 
-Canonical key -> Russian presentation:
+## 21. Success criteria for 0.1.0
+
+A release is product-successful when all are true:
+
+1. User can install/initialize locally on claimed platforms.
+2. Codex sees exactly four tools.
+3. A meaningful task completes start -> work -> finish.
+4. Clean coding golden produces 95 XP.
+5. Restart preserves state.
+6. Retry cannot duplicate XP.
+7. Final agent answer shows compact status without raw JSON.
+8. No source/diff/raw-log path exists in normal contract/storage.
+9. CLI `doctor` can diagnose common setup/database problems.
+10. Real Codex agent eval shows lifecycle is useful and not called on trivial interactions excessively.
+11. No dashboard is required to achieve the above.
+
+---
+
+## 22. Product quality guardrail
+
+A proposed feature is not automatically appropriate for MCP.
+
+Use this decision test:
 
 ```text
-scope_control        -> Контроль
-clean_scope_bonus    -> Бонус за контроль
-scope_violation      -> Выход за задачу
+Does the model need this capability during normal reasoning/workflow?
+Does a typed MCP call reduce ambiguity compared with shell/CLI?
+Does advertising it on every session justify its context/schema cost?
+Does it preserve the privacy contract?
 ```
 
-Trait names are separately localized. Internal keys are never translated.
+If not, put it in CLI/dashboard or defer it.
 
-## 10. MVP non-goals
+---
 
-Explicitly excluded before the minimal MVP:
+## 23. Future product direction
 
-- achievements module or GitHub Achievements analogy;
-- artifacts/items/inventory;
-- external/runtime plugins and DLL loading;
-- HTTP/Streamable HTTP MCP;
-- MCP Apps UI extension;
-- MCP Tasks extension;
-- cloud synchronization;
-- multi-user/team mode;
-- authentication/authorization server;
-- continuous editor/activity telemetry;
-- per-keystroke, per-line or per-diff XP;
-- source/diff/log ingestion;
-- LLM judge;
-- self-evolution / automatic rule rewriting;
-- permission gateway for other tools;
-- full trace capture;
-- public REST API;
-- OpenAI Apps UI integration.
+Post-MVP may explore:
 
-The architecture may leave low-cost seams for future work, but no post-MVP module is implemented speculatively.
+```text
+richer hero visualization
+dashboard widgets
+additional well-specified traits
+history filters/comparisons
+portable export/import
+agent identity/profile UX
+selective MCP resources only if a client use case emerges
+self-evolution/advanced mechanics only behind a separate design
+```
 
-## 11. Success criteria for minimal MVP
-
-The MVP is complete only when all conditions are true:
-
-1. Fresh install on Windows, Linux and macOS can initialize the local store.
-2. Codex can launch Hero Passport through stdio using documented native MCP configuration.
-3. The four MCP tools are discoverable in deterministic order.
-4. A coding quest can start and finish end-to-end.
-5. The standard successful coding fixture produces exactly `95 XP` under reward rule `1.0.0`.
-6. Retrying `start_quest` does not create a duplicate active quest for the same idempotency identity.
-7. Retrying `finish_quest` does not grant duplicate XP or mutate projections again.
-8. The same stored report + rule version always yields the same reward breakdown.
-9. MCP mode emits no non-protocol stdout bytes.
-10. The database contains no code/diff/raw-log/full-prompt fields.
-11. Fresh migrations and upgrade migration fixtures pass against real SQLite.
-12. Package restore is reproducible from lock files.
-13. Cross-platform CI build/test gates are green.
-14. `displayText` is readable without exposing raw structured JSON.
-15. A user can export their local Hero Passport state to JSON.
-
-## 12. Post-MVP product sequence
-
-After minimal MVP stabilization, preferred order is:
-
-1. local Blazor dashboard using read models;
-2. richer history/project statistics;
-3. additional hero/card presentation and safe export/import;
-4. carefully versioned new traits/rules;
-5. optional MCP resources/prompts only when a concrete client UX benefits;
-6. achievements/artifacts only as separately designed game modules;
-7. remote/cloud/team features only with a new threat/auth architecture.
-
-## 13. Product anti-metrics
-
-Do not optimize for:
-
-- number of MCP tools;
-- number of persisted events;
-- number of dashboard widgets;
-- token usage caused by Hero Passport;
-- lines/files changed by the coding agent;
-- time spent typing.
-
-Optimize for reliable completion of the two-call loop, understandable progression and low friction.
+These are not architecture commitments until designed and accepted.

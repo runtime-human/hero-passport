@@ -1,343 +1,572 @@
-# Hero Passport — Roadmap
+# Hero Passport — roadmap
 
-**Status:** Accepted implementation sequence  
-**Baseline:** 2026-08-10  
-**Target:** minimal public-quality local MVP before dashboard expansion
+**Status:** Accepted implementation sequence v2  
+**Snapshot:** 2026-08-10  
+**Goal:** reach a tested Codex-first local MVP before dashboard expansion
 
-## 1. Delivery principle
+## 1. Roadmap philosophy
 
-The critical path is:
+Versions are **working gates**, not arbitrary file-count milestones.
+
+Each milestone must leave the repository buildable/testable and remove a specific implementation risk. Do not pull later product features into an earlier milestone merely because a convenient extension seam exists.
+
+The order is deliberately:
 
 ```text
-reproducible repo
- -> deterministic domain
- -> application lifecycle
- -> real SQLite/idempotency
- -> CLI/local operations
- -> MCP stdio
- -> Codex end-to-end
- -> security/status/release hardening
- -> dashboard
+reproducible foundation
+-> pure game rules
+-> application lifecycle
+-> persistence integrity
+-> local CLI/diagnostics
+-> MCP protocol
+-> real Codex behavior
+-> release hardening
+-> dashboard
 ```
 
-Each milestone leaves `main` buildable and testable. Version numbers are checkpoints, not permission to merge broken half-slices.
+This sequence is derived from the current MCP ecosystem analysis and official platform behavior. It prioritizes tool-contract correctness and agent-evaluation before visual expansion.
 
-## 2. Milestone map
+---
 
-| Milestone | Version | User/engineering outcome |
-|---|---:|---|
-| M0 Foundation | 0.0.1 | reproducible .NET 10 solution + CI/test skeleton |
-| M1 Domain contracts | 0.0.2 | stable IDs/enums/contracts/quality flags/rule versions |
-| M2 Reward engine | 0.0.3 | XP + levels + golden fixtures |
-| M3 Progression | 0.0.4 | skills + trust/risk + traits + localization |
-| M4 Application lifecycle | 0.0.5 | start/finish/current/card use cases behind ports |
-| M5 SQLite | 0.0.6 | EF migrations, WAL-safe current native baseline, seed/read models |
-| M6 Integrity | 0.0.7 | atomic finish + retry/concurrency defenses |
-| M7 CLI/local ops | 0.0.8 | init/status/doctor/export/data path |
-| M8 MCP stdio | 0.0.9 | four tools + stdout guard + official SDK tests |
-| M9 Codex experience | 0.0.10 | native Codex setup + full two-call flow |
-| M10 Hardening | 0.1.0-rc.1 | privacy/package/matrix/release qualification |
-| M11 Minimal MVP | 0.1.0 | tagged Codex-first local-first release |
-| M12 Dashboard | 0.2.0 | local Blazor read dashboard |
-
-The source report's longer `0.0.11/12/13` sequence is intentionally collapsed around a clearer `0.1.0` product gate: the shippable artifact is the safe two-call loop, not an arbitrary count of internal increments.
-
-## 3. M0 — Foundation (`0.0.1`)
+## 2. 0.0.1 — reproducible foundation
 
 ### Deliverables
 
 ```text
-solution file
-global.json
+global.json pinned .NET SDK
 Directory.Build.props
 Directory.Packages.props
+NuGet lock-file policy
 .editorconfig
 .gitignore
-src/ project skeleton
-tests/ project skeleton
-package lock files
-GitHub Actions CI
+HeroPassport.slnx
+Domain/Application/Infrastructure/App projects
+5 deterministic test projects + AgentEvals harness skeleton
+CI baseline
 ```
 
-Baseline:
+### Dependency baseline
 
 ```text
-.NET SDK                         10.0.302 exact
-net10.0 / C# 14
-Microsoft Testing Platform      selected in global.json
-xunit.v3                        3.2.2
+.NET SDK 10.0.302
+ModelContextProtocol 2.0.0
+EF Core SQLite 10.0.10
+SQLitePCLRaw.bundle_e_sqlite3 3.0.5
+System.CommandLine 2.0.10
+xunit.v3 3.2.2
 ```
 
-### Gate
+No preview package.
 
-```bash
+### Gates
+
+```text
 dotnet restore --locked-mode
-dotnet build -c Release --no-restore
-dotnet test -c Release --no-build
+dotnet build -c Release
+dotnet test -c Release
+format/static analysis clean
+NuGet audit policy visible
 ```
 
-pass on Windows, Linux and macOS.
+### Architecture proof
 
-## 4. M1 — Domain/contracts (`0.0.2`)
+Architecture tests prove project dependency direction from the first commit that introduces projects.
 
-Build:
+---
 
-- UUIDv7 typed identity wrappers/record structs;
-- quest type/result/build/test status models;
-- canonical skill/trait keys;
-- `QuestQualityFlags`;
-- `RuleVersions`;
-- Application contracts for four use cases;
-- schema/output-mode/locale/string-bound/error models;
-- architecture dependency tests.
+## 3. 0.0.2 — domain vocabulary and rules
 
-Gate: no EF/MCP/CLI types in Domain/Application contracts and contract serialization fixtures are stable.
-
-## 5. M2 — Reward/level engine (`0.0.3`)
-
-Build:
-
-- base XP map;
-- integer permille multipliers;
-- bonuses/penalties;
-- immutable `RewardBreakdown`;
-- level curve/read model;
-- `coding-success-clean-95` golden.
-
-Gate: full rule matrix, boundaries and culture-determinism tests pass.
-
-## 6. M3 — Progression (`0.0.4`)
-
-Build:
-
-- `SkillKeyNormalizer`;
-- cumulative-floor skill allocation;
-- trust/risk engine;
-- three initial trait policies;
-- localized labels/status formatter separated from numeric rules.
-
-Gate: standard fixture yields exactly:
+### Deliverables
 
 ```text
-XP +95
-skills 47 / 29 / 19 for coding / scope_control / testing_awareness
-trust 50 -> 51
-risk 20 -> 19
+typed IDs
+quest/result canonical types
+skill canonical keys + normalizer
+QuestQualityFlags
+RewardBreakdown
+XP formula/95-XP golden
+level curve
+skill XP distribution
+Trust/Risk v1
+3 traits v1
+RuleVersions
 ```
 
-and RU labels include `Контроль`, `Бонус за контроль`, `Выход за задачу`.
+### Important constraint
 
-## 7. M4 — Application lifecycle (`0.0.5`)
+No localized text rendering in Domain.
 
-Build:
+No EF/MCP types.
 
-- application ports/stores/unit-of-work;
-- `StartQuestHandler`;
-- `FinishQuestHandler`;
-- `GetCurrentQuestHandler`;
-- `GetHeroCardHandler`;
-- initialization/export orchestration;
-- project identity abstraction;
-- `TimeProvider` injection;
-- display/status projections.
+### Gates
 
-Use fake test ports first so lifecycle correctness is independent of EF/MCP.
+Boundary/golden tests defined in `ENGINE-SPEC.md` pass.
 
-Gate: all four use cases and retry branches run in Application tests.
+---
 
-## 8. M5 — SQLite (`0.0.6`)
+## 4. 0.0.3 — Application contracts and lifecycle
 
-Build:
+### Deliverables
 
-- EF Core 10.0.10 mappings;
-- initial migration;
-- `foreign_keys=ON` + WAL initialization;
-- `SQLitePCLRaw.bundle_e_sqlite3 3.0.5` direct pin;
-- runtime native SQLite floor `>= 3.53.4`;
-- app-data path adapter;
-- project identity/fingerprint resolver;
-- default hero/canonical skill/trait seeding;
-- storage/query implementations;
-- real temp-file SQLite tests.
+```text
+HeroResult<T>/stable errors
+Application request/result records
+StartQuestHandler
+FinishQuestHandler
+GetCurrentQuestHandler
+GetHeroCardHandler
+ports for stores/project identity/active hero/paths
+TimeProvider integration
+```
 
-Gate: fresh migration/seed/reopen/WAL/FK/native-version tests pass.
+### Behavioral gates
 
-## 9. M6 — Integrity/idempotency (`0.0.7`)
+```text
+matching start retry -> same quest
+conflicting open quest -> HP132
+finish retry -> original persisted outcome abstraction
+no Application reference to MCP SDK
+no localized displayText in Application
+```
 
-Build:
+Persistence is faked here to prove use-case semantics before EF complexity.
 
-- active/idempotency uniqueness;
-- unique XP event per quest;
-- atomic finish transaction;
-- persisted reward breakdown/outcome replay;
-- concurrent start/finish tests;
-- bounded DB busy handling;
-- rollback tests.
+---
 
-Gate: repeated/concurrent finish attempts can never produce two reward ledger events for one quest.
+## 5. 0.0.4 — configuration, paths and presentation
 
-## 10. M7 — CLI/local operations (`0.0.8`)
+### Deliverables
 
-Required commands:
+```text
+platform-correct IAppDataPaths
+HERO_PASSPORT_HOME isolation override
+config.json v1 strict schema/options
+HeroTextRenderer RU/EN
+compact/normal local presentation
+canonical RU terminology goldens
+```
+
+### Gates
+
+```text
+Windows LocalApplicationData mapping
+Linux XDG mapping
+macOS Application Support mapping
+unknown config property rejected
+presentation goldens independent from rule goldens
+```
+
+This milestone deliberately removes stable preferences from the model-facing MCP schema before MCP is implemented.
+
+---
+
+## 6. 0.0.5 — SQLite schema and initialization
+
+### Deliverables
+
+```text
+HeroPassportDbContext
+IDbContextFactory registration
+entity configurations
+migration 0001
+initializer
+canonical seeds
+SQLite native-version check
+WAL/FULL/FK setup verification
+```
+
+### Tables
+
+```text
+heroes
+projects
+hero_project_stats
+quest_sessions
+quest_reports
+quest_report_skills
+skills
+hero_skills
+traits
+hero_traits
+xp_events
+app_settings
+```
+
+### Important implementation rules
+
+```text
+file-backed SQLite tests
+sync DB I/O
+no Task.Run wrapper
+no EnsureCreated product path
+no custom migration mutex
+```
+
+### Gates
+
+Fresh DB migration/integrity/PRAGMA/version tests pass.
+
+---
+
+## 7. 0.0.6 — transactional stores and idempotency
+
+### Deliverables
+
+```text
+EF store/query adapters
+project fingerprint resolver
+active hero provider
+atomic start transaction
+atomic finish transaction
+UNIQUE xp_events.quest_id race handling
+read models
+```
+
+### Concurrency gates
+
+```text
+two finishers -> exactly one XP event
+retry returns canonical original report
+read remains available during short WAL writer
+bounded busy -> HP202
+no partial reward after injected write failure
+```
+
+This milestone is the storage-correct core product without CLI/MCP polish.
+
+---
+
+## 8. 0.0.7 — CLI and doctor
+
+### Deliverables
 
 ```text
 hero-passport init
-hero-passport status
 hero-passport doctor
-hero-passport export --format json
+hero-passport card
+hero-passport quest current
+hero-passport export
 hero-passport data path
-hero-passport --version
+hero-passport mcp command dispatch stub/host
+--version
+--help
+--json where script-useful
 ```
 
-`doctor` reports:
+### Doctor baseline
 
 ```text
-app/runtime version
-data path/access
-DB open/migration state
-native SQLite version
-WAL/foreign-key state
-default hero state
+app/runtime/OS
+data/config/state status
+config validity
+DB/native SQLite/migrations
+WAL/FULL/FK
+migration-lock diagnostics
+seed/default hero
+MCP manifest version/hash
 ```
 
-Gate: init/re-init/status/export/doctor work in clean isolated Windows/Linux/macOS tests.
+### Gates
 
-## 11. M8 — MCP stdio (`0.0.9`)
+Process tests verify exit codes/stdout/stderr and test-home isolation.
 
-Build:
+No rich-console dependency required.
 
-- stable `ModelContextProtocol 2.0.0`;
-- `hero-passport mcp`;
-- exactly four tools in deterministic order;
-- compact descriptions/schemas/annotations;
-- thin Application adapters;
-- tool-error mapping;
-- official SDK client/server tests;
-- child-process stdout guard.
+---
 
-Gate: complete protocol exchange succeeds with zero non-protocol stdout bytes.
+## 9. 0.0.8 — MCP stdio contract
 
-## 12. M9 — Codex experience (`0.0.10`)
+### Deliverables
 
-Build/validate:
-
-- current official `codex mcp add hero-passport -- hero-passport mcp` path;
-- `codex mcp list` verification;
-- consumer `AGENTS.md` snippet;
-- current-workspace project resolution;
-- explicit local `mcp_servers.hero-passport.cwd` troubleshooting path where a host needs it;
-- compact final `displayText` flow;
-- retry + restart persistence.
-
-Gate: installed package, not IDE-only source wiring, completes:
+Official C# SDK 2.0.0 stdio host and exactly four explicit tool adapters:
 
 ```text
-start -> normal work -> finish -> displayText -> repeat finish safely -> get card
+StartQuestTool
+FinishQuestTool
+CurrentQuestTool
+GetCardTool
 ```
 
-## 13. M10 — MVP hardening (`0.1.0-rc.1`)
-
-Build/validate:
-
-- dependency vulnerability audit;
-- privacy sentinel tests;
-- export manifest/version;
-- analyzer/format gate;
-- locked restore;
-- cross-platform package/install smoke;
-- final install/troubleshooting docs;
-- changelog/release notes;
-- release qualification checklist/script.
-
-Gate: all success criteria from `PRODUCT-SPEC.md` pass.
-
-## 14. M11 — Minimal MVP (`0.1.0`)
-
-Release only; no scope growth.
-
-Artifacts:
-
-- .NET tool package/selected stable install path;
-- source tag/release notes;
-- tested Codex stdio setup;
-- data/export documentation;
-- deterministic local progression;
-- no dashboard dependency.
-
-## 15. M12 — Dashboard (`0.2.0`)
-
-Only after `0.1.0` validates the state model.
-
-Local Blazor/ASP.NET Core, loopback-only default, read-only first:
+Plus:
 
 ```text
-Hero card
+HeroPassportMcpManifest
+server instructions
+strict JSON schemas
+output schemas
+structuredContent
+annotations
+task support forbidden
+presentation renderer integration
+stdout isolation
+```
+
+### Explicit non-deliverables
+
+```text
+assembly-wide tool scanning
+dynamic discovery/toolsets
+HTTP/OAuth
+Tasks
+Apps
+resources/prompts
+admin/history MCP tools
+```
+
+### Gates
+
+```text
+tools/list exact 4 + exact order
+schema/annotation goldens
+catalog size budget
+actual output validates outputSchema
+negative input schema cases
+stdout guard
+MCP Inspector smoke
+```
+
+---
+
+## 10. 0.0.9 — Codex integration and agent evals
+
+### Deliverables
+
+```text
+current official Codex setup docs
+native `codex mcp add` path
+project `cwd` config example
+host enabled_tools guidance
+AGENTS snippet
+Codex E2E scripts/checklist
+AgentEvals corpus
+```
+
+### Eval corpus
+
+At least 10 scenarios from `TESTING-QUALITY.md`.
+
+### Gates
+
+Real current Codex demonstrates:
+
+```text
+meaningful task -> start once -> finish once
+trivial task -> no unnecessary quest in expected eval
+reconnect/current recovery
+no forbidden data sent
+compact final display only
+persistent state across restart
+```
+
+Tool description/server instruction changes are now evaluated, not guessed.
+
+---
+
+## 11. 0.1.0-rc.1 — release hardening
+
+### Deliverables
+
+```text
+cross-platform package/install smoke
+.NET tool package
+Windows/Linux/macOS claimed-platform qualification
+locked restore/audit policy
+migration upgrade fixture
+export schema v1 if export is included
+README/install/troubleshooting
+privacy/security review
+performance smoke measurements
+```
+
+### Critical review pass
+
+Re-read all normative docs and scan for stale architecture-v1 terminology:
+
+```text
+schemaVersion in every MCP call
+locale/outputMode in every MCP call
+agentHint/statusText
+workspacePath wire/storage
+%APPDATA% DB
+async SQLite requirement
+custom migration lock
+Domain display text
+runtime plugins/achievements in MVP
+```
+
+No unresolved contradiction proceeds to release.
+
+---
+
+## 12. 0.1.0 — minimal MVP
+
+0.1.0 is complete only when:
+
+- documented release gates pass;
+- Codex E2E passes on recorded supported version;
+- clean coding golden produces 95 XP;
+- no retry can duplicate XP;
+- state survives process restarts;
+- exact 4-tool MCP contract is stable;
+- app-data/config behavior is platform-correct;
+- `doctor` diagnoses core setup/storage state;
+- no source/diff/raw-log/cloud dependency exists;
+- docs describe implementation as shipped, not aspirational.
+
+At this point MCP tool/schema/name changes enter compatibility policy.
+
+---
+
+## 13. 0.2.0 — local dashboard
+
+### Goal
+
+Make existing progression visually enjoyable without rewriting backend/domain logic.
+
+### Technical baseline
+
+```text
+HeroPassport.Web
+ASP.NET Core / Blazor Web App .NET 10
+Application read models
+Infrastructure via composition root
+IDbContextFactory pattern retained
+```
+
+### First screens
+
+```text
+hero card
 XP/level progress
-Trust / Risk
-Top skills
-Trait progress
-Last reward
-Recent quests
-Project stats
+Trust/Risk
+skills
+traits
+recent quest history
+last reward breakdown
+project stats
 ```
 
-Rules:
-
-- Application read models only;
-- no `DbContext` injection into Razor components;
-- no reward logic in UI;
-- no hidden cloud/auth/team work.
-
-## 16. Deferred unscheduled candidates
-
-Evaluate only after real use:
+### Gates
 
 ```text
-card v2 / richer RPG presentation
-safe import/restore
-new explicitly versioned rules/traits
-MCP resources/prompts when they reduce friction
-achievements as separate post-MVP module
-artifacts/items
-self-evolution experiments
-MCP Apps / MCP Tasks
-HTTP/remote MCP with auth/security architecture
-cloud/team sync
+no DbContext injection into Razor components
+no duplicated reward logic
+no remote listen by default
+HTML-safe rendering of untrusted goal/summary
+same database/read models as CLI/MCP
 ```
 
-A candidate enters the roadmap only with product outcome, schema/migration impact, threat/privacy impact and test plan.
+---
 
-## 17. Sequencing constraints
+## 14. Post-0.2 candidates — not commitments
 
-- Domain rules before EF persistence logic.
-- Application lifecycle before MCP adapters.
-- SQLite integrity before claiming idempotency.
-- MCP/status loop before dashboard.
-- No HTTP merely because SDK supports it.
-- No runtime plugins for speculative extensibility.
-- No custom Codex config writer while native Codex management works.
-- No achievements conflated with traits.
-
-## 18. Safe parallel work
-
-After M1:
+Evaluate independently:
 
 ```text
-A: domain rule/golden implementation
-B: CLI command shell/help without product logic
-C: docs/fixtures/integration instructions
+portable import
+richer traits
+history filters/compare
+hero profile customization
+optional local evidence adapters
+selective MCP resource if a real client workflow needs it
+additional agent/client compatibility matrix
 ```
 
-After M4:
+Require new design before:
 
 ```text
-A: SQLite mappings/migrations
-B: MCP adapter tests against fake Application
-C: packaging/CI hardening
+HTTP/remote MCP
+OAuth
+cloud sync
+multi-user/team
+MCP Apps
+Tasks
+runtime plugins
+achievements/items
+self-evolution
+LLM judging
+source/diff ingestion
 ```
 
-Merge order still follows the critical path and keeps main green.
+---
 
-## 19. Roadmap completion test
+## 15. Tool-growth threshold
 
-The MVP roadmap is complete only when an external user can install Hero Passport, configure current Codex tooling, complete the two-call quest loop, retry safely, restart without losing state, export their data, and inspect compact progression without source/diff/log leakage.
+If MCP inventory would exceed 6 tools, stop normal feature delivery and run a dedicated tool-surface review.
+
+Questions:
+
+```text
+Can CLI/dashboard own the feature?
+Can it be merged into an existing typed operation without semantic ambiguity?
+Does it need to be advertised every session?
+What does agent eval show?
+What is catalog-size/token impact?
+Would progressive disclosure/resources be better?
+```
+
+Only after measured need consider GitHub-MCP-like dynamic discovery/toolsets.
+
+---
+
+## 16. Dependency review cadence
+
+Before each release candidate:
+
+```text
+check current stable .NET servicing SDK/runtime
+ModelContextProtocol stable release/protocol changes
+EF Core SQLite stable servicing
+SQLitePCLRaw/native SQLite security baseline
+System.CommandLine stable line
+xUnit stable line
+NuGet vulnerabilities
+Codex official MCP/config changes
+```
+
+Do not auto-upgrade majors during release hardening. Update one dependency family at a time with corresponding tests/evals.
+
+---
+
+## 17. Documentation as a release artifact
+
+Architecture-changing PRs must update the applicable documents in the same change:
+
+```text
+PRODUCT-SPEC
+ARCHITECTURE
+MCP-CONTRACT
+ENGINE-SPEC
+DATA-MODEL
+CONFIGURATION
+SECURITY-PRIVACY
+TESTING-QUALITY
+DEPENDENCIES
+CODEX integration
+DECISION-LOG
+ROADMAP/implementation plan
+```
+
+Not every PR changes every file, but leaving a normative contradiction is a release failure.
+
+---
+
+## 18. PR slicing recommendation
+
+After architecture PR #1 is merged, implementation should use focused PRs roughly aligned to milestones, not one enormous 0.1 PR.
+
+Recommended:
+
+```text
+PR foundation
+PR domain rules
+PR application/config/presentation
+PR SQLite/migrations
+PR transactions/idempotency
+PR CLI/doctor
+PR MCP contract
+PR Codex eval/E2E
+PR RC/release hardening
+```
+
+Each PR is independently reviewable and test-complete.

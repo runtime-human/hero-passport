@@ -1,59 +1,51 @@
-# Hero Passport — Architecture Decision Log
+# Hero Passport — architecture decision log
 
-**Status:** canonical decision record  
-**Baseline:** 2026-08-10
+**Status:** Living normative ADR index  
+**Snapshot:** 2026-08-10
 
-Changes to protocol, persistence, privacy, scoring, dependency baseline or module boundaries require a decision-log update.
+This file records decisions that should not be rediscovered during implementation. If a decision changes, update the relevant detailed specification and add a superseding entry rather than silently editing history/meaning.
 
 ## ADR-001 — C# 14 / .NET 10 LTS
 
-**Status:** Accepted
+**Decision:** use C# 14 on pinned .NET 10 SDK/runtime.
 
-Use C# 14 on `net10.0`, exact SDK baseline `10.0.302`. The current official MCP C# SDK, EF Core/SQLite, CLI stack and later Blazor dashboard can stay in one strongly typed ecosystem.
+**Why:** one mature cross-platform stack covers MCP host, CLI, persistence and later Blazor dashboard; official MCP C# SDK is current/stable.
 
-**Revisit:** only if a required platform cannot run the supported .NET 10 stack or measured deployment constraints make it unsuitable.
+**Rejected:** Go/Rust/TypeScript/Python core for MVP. Each can work technically but would fragment UI/tooling or add delivery cost without solving a stronger requirement.
 
-## ADR-002 — Modular monolith, no runtime plugins before post-MVP
+---
 
-**Status:** Accepted
+## ADR-002 — local modular monolith
 
-One local product, one SQLite state store, explicit compile-time modules. No external DLL loading, plugin ABI, module registry, broker or distributed event architecture in MVP.
+**Decision:** Domain -> Application -> Infrastructure -> App, Web later.
 
-Cheap extensibility seams are rule versions, normalizers, ports, read models, migrations and golden fixtures.
+**Why:** one user, one local DB, no independent deployment/scaling ownership.
 
-## ADR-003 — Domain / Application / Infrastructure / App boundaries
+**Rejected:** microservices, message broker, service mesh.
 
-**Status:** Accepted
+---
 
-```text
-Domain <- Application <- Infrastructure <- App composition root
-                         ^
-                         + Web composition later
-```
+## ADR-003 — no standalone Contracts assembly initially
 
-Domain contains rules only; Application owns use cases/contracts/ports; Infrastructure owns EF/SQLite/filesystem; App owns CLI/MCP. Web later consumes Application read models.
+**Decision:** transport-neutral contracts live in Application.
 
-## ADR-004 — No standalone Contracts assembly initially
+**Why:** there is no independently versioned second consumer yet. Extraction remains cheap later.
 
-**Status:** Accepted
+---
 
-Keep transport-neutral records in `HeroPassport.Application.Contracts`. Extract a dedicated assembly only when an independently versioned second host/package creates a real contract boundary.
+## ADR-004 — official MCP C# SDK 2.0.0
 
-This revises the source report's early Contracts-project recommendation in favor of YAGNI without sacrificing future extraction.
+**Decision:** use `ModelContextProtocol 2.0.0` main package for stdio host.
 
-## ADR-005 — Official MCP C# SDK 2.0.0; stdio-only MVP
+**Why:** official protocol implementation/hosting/DI; MCP 2026-07-28 support.
 
-**Status:** Accepted
+**Rejected:** hand-written JSON-RPC/MCP, Core-only package, AspNetCore MCP package before HTTP is needed.
 
-Use stable `ModelContextProtocol 2.0.0`, current MCP revision `2026-07-28`, and local stdio only.
+---
 
-HTTP/Streamable HTTP requires a separate auth/network threat model. Apps and Tasks extensions are not MVP dependencies.
+## ADR-005 — fixed four-tool MCP surface
 
-## ADR-006 — Exactly four deterministic tools
-
-**Status:** Accepted
-
-Fixed order:
+**Decision:** exactly:
 
 ```text
 hero.start_quest
@@ -62,127 +54,340 @@ hero.current_quest
 hero.get_card
 ```
 
-No step logging/telemetry/history-dump/judge tools before a concrete need. Stable deterministic discovery minimizes tool-context and prompt-cache churn.
+**Why:** token/tool-selection simplicity; covers complete agent workflow.
 
-## ADR-007 — No source artifacts or workspace path in MCP schema
+**Rejected:** history/admin/log-step/file-tracking/evaluation tools in MVP.
 
-**Status:** Accepted
+---
 
-Schema `1.0` has no source code, file contents, diffs, raw logs, prompts, environment bags, secrets or `workspacePath`.
+## ADR-006 — explicit tool registration, no assembly scanning
 
-Project auto-resolution is local. Persist display name + versioned SHA-256 identity fingerprint, not cleartext full path. An explicit Codex `cwd` may be configured locally where a host needs it.
+**Decision:** register four dedicated MCP tool adapter types explicitly.
 
-## ADR-008 — Deterministic versioned RPG rules; no LLM judge
+**Why:** fail-closed inventory, deterministic order, easier review/tests/trimming experiments.
 
-**Status:** Accepted
+**Influence:** GitHub MCP's strict inventory/config practices; large dynamic discovery is useful only at much larger surfaces.
 
-XP, levels, skills, trust/risk and traits use pure integer rules. Every completed quest stores relevant rule versions and immutable reward breakdown.
+---
 
-New semantics apply prospectively under a new rule version; historical rewards are not silently recalculated.
+## ADR-007 — MCP is not the full product API
 
-## ADR-009 — Integer permille scoring
+**Decision:** admin/doctor/export/data paths/full history belong to CLI/dashboard by default.
 
-**Status:** Accepted
+**Why:** Context7/Playwright/DBHub patterns reinforce that always-advertised MCP surface has context cost. Shell/CLI is better for many operator operations.
 
-Result multipliers are `1000/600/200/300/0`, eliminating floating-point/culture drift. Reward rule `1.0.0` locks the standard clean coding fixture to `95 XP`.
+---
 
-## ADR-010 — SQLite + EF Core migrations + WAL + current safe native bundle
+## ADR-008 — explicit quest handle, no MCP-session correctness
 
-**Status:** Accepted
+**Decision:** `start_quest -> questId -> finish_quest` and durable SQLite state.
 
-Baseline:
+**Why:** MCP 2026-07-28 stateless direction; reconnect/restart resilience.
+
+**Rejected:** hidden in-memory “current MCP session” state.
+
+---
+
+## ADR-009 — strict compact MCP contracts
+
+**Decision:** remove per-call `schemaVersion`, `heroId`, `projectId`, `workspacePath`, `locale`, `outputMode`; remove `agentHint` and duplicated `statusText` outputs.
+
+**Why:** these are protocol/local app/presentation concerns, not choices the model should repeatedly make.
+
+**Result:** smaller schema, fewer conflicting inputs, lower privacy risk.
+
+---
+
+## ADR-010 — JSON Schema 2020-12 + output schemas
+
+**Decision:** strict schemas, `additionalProperties:false`, bounded fields, `structuredContent`, `outputSchema`, accurate annotations.
+
+**Why:** current MCP semantics; machine-checkable contract; prevents arbitrary metadata leakage.
+
+---
+
+## ADR-011 — no MCP Tasks/Apps/HTTP/OAuth in 0.1
+
+**Decision:** all four operations are short local stdio calls; task support forbidden.
+
+**Why:** no long-running/remote requirement.
+
+**Review trigger:** genuine remote/team/UI-in-client requirement.
+
+---
+
+## ADR-012 — deterministic RPG engine, no LLM judge
+
+**Decision:** integer versioned rules calculate XP/levels/skills/traits/Trust/Risk.
+
+**Why:** explainability, reproducibility, zero remote cost/privacy expansion.
+
+---
+
+## ADR-013 — Presentation leaves Domain/Application
+
+**Decision:** `HeroPassport.App/Presentation` renders localized `displayText`; Domain/Application return typed values.
+
+**Why:** localization/punctuation is not game policy; later Web consumes typed data directly.
+
+**Supersedes:** architecture-v1 assumption that Core/Application could produce card/status text.
+
+---
+
+## ADR-014 — local state resolved outside MCP calls
+
+**Decision:** active hero, project identity, locale and presentation are local application/config state.
+
+**Why:** reduces agent choices and token overhead; avoids path/user-state leakage.
+
+---
+
+## ADR-015 — SQLite + EF Core
+
+**Decision:** EF Core SQLite 10.0.10, migrations from day one.
+
+**Why:** embedded local fit, migration tooling, future dashboard projections, one persistence stack.
+
+**Rejected:** server DB, Dapper/raw baseline, EF InMemory product tests.
+
+---
+
+## ADR-016 — short-lived DbContextFactory pattern
+
+**Decision:** `IDbContextFactory<HeroPassportDbContext>`, one context/unit of work.
+
+**Why:** stdio/CLI have no HTTP request scope; SQLite/DbContext thread safety; aligns with later Blazor guidance.
+
+---
+
+## ADR-017 — synchronous SQLite execution
+
+**Decision:** actual SQLite/EF DB segments are synchronous and short.
+
+**Why:** Microsoft.Data.Sqlite async methods execute synchronously because SQLite has no async I/O.
+
+**Rejected:** `Task.Run` wrappers and fake async ceremony.
+
+---
+
+## ADR-018 — WAL + FULL durability
+
+**Decision:** WAL, foreign keys ON, `synchronous=FULL`.
+
+**Why:** reader concurrency plus stronger power-loss durability; write rate is tiny.
+
+**Rejected:** optimizing to NORMAL without measurement/durability decision.
+
+---
+
+## ADR-019 — 5-second SQLite busy policy
+
+**Decision:** initial `Default Timeout=5` seconds, validated by concurrency tests.
+
+**Why:** local write transactions should be milliseconds; 30-second provider default would create poor interactive-agent behavior when something is wrong.
+
+**Status:** application policy subject to measurement before 0.1.0, not protocol invariant.
+
+---
+
+## ADR-020 — use EF migration lock, no custom mutex
+
+**Decision:** rely on EF Core migration locking (`__EFMigrationsLock` on SQLite); `doctor` diagnoses abandoned lock.
+
+**Why:** EF Core 9+ already implements database-wide migration lock. A second lock creates inconsistent recovery paths.
+
+---
+
+## ADR-021 — atomic finish + unique XP ledger
+
+**Decision:** quest report/reward/hero/skill/trait/project updates commit in one transaction; `UNIQUE xp_events.quest_id`.
+
+**Why:** retries/races cannot farm XP; database is final integrity boundary.
+
+---
+
+## ADR-022 — historical reward immutability
+
+**Decision:** completed quest stores original reward breakdown/rule versions; retries return it, never recalculate under current rules.
+
+**Why:** upgrades must not change earned history.
+
+---
+
+## ADR-023 — platform-correct application data paths
+
+**Decision:** Windows LocalApplicationData, macOS Application Support, Linux XDG data/config/state; `HERO_PASSPORT_HOME` for isolated dev/tests.
+
+**Why:** SQLite DB is machine-local and should not use Windows roaming ApplicationData; native platform conventions reduce surprises.
+
+---
+
+## ADR-024 — strict config v1
+
+**Decision:** tiny versioned JSON config, unknown properties rejected; application state remains SQLite.
+
+**Why:** avoids arbitrary dynamic configuration and model-facing config choices.
+
+---
+
+## ADR-025 — Codex owns Codex configuration
+
+**Decision:** document/use `codex mcp add/list` and native `mcp_servers.*`; no Hero Passport TOML mutator in MVP.
+
+**Why:** OpenAI owns schema/evolution; avoids corrupting unrelated user config.
+
+---
+
+## ADR-026 — Codex server instructions + short AGENTS guidance
+
+**Decision:** essential workflow/privacy guidance in server instructions (first 512 chars self-contained for Codex), short project AGENTS snippet.
+
+**Why:** workflow is cross-tool context; do not duplicate `agentHint` in every response.
+
+---
+
+## ADR-027 — agent evaluations are a first-class quality layer
+
+**Decision:** maintain behavioral eval corpus in addition to unit/integration/protocol tests.
+
+**Why:** Sentry MCP demonstrates and the problem demands a separate test for whether an agent chooses tools correctly. A valid schema cannot prove model workflow behavior.
+
+---
+
+## ADR-028 — no runtime tool discovery/toolsets before scale threshold
+
+**Decision:** challenge tool growth; dedicated review if inventory exceeds 6.
+
+**Why:** GitHub MCP's dynamic discovery/toolsets solve dozens/hundreds of operations. Four tools do not justify that complexity.
+
+---
+
+## ADR-029 — no MediatR
+
+**Decision:** direct typed handlers through DI.
+
+**Why:** four core use cases do not need an in-process message bus/pipeline framework; direct graph is clearer for humans/Codex.
+
+---
+
+## ADR-030 — no AutoMapper
+
+**Decision:** explicit mappings.
+
+**Why:** boundaries are small and privacy-sensitive; hidden mapping can leak fields accidentally.
+
+---
+
+## ADR-031 — no FluentValidation for MVP
+
+**Decision:** JSON Schema + small explicit semantic validators + options validation.
+
+**Why:** contract set is tiny; a DSL adds conventions without reducing enough code.
+
+---
+
+## ADR-032 — no generic repository
+
+**Decision:** capability-specific stores/queries.
+
+**Why:** application invariants are not generic CRUD and transaction needs must remain visible.
+
+---
+
+## ADR-033 — no Polly baseline
+
+**Decision:** no general retry library.
+
+**Why:** no remote dependencies; SQLite provider already retries busy/locked until command timeout; broad retries risk duplicate side effects.
+
+---
+
+## ADR-034 — no third-party logging baseline
+
+**Decision:** Microsoft.Extensions.Logging, stderr/optional local file.
+
+**Why:** sufficient local diagnostics; no remote sinks.
+
+---
+
+## ADR-035 — defer Spectre.Console
+
+**Decision:** plain/scriptable CLI first.
+
+**Why:** presentation-only dependency; avoiding it initially simplifies stdout separation. May be reconsidered after correctness.
+
+---
+
+## ADR-036 — no OpenTelemetry exporter baseline
+
+**Decision:** use normal .NET diagnostics seams only; exporter post-MVP/opt-in.
+
+**Why:** single local stdio process has no distributed tracing need.
+
+---
+
+## ADR-037 — explicit native SQLite pin
+
+**Decision:** direct `SQLitePCLRaw.bundle_e_sqlite3 3.0.5` and runtime `sqlite_version()` test.
+
+**Why:** native security/durability baseline must not be an accidental transitive choice.
+
+---
+
+## ADR-038 — Central Package Management + lock/audit
+
+**Decision:** CPM, committed lock files, locked CI/release restore, NuGet audit including transitives.
+
+**Why:** reproducible agent/CI builds and visible supply-chain changes.
+
+---
+
+## ADR-039 — default hero/global state with project projections
+
+**Decision:** hero exists globally; project identity/stats are separate. MCP doesn't require heroId/projectId per call.
+
+**Why:** passport identity should persist across repositories while project stats remain meaningful.
+
+---
+
+## ADR-040 — achievements/artifacts/plugins remain post-MVP
+
+**Decision:** retain only cheap seams (rule versions, normalizers, read models, contracts/goldens); no subsystem skeleton that has no current use.
+
+**Why:** YAGNI and prior project scope decision.
+
+---
+
+## ADR-041 — documentation/research hierarchy
+
+When sources conflict or age:
 
 ```text
-Microsoft.EntityFrameworkCore.Sqlite   10.0.10
-SQLitePCLRaw.bundle_e_sqlite3           3.0.5
-native SQLite                          >= 3.53.4
+current official specification/documentation
+> current official SDK/package docs/source
+> current production open-source repository behavior
+> reference/example repositories
+> historical report/old project docs
 ```
 
-Use migrations, `foreign_keys=ON`, WAL, bounded busy timeout and no shared-cache optimization with WAL.
+Open repositories are mined for patterns regardless of license in this architecture analysis, per project instruction; copied implementation still requires a separate practical/legal decision if distribution policy ever matters.
 
-This supersedes the source report's interim `2.1.12` pin: by 2026-08-10 stable SQLitePCLRaw `3.0.5` is newer and carries a newer native SQLite floor. Runtime version is verified in tests/releases.
+---
 
-## ADR-011 — Immutable XP ledger plus current projections
+## ADR-042 — benchmark rerun triggers
 
-**Status:** Accepted
-
-One immutable `xp_events` quest-reward event per completed quest; hero/skill/trait/project projections update in the same atomic transaction.
-
-`xp_events.quest_id` is unique. Future administrative corrections use compensating events rather than destructive history edits.
-
-## ADR-012 — Finish retries return persisted original outcome
-
-**Status:** Accepted
-
-A repeated `finish_quest` on a completed quest performs no scoring/progression write. It returns the stored original outcome with `alreadyFinished=true`, even if current rules have since changed.
-
-## ADR-013 — UUIDv7 + TimeProvider
-
-**Status:** Accepted
-
-Generate IDs with `Guid.CreateVersion7()` and use injected .NET `TimeProvider` for behavior-affecting time. No third-party ID/time abstraction is required.
-
-## ADR-014 — Exact SDK + Central Package Management + lock files
-
-**Status:** Accepted
-
-Use exact `global.json` SDK pin, central package versions, committed `packages.lock.json`, and locked restore in CI/release.
-
-Dependency updates are deliberate reviewable changes.
-
-## ADR-015 — xUnit.net v3 + Microsoft Testing Platform
-
-**Status:** Accepted
-
-Stable `xunit.v3 3.2.2` with .NET 10 `dotnet test` / Microsoft Testing Platform repository configuration. Keep `xunit.runner.visualstudio 3.1.5` privately only where compatibility tooling still needs it.
-
-Do not adopt prerelease xUnit v4 in MVP.
-
-## ADR-016 — Use native Codex MCP management
-
-**Status:** Accepted
-
-Document/validate:
+Re-run ecosystem/library analysis before:
 
 ```text
-codex mcp add hero-passport -- hero-passport mcp
-codex mcp list
+tool count > 6
+remote/HTTP MCP
+multi-user/team
+second storage backend
+runtime plugins
+network/API dependencies
+MCP Apps/Tasks
+major MCP SDK/protocol revision
+major EF/SQLite architecture change
 ```
 
-Hero Passport does not mutate `~/.codex/config.toml` in MVP. Codex owns its config schema and native management surface.
-
-## ADR-017 — Codex CLI current-workspace is first acceptance path
-
-**Status:** Accepted
-
-The first E2E target is local Codex CLI launched in the intended repo/workspace. Current Codex `mcp add` creates stdio config with `cwd=None`, while config supports explicit `mcp_servers.<id>.cwd`.
-
-If a specific client launches the server elsewhere, document a local explicit `cwd` for that setup rather than sending the path through model-visible MCP arguments.
-
-**Revisit:** if Codex exposes a stable per-call/session workspace identity to local MCP servers.
-
-## ADR-018 — .NET tool first; self-contained/single-file later
-
-**Status:** Accepted
-
-First packaging target is a .NET tool. Per-RID self-contained builds follow after core validation. Single-file is deferred until native SQLite bundling/extraction/update behavior has explicit tests.
-
-## ADR-019 — Dashboard after 0.1.0, read-model driven
-
-**Status:** Accepted
-
-Ship the two-call status loop first. `HeroPassport.Web` later uses local Blazor/ASP.NET Core, loopback by default, Application read models, and never injects `HeroPassportDbContext` into Razor components.
-
-## ADR-020 — Traits are not achievements
-
-**Status:** Accepted
-
-Traits are persistent behavioral progression. Achievements, artifacts/items, runtime plugins, MCP Apps/Tasks, cloud/team/auth and self-evolution are separately designed post-MVP modules, not hidden inside the trait system.
-
-## ADR-021 — Logical JSON export before raw DB backup
-
-**Status:** Accepted
-
-MVP user portability uses versioned logical JSON export. Do not present live `.db` file copying as a safe generic backup while WAL may hold current state.
-
-A future raw backup feature must use supported SQLite backup/checkpoint mechanisms and crash-consistency tests.
+Modernity is maintained by explicit review triggers, not by speculative abstractions.

@@ -1,406 +1,662 @@
-# Hero Passport — Data Model and Persistence Specification
+# Hero Passport — data model and persistence specification
 
-**Status:** Accepted for MVP  
-**Store:** SQLite via EF Core 10  
-**Baseline:** 2026-08-10
+**Status:** Accepted baseline  
+**Snapshot:** 2026-08-10  
+**Database:** SQLite via EF Core 10.0.10  
+**Native SQLite:** pinned through `SQLitePCLRaw.bundle_e_sqlite3 3.0.5`; actual runtime version verified by tests/doctor
 
-## 1. Persistence principles
+## 1. Persistence goals
 
-1. One local SQLite database is authoritative.
-2. Completing a quest and applying all progression is one short atomic transaction.
-3. Reward history is immutable/append-only in MVP.
-4. Read projections/counters are allowed but never replace immutable history.
-5. Code, diffs, raw logs, prompts, secrets and full workspace paths have no persistence columns.
-6. EF Core migrations start with the first persisted schema; `EnsureCreated` is not the product strategy.
-7. Storage tests use real SQLite.
+The database is the authoritative durable source for game state. Persistence must guarantee:
 
-## 2. Application data directory
+1. a quest can be rewarded at most once;
+2. all mutations from one quest completion commit atomically;
+3. historical reward interpretation survives rule upgrades;
+4. source code, diffs, raw logs, prompts, secrets and full workspace paths are not stored;
+5. migrations are reproducible and upgrade-tested;
+6. local concurrent reads remain responsive while writes are short;
+7. the schema remains understandable without an ORM-generated abstraction maze.
 
-Resolve per-user platform paths through `IAppDataPaths`, never by scattering hard-coded paths through the code.
+SQLite is selected because Hero Passport is a single-user local application with a very small write rate. A server database would add deployment/auth/backup complexity without solving an existing requirement.
 
-Logical files:
+---
+
+## 2. EF Core boundaries
+
+Infrastructure owns:
 
 ```text
-hero-passport.db
-config.json          # only when settings exist
-logs/                # only when explicitly enabled
-exports/             # optional convenience target
+HeroPassportDbContext
+EF persistence entities
+IEntityTypeConfiguration<T>
+migrations
+SQL-specific migration fragments
+store/query implementations
 ```
 
-Tests redirect all paths to isolated temporary directories.
+Domain/Application do not expose EF entities.
 
-## 3. SQLite runtime baseline
+Use:
 
-Initialization must establish/verify:
+```text
+IDbContextFactory<HeroPassportDbContext>
+```
+
+Each Application operation gets one short-lived context through an Infrastructure store/coordinator and disposes it after the unit of work.
+
+Do not:
+
+```text
+use a singleton DbContext
+share one DbContext concurrently
+inject DbContext into MCP tool classes
+inject DbContext into Razor components
+use lazy-loading proxies
+use EF InMemory to simulate SQLite semantics
+```
+
+---
+
+## 3. Synchronous database execution
+
+Microsoft.Data.Sqlite documents that SQLite has no asynchronous I/O; async ADO.NET calls execute synchronously. The persistence implementation therefore uses synchronous database operations intentionally.
+
+Rules:
+
+- short bounded SQL only;
+- no `Task.Run` wrapper around EF/SQLite calls;
+- no “async all the way” ceremony around synchronous SQLite work;
+- cancellation is checked before expensive/use-case stages and transaction commit boundaries where meaningful;
+- long-running analytics/history queries are designed as bounded/paged reads rather than hidden blocking calls.
+
+MCP adapter methods can be asynchronous because the SDK contract is asynchronous, but database work remains an explicit synchronous segment.
+
+---
+
+## 4. Database location
+
+Never hardcode roaming `%APPDATA%` for the DB.
+
+Canonical locations are defined in `CONFIGURATION.md`:
+
+```text
+Windows: %LOCALAPPDATA%\HeroPassport\data\hero-passport.db
+macOS:   ~/Library/Application Support/HeroPassport/data/hero-passport.db
+Linux:   $XDG_DATA_HOME/hero-passport/hero-passport.db
+         fallback ~/.local/share/hero-passport/hero-passport.db
+```
+
+Tests/dev may isolate everything using `HERO_PASSPORT_HOME`.
+
+Absolute paths are local process concerns and do not enter MCP DTOs or persisted project identity.
+
+---
+
+## 5. Connection policy
+
+Build with `SqliteConnectionStringBuilder`.
+
+Application baseline:
+
+```text
+Mode=ReadWriteCreate
+Cache=Default
+Foreign Keys=True
+Pooling=True
+Default Timeout=5
+```
+
+The 5-second timeout is Hero Passport policy, not a SQLite universal recommendation. It must survive concurrency tests before release. Writes should normally complete in milliseconds; a much longer wait is more harmful to an interactive agent than returning actionable `HP202 database_busy`.
+
+Do not use `Cache=Shared` with WAL.
+
+---
+
+## 6. Required PRAGMA state
+
+At initialization/verification:
 
 ```sql
-PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
+PRAGMA synchronous = FULL;
+PRAGMA foreign_keys = ON;
 ```
 
-Use a bounded default busy timeout. Do not combine `Cache=Shared` with WAL as an optimization strategy.
+Rationale:
 
-Keep SQLite's default automatic WAL checkpointing initially; custom checkpoint scheduling is justified only by measurements.
+- WAL permits readers while a writer is active;
+- `FULL` prioritizes earned-progression durability over maximum write throughput;
+- foreign keys are explicitly enabled rather than relying on an implicit native default.
 
-### Native dependency pin
+Tests and `doctor` verify effective values.
 
-Baseline:
+Do not run `VACUUM`, aggressive checkpointing or maintenance on every quest finish.
+
+Use SQLite's normal WAL auto-checkpoint initially. Add explicit maintenance only from measured evidence.
+
+---
+
+## 7. IDs and timestamps
+
+Identifiers:
 
 ```text
-Microsoft.EntityFrameworkCore.Sqlite     10.0.10
-SQLitePCLRaw.bundle_e_sqlite3             3.0.5
-native SQLite                            >= 3.53.4
+UUIDv7 generated with Guid.CreateVersion7()
 ```
 
-The direct SQLitePCLRaw pin is intentional. It prevents the application from silently resolving only to the much older transitive minimum accepted by EF/Microsoft.Data.Sqlite and places the shipped native SQLite above the WAL-reset bug fixed in SQLite 3.51.3.
+Persist as 16-byte/GUID-compatible EF representation or canonical text based on the final EF mapping benchmark; the choice must be consistent across all tables and tested for ordering/round-trip. Do not invent prefixed string IDs (`qst_...`) unless a product UX requirement justifies the additional converter contract.
 
-Integration/release tests query `sqlite_version()` and fail below the approved floor.
+External JSON uses canonical lowercase UUID text.
 
-## 4. ID/time/representation conventions
-
-- IDs: UUIDv7 (`Guid.CreateVersion7()`).
-- External JSON: lowercase canonical GUID string.
-- DB GUID representation: choose one mapping in the first migration and never mix representations. Prefer 16-byte BLOB if EF/tooling/tests remain simple; otherwise canonical text is acceptable.
-- Timestamps: UTC `DateTime`; persistence boundary enforces UTC.
-- Total XP/counters: signed 64-bit integers.
-- Per-event XP and bounded counters: 32-bit integers.
-- Trust/risk: integer `0..100` with domain invariant and DB checks where practical.
-- Domain enum/key persistence: canonical stable strings for inspectability/migration safety.
-
-## 5. MVP tables
-
-### `heroes`
+Timestamps:
 
 ```text
-id                    PK
-name                  required, <=80
-name_normalized       required, unique
-is_default            bool
-created_at_utc        required
-total_xp              long >=0
-trust                 int 0..100
-risk                  int 0..100
-updated_at_utc        required
+UTC only
 ```
 
-Initializer guarantees one default hero (`Nova`) idempotently.
+Application uses `TimeProvider`. Persistence invariant rejects/normalizes accidental local/unspecified time according to one tested mapping policy. Do not model SQLite as if it has native `DateTimeOffset` arithmetic semantics.
 
-### `projects`
+---
+
+## 8. Core schema
+
+### 8.1 `heroes`
+
+Purpose: durable global hero identity/progression.
+
+Fields:
 
 ```text
 id                    PK
-display_name          required, <=160
-workspace_fingerprint required, <=128
-identity_version      required, <=32
-created_at_utc        required
-last_seen_at_utc      required
+name                  text, required, bounded
+total_xp              integer >= 0
+trust                 integer 0..100
+risk                  integer 0..100
+created_at_utc
+updated_at_utc
 ```
 
-Unique `(identity_version, workspace_fingerprint)`. No full-path column.
+Do not persist current level as the authoritative source; derive it from `total_xp` and the applicable current display curve where appropriate. Historical quest reports store before/after level projections needed for immutable reward replay.
 
-### `hero_project_stats`
-
-Composite key `(hero_id, project_id)`.
-
-```text
-quests_started        long >=0
-quests_finished       long >=0
-quests_succeeded      long >=0
-xp_earned             long >=0
-last_quest_at_utc     nullable
-```
-
-Projection only; rebuildable from history.
-
-### `quest_sessions`
+### 8.2 `projects`
 
 ```text
 id                    PK
-hero_id               FK heroes
-project_id            FK projects
-quest_type            required canonical key
-goal                  required, <=500
-status                open | completed
-result                nullable until completed
-idempotency_key       nullable, <=128
-host_name             nullable, <=64
-host_type             nullable, <=64
-started_at_utc        required
+display_name          text, bounded
+workspace_fingerprint text, unique
+identity_version      text/int, required
+created_at_utc
+last_seen_at_utc
+```
+
+No absolute workspace path by default.
+
+`workspace_fingerprint` is a local identity aid, not authentication material.
+
+### 8.3 `hero_project_stats`
+
+Composite unique key:
+
+```text
+(hero_id, project_id)
+```
+
+Fields:
+
+```text
+hero_id FK
+project_id FK
+quests_started
+quests_finished
+quests_succeeded
+total_xp_earned
+last_quest_at_utc
+```
+
+This is a projection/summary for fast reads. Canonical event/report history remains the source for audit/reconstruction where relevant.
+
+### 8.4 `quest_sessions`
+
+```text
+id                    PK
+hero_id               FK
+project_id            FK
+quest_type            canonical key
+goal                  bounded text
+status                open | finished
+started_at_utc
 finished_at_utc       nullable
-created_at_utc        required
-updated_at_utc        required
+created_at_utc
 ```
 
-Constraints:
+Initial invariant: at most one open quest for a hero+project active slot.
 
-- open => `result`/`finished_at_utc` null;
-- completed => both non-null;
-- explicit idempotency key unique within hero/project when non-null;
-- one automatic active quest per `(hero_id, project_id)` enforced at DB level where practical using a SQLite partial unique index.
+SQLite implementation may use a filtered/partial unique index over `(hero_id, project_id)` where `status = 'open'`, implemented/tested in the migration if EF metadata cannot express the exact desired form portably.
 
-If exact index semantics require migration SQL, keep that SQL fixed and covered by integration tests.
+Goal is untrusted compact text. It is data, not an instruction to the server.
 
-### `quest_reports`
+### 8.5 `quest_reports`
 
-Exactly one row per completed quest:
+One-to-one with completed quest.
 
 ```text
-quest_id                   PK/FK quest_sessions
-summary                    required, <=2000
-tests_mentioned            bool
-scope_violations           int 0..100
-user_corrections           int 0..100
-build_status               canonical string
-tests_status               canonical string
-reward_rule_version        required
-level_rule_version         required
-skill_rule_version         required
-trust_risk_rule_version    required
-trait_rule_version         required
-final_xp                   int >=0
-reward_breakdown_json      required bounded JSON text
-completed_at_utc           required
+id
+quest_id              FK + UNIQUE
+result                canonical result
+summary               bounded text
+tests_mentioned       boolean
+scope_violations      integer >= 0
+user_corrections      integer >= 0
+build_status          canonical key
+tests_status          canonical key
+reward_rule_version
+trust_risk_rule_version
+trait_rule_version
+base_xp
+result_xp
+bonus_xp
+penalty_xp
+xp_gained
+trust_before
+trust_after
+risk_before
+risk_after
+level_before
+level_after
+total_xp_before
+total_xp_after
+created_at_utc
 ```
 
-`reward_breakdown_json` is a stable audit snapshot; it does not turn the relational model into arbitrary schemaless storage.
+Persist the calculated breakdown required to explain/replay the original outcome. Do not rerun historical reward rules on retry.
 
-### `quest_report_skills`
+### 8.6 `quest_report_skills`
+
+Normalizes the 1..3 skills attributed to the completion.
 
 ```text
-quest_id               FK quest_reports
-position               int 0..2
-skill_key              canonical key
-xp_gained              int >=0
+quest_report_id FK
+skill_key
+ordinal               0..2
+xp_gained
 ```
 
-PK `(quest_id, position)`, unique `(quest_id, skill_key)`. This preserves exact historical allocation and deterministic display order.
-
-### `skills`
-
-Canonical catalog:
+Unique:
 
 ```text
-key                    PK
-definition_version     required
-sort_order             required
+(quest_report_id, skill_key)
+(quest_report_id, ordinal)
 ```
 
-Seeded by initializer/migration. Localized labels live in application resources/maps, not as persisted identity.
+### 8.7 `skills`
 
-### `hero_skills`
+Canonical dictionary/seeding table:
 
 ```text
-hero_id                FK heroes
-skill_key              FK skills
-total_xp               long >=0
-updated_at_utc         required
+key                   PK canonical stable key
+sort_order
+is_active
+introduced_rule_version
 ```
 
-PK `(hero_id, skill_key)`.
+Localized label does **not** belong here as the canonical key. Localization lives in presentation resources/code.
 
-### `traits`
+Initial keys include at least:
 
 ```text
-key                    PK
-definition_version     required
-activation_threshold   int >0
-sort_order             required
+coding
+testing_awareness
+scope_control
+documentation
+tool_use
+planning
+research
+debugging
+review
+maintenance
 ```
 
-### `hero_traits`
+The exact initial dictionary is versioned in the engine spec/seed tests.
+
+### 8.8 `hero_skills`
 
 ```text
-hero_id                FK heroes
-trait_key              FK traits
-progress               long >=0
-state                  locked | active
-activated_at_utc       nullable
-updated_at_utc         required
+hero_id FK
+skill_key FK
+total_xp >= 0
+updated_at_utc
 ```
 
-PK `(hero_id, trait_key)`. Rule `1.0.0` never deactivates an active trait.
+Composite PK/unique `(hero_id, skill_key)`.
 
-### `xp_events`
+### 8.9 `traits`
 
-Immutable XP ledger:
+Canonical trait dictionary:
 
 ```text
-id                    PK
-hero_id               FK heroes
-project_id            FK projects
-quest_id              FK quest_sessions, UNIQUE
-event_type            quest_reward
-xp_delta              int >=0
-reward_rule_version   required
-breakdown_json        required
-event_at_utc          required
+key PK
+introduced_rule_version
+sort_order
+is_active
 ```
 
-The unique `quest_id` is a final DB-level defense against duplicate quest reward.
-
-Future corrections, if ever required, are compensating events rather than history mutation.
-
-### `app_settings`
-
-Small bounded non-secret key/value settings only:
+### 8.10 `hero_traits`
 
 ```text
-key                   PK
-value                 bounded string
-updated_at_utc        required
+hero_id FK
+trait_key FK
+progress >= 0
+is_unlocked
+unlocked_at_utc nullable
+updated_at_utc
 ```
 
-Do not store API keys or credentials. Future secret needs require an OS credential-store design.
+Composite key `(hero_id, trait_key)`.
 
-## 6. Delete behavior
+Unlocked traits never silently relock under v1 rules.
 
-History-preserving defaults:
+### 8.11 `xp_events`
+
+Immutable XP ledger.
 
 ```text
-hero -> history       Restrict
-project -> history    Restrict
-quest -> report/xp    Restrict/NoAction in product paths
-skill/trait catalog   Restrict when referenced
+id PK
+hero_id FK
+project_id FK
+quest_id FK
+amount >= 0
+reward_rule_version
+created_at_utc
 ```
 
-A destructive reset/delete feature requires its own data-management spec. Do not add broad cascade delete as a convenience.
-
-## 7. Start transaction
-
-A new start transaction:
+Critical unique constraint:
 
 ```text
-resolve/create project if needed
-resolve hero
-ensure hero_project_stats row
-check idempotency/open quest
-insert only if new
-increment quests_started only if new
-commit
+UNIQUE(quest_id)
 ```
 
-Retry returning an existing quest performs no stat increment.
+This is the final DB-level barrier against double reward.
 
-## 8. Atomic finish transaction
+Do not use this table as a generic event bus.
 
-A first successful `FinishQuest` commits atomically:
+### 8.12 `app_settings`
+
+Typed product-state settings that belong to user data, not operator config.
+
+Prefer rows with known keys and validated serializers/value shapes. Initial example:
 
 ```text
-quest completion state
-quest_reports
-quest_report_skills
-xp_events
-heroes total_xp/trust/risk
-hero_skills
-hero_traits
-hero_project_stats
+active_hero_id
 ```
 
-On any failure, none of the progression changes commit.
+Do not turn it into an arbitrary plugin metadata store.
 
-## 9. Finish idempotency/concurrency
+---
 
-Inside the write transaction:
+## 9. FinishQuest transaction
 
-1. Load quest.
-2. Missing -> `HP130`.
-3. Completed -> load persisted outcome and return `alreadyFinished=true`; no writes.
-4. Open -> calculate reward from immutable quest type + accepted rule version.
-5. Insert unique quest reward ledger event.
-6. Apply all projections and report.
-7. Mark quest completed.
-8. Commit.
-
-If two processes race, only one may commit the unique reward/state transition. The losing caller reloads the completed outcome and converges to idempotent success when possible.
-
-Do not rely on database-generated `rowversion`; SQLite does not provide that SQL Server concurrency primitive.
-
-## 10. EF Core usage
-
-- Short-lived `DbContext` per query/unit of work.
-- Never singleton `DbContext`.
-- Read projections use `AsNoTracking` where tracking is unnecessary.
-- Use focused `IEntityTypeConfiguration<T>` mappings or equivalent.
-- Persistence entities stay Infrastructure-internal where practical.
-- Application/MCP/Web never return EF entities.
-- Explicitly align EF Core package versions.
-- Use `Microsoft.EntityFrameworkCore.Design` with a matched 10.0.10 version for migrations/tooling.
-
-## 11. Migration policy
-
-Every migration has:
-
-- descriptive name;
-- reviewed generated SQL/operations;
-- fresh-database migration test;
-- upgrade test from the previous released fixture once releases exist;
-- data-preservation assertions for nontrivial rebuilds.
-
-SQLite can rebuild tables for unsupported ALTER operations; destructive/rebuild-heavy migrations require explicit review and backup guidance.
-
-Startup/init surfaces migration errors cleanly. `doctor` reports database/migration/native version state.
-
-## 12. Backup/export
-
-MVP portability is a **logical versioned JSON export**, not blindly copying a live `.db` file.
-
-WAL mode can keep relevant state in WAL/SHM files, so copying only the main DB during use is not a general safe backup mechanism.
-
-Export manifest:
+Canonical write unit:
 
 ```text
-exportFormatVersion
-createdAtUtc
-appVersion
-schemaVersion
-ruleVersions
+BEGIN
+  load quest
+  load hero/project state
+
+  if quest.status == finished:
+      read persisted report/xp projection
+      ROLLBACK/complete read-only path
+      return alreadyFinished=true
+
+  validate open quest
+  compute reward in memory
+
+  INSERT quest_report
+  INSERT quest_report_skills
+  INSERT xp_events        -- UNIQUE quest_id
+  UPDATE heroes
+  UPSERT hero_skills
+  UPSERT hero_traits
+  UPSERT hero_project_stats
+  UPDATE quest_sessions -> finished
+COMMIT
 ```
 
-Write export atomically (temp + replace/rename where supported) and include only allowed product data.
+All reward computation happens before mutating durable state where practical.
 
-Raw SQLite backup may be added later using SQLite-supported backup/checkpoint mechanisms and dedicated crash-consistency tests.
+If `xp_events.quest_id` uniqueness loses a race, reload the completed outcome and return retry semantics if the final state is valid; do not issue a second reward.
 
-## 13. File permissions
+Implementation must prove this race path with a real SQLite concurrency test.
 
-- use per-user application data;
-- on Unix-like systems apply/check user-only permissions when supported;
-- on Windows inherit the user's profile ACL; never weaken it;
-- `doctor` warns about obviously unsafe directory permissions where detection is reliable.
+---
 
-No at-rest encryption claim in MVP. OS account/disk security remains part of the local trust boundary.
-
-## 14. Common-path indexes
-
-Required/likely:
+## 10. StartQuest transaction
 
 ```text
-projects(identity_version, workspace_fingerprint) UNIQUE
-quest_sessions(hero_id, project_id, status)
-quest_sessions(hero_id, project_id, idempotency_key) conditional UNIQUE
-quest_sessions(project_id, started_at_utc)
-quest_sessions(hero_id, started_at_utc)
-xp_events(quest_id) UNIQUE
-xp_events(hero_id, event_at_utc)
-xp_events(project_id, event_at_utc)
+BEGIN
+  resolve existing open quest for hero/project
+  if exact logical match -> return existing
+  if conflicting open quest -> HP132
+  insert quest
+  update project last_seen/stats where applicable
+COMMIT
 ```
 
-Do not index every property speculatively; inspect real query plans later.
+Logical match v1:
 
-## 15. Required storage integration tests
+```text
+canonical questType + normalized trimmed goal exact match
+```
 
-- migrate empty DB to latest;
-- initializer/seed idempotency;
-- exactly one default hero;
-- foreign keys enabled;
-- WAL enabled;
-- bounded busy timeout;
-- no shared-cache+WAL configuration;
-- runtime SQLite version >= approved floor;
-- unique project fingerprint;
-- active/start idempotency sequential + race;
-- one XP event per quest;
-- concurrent finish race;
-- full rollback on injected failure;
-- reopen temp-file DB and preserve state;
-- no persisted full workspace path;
-- export excludes prohibited fields/path/environment sentinels.
+Do not use fuzzy/LLM matching for idempotency.
+
+---
+
+## 11. Read patterns
+
+Purpose-built projections only.
+
+Examples:
+
+```text
+HeroCardReadModel
+CurrentQuestReadModel
+RecentQuestReadModel
+ProjectStatsReadModel
+DiagnosticsReadModel
+DashboardSnapshotReadModel
+```
+
+Use no-tracking reads where mutation is not required.
+
+History is paged:
+
+```text
+ORDER BY finished_at_utc DESC, id DESC
+LIMIT page_size
+```
+
+Prefer keyset/cursor pagination when history becomes a UI/API feature; avoid unbounded `ToList()`.
+
+MCP does not expose full history in 0.1.0.
+
+---
+
+## 12. Migrations
+
+Use EF migrations from migration 0001.
+
+Never use `EnsureCreated` in product startup.
+
+### 12.1 EF migration lock
+
+EF Core 9+ acquires a database-wide migration lock; SQLite uses `__EFMigrationsLock`.
+
+Do **not** add a custom mutex/file lock around migrations.
+
+A killed migration can leave the lock abandoned. `doctor` detects and explains this condition; normal startup does not blindly delete it.
+
+### 12.2 Release migration gates
+
+For every schema change:
+
+```text
+fresh DB migration test
+previous released DB -> new migration test
+migration rollback/recovery analysis where supported
+model snapshot review
+foreign key/index review
+destructive/rebuild-operation review
+`dotnet ef migrations has-pending-model-changes`
+```
+
+SQLite can rebuild tables for some schema operations; migrations must be reviewed as generated SQL behavior, not blindly accepted because scaffolding succeeded.
+
+---
+
+## 13. Initialization and seeding
+
+Initialization is idempotent.
+
+Sequence:
+
+```text
+resolve/create app dirs
+validate config
+open DB
+SELECT sqlite_version()
+apply migrations
+verify PRAGMAs
+seed canonical skills
+seed canonical traits
+create default hero Nova only if no hero exists
+ensure active-hero state is valid
+close
+```
+
+Seeds are stable canonical keys. Updating localized names must not produce data migrations.
+
+---
+
+## 14. Backup/export
+
+MVP export is logical JSON through Application read models, not raw copying while the DB is open.
+
+A later raw backup command should use SQLite-supported backup semantics or a correctly coordinated checkpoint/copy process; never promise safe raw `*.db` file copying in WAL mode without accounting for `-wal`/`-shm` state.
+
+Export contains no absolute workspace paths because they were never stored.
+
+Export schema gets its own version (`export/1`).
+
+---
+
+## 15. Data deletion/reset
+
+Destructive data operations are CLI/Web concerns, not MCP tools.
+
+When introduced they must be explicit and scoped:
+
+```text
+reset hero progression
+delete one project history
+delete all local data
+```
+
+No “cleanup” command may silently remove an unrecognized database or migration lock.
+
+---
+
+## 16. Integrity checks / doctor
+
+`doctor` verifies at minimum:
+
+```text
+file readable/writable
+SQLite native version
+PRAGMA journal_mode
+PRAGMA synchronous
+PRAGMA foreign_keys
+PRAGMA integrity_check or quick_check policy
+EF latest migration
+pending model changes (developer/CI path)
+possible abandoned __EFMigrationsLock
+one active hero points to an existing hero
+canonical seed dictionaries present
+no duplicate xp event per quest by constraint
+```
+
+Use `quick_check` for routine lightweight diagnostic if measured acceptable; reserve full `integrity_check` for explicit deeper diagnostic if runtime cost becomes meaningful.
+
+---
+
+## 17. Sensitive/untrusted data policy
+
+Allowed user/agent text:
+
+```text
+hero name
+goal
+summary
+project display name
+```
+
+All are bounded and untrusted.
+
+Forbidden persistence fields:
+
+```text
+source_code
+file_content
+diff
+patch
+raw_log
+terminal_output
+prompt
+chat_history
+environment
+api_key
+secret
+workspace_path
+arbitrary_metadata_json
+```
+
+Architecture tests inspect MCP contracts and persistence entities for prohibited broad field patterns.
+
+---
+
+## 18. Performance expectations
+
+MVP does not need a benchmark lab, but implementation should record smoke baselines on release hardware/CI:
+
+```text
+cold init/startup
+warm get_card
+start_quest
+finish_quest
+current_quest
+1000-quest card/history projection
+```
+
+Targets are set after first implementation measurement, not invented now. Correctness gates precede performance targets.
+
+SQLite index selection is driven by actual query shapes:
+
+```text
+open quest lookup
+recent quests per hero/project
+hero skills
+hero traits
+xp ledger by hero/project/time
+```
+
+Avoid speculative indexes on every column.
+
+---
+
+## 19. Primary sources
+
+See `REFERENCES.md`, especially:
+
+- EF Core SQLite limitations;
+- EF Core migrations/application guidance;
+- Microsoft.Data.Sqlite async, connection-string and database-error docs;
+- SQLite WAL and `PRAGMA synchronous` documentation.

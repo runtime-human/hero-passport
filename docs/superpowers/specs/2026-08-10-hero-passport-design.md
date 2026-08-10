@@ -1,151 +1,92 @@
-# Hero Passport Design Specification
+# Hero Passport Architecture v2 — consolidated design
 
-> **Status:** Accepted for implementation planning  
-> **Date:** 2026-08-10  
-> **Basis:** project requirements + supplied technical report + current official documentation snapshot in `docs/REFERENCES.md`
+**Status:** Accepted design for implementation  
+**Date:** 2026-08-10  
+**Target:** Hero Passport 0.1.0
 
-## Goal
+## 1. Goal
 
-Build Hero Passport as a local-first RPG passport/state layer for AI coding agents: a meaningful task becomes a quest, the agent starts it once, works normally, finishes it once, receives a compact deterministic RPG result, and persists progression locally. Codex local stdio MCP is the first integration target; dashboard is deliberately later.
+Build a cross-platform local-first RPG passport for AI coding agents that integrates first with Codex through a tiny stdio MCP surface, stores durable progression in SQLite, calculates all game progress deterministically, and never needs source code/cloud telemetry for the core loop.
 
-## Product shape
+## 2. Research basis
 
-```text
-Hero Passport
-  = local stdio MCP server
-  + deterministic versioned RPG domain engine
-  + SQLite state/history
-  + local CLI operations
-  + compact end-of-session displayText
-  + local Blazor dashboard after MVP
-```
+The design was produced through three passes:
 
-Hero Passport is an entertaining companion/passport first, not an enterprise monitoring dashboard. The MVP must feel lightweight and game-like while retaining rigorous persistence and rule auditability.
+1. extract architecture practices from mature open MCP servers/apps;
+2. reject patterns that solve a scale/distribution problem Hero Passport does not have;
+3. verify surviving choices against current official MCP/Codex/.NET/EF/SQLite/package documentation on 2026-08-10.
 
-## Non-goals before minimal MVP
+Key repositories studied are documented in `docs/ECOSYSTEM-BENCHMARK.md`: GitHub MCP Server, Sentry MCP, DBHub, Context7, Playwright MCP/CLI, ToolHive and official MCP SDK/reference repositories.
+
+The resulting design intentionally combines practices rather than cloning one project.
+
+## 3. Product loop
 
 ```text
-achievements system
-artifacts/inventory
-runtime plugins/external DLL loading
-HTTP/remote MCP
-MCP Apps or MCP Tasks
-cloud/team/auth
-LLM judge
-self-evolution
-continuous editor telemetry
-per-keystroke/per-line/per-diff XP
-source/diff/raw-log collection
-public REST API
-full trace capture
+Codex decides the task is meaningful
+ -> hero.start_quest(questType, goal)
+ -> questId
+ -> Codex works normally
+ -> hero.finish_quest(questId, result, compact summary/metrics/skills)
+ -> deterministic reward persisted once
+ -> structured result + compact displayText
 ```
 
-## Architecture
+`hero.current_quest` restores workflow context; `hero.get_card` reads hero progress.
 
-Use a modular monolith with explicit inward dependencies:
+No other MCP tool in 0.1.0.
+
+## 4. Why MCP is appropriate here
+
+Playwright/Context7 show that CLI + Skills is often better than large MCP inventories. Hero Passport remains a good MCP fit because:
+
+- only four tools are advertised;
+- an explicit durable `questId` is useful to agent reasoning;
+- start/finish are semantically typed operations rather than generic shell commands;
+- output is tiny.
+
+Administration/diagnostics/export/full history stay CLI/dashboard.
+
+## 5. Architecture
 
 ```text
 HeroPassport.Domain
-  <- HeroPassport.Application
-      <- HeroPassport.Infrastructure
-          <- HeroPassport.App
+        ^
+        |
+HeroPassport.Application
+        ^
+        |
+HeroPassport.Infrastructure
+        ^
+        |
+HeroPassport.App
 
-HeroPassport.Web (later)
-  -> Application
-  -> Infrastructure only in startup/composition
+HeroPassport.Web (0.2) -> Application
 ```
 
 ### Domain
 
-Pure deterministic state/rules. No EF, MCP, CLI, filesystem or web framework dependencies.
-
-Owns:
-
-```text
-IDs/value objects
-quest/result state
-QuestQualityFlags
-RewardCalculator
-LevelCalculator
-SkillKeyNormalizer / SkillXpAllocator
-TrustRiskCalculator
-Trait policies
-RuleVersions
-state transition invariants
-```
+Pure deterministic game rules/state transitions. No EF/MCP/JSON/filesystem/localization.
 
 ### Application
 
-Owns use cases, ports, contracts, validation and presentation projections:
-
-```text
-StartQuestHandler
-FinishQuestHandler
-GetCurrentQuestHandler
-GetHeroCardHandler
-InitializeApplicationHandler
-ExportHandler
-read models
-IHeroStore / IProjectStore / IQuestStore / IUnitOfWork
-IProjectIdentityResolver / IAppDataPaths
-```
-
-Transport-neutral external DTOs live under `Application.Contracts` initially; no separate Contracts assembly until a real independently versioned consumer exists.
+Typed use cases and ports; resolves/coordinates state and returns typed result data. Uses `TimeProvider`. No MCP SDK and no human rendering.
 
 ### Infrastructure
 
-Owns:
-
-```text
-EF Core DbContext/mappings
-SQLite migrations/connection setup
-WAL/foreign key/runtime native checks
-stores/read projections
-app-data paths
-project fingerprint resolver
-JSON export writer
-local optional logging
-```
+EF Core/SQLite, migrations, stores, config/path resolution, project fingerprint, export, diagnostics.
 
 ### App
 
-One executable, two primary modes:
-
-```text
-normal CLI
-MCP stdio protocol mode
-```
-
-Owns Generic Host composition, System.CommandLine and thin MCP SDK adapters. MCP mode reserves stdout for protocol bytes only.
+Composition root, System.CommandLine, official MCP stdio adapters and presentation/localization.
 
 ### Web later
 
-Local Blazor dashboard starts only after release `0.1.0`. Read-model driven, loopback by default, no direct DbContext in components.
+Blazor read-focused host over Application read models, using Infrastructure only in composition root.
 
-## Current stable technology baseline
+## 6. MCP design
 
-As of 2026-08-10:
-
-```text
-C#                                        14
-.NET SDK                                  10.0.302
-.NET runtime / ASP.NET Core               10.0.10
-ModelContextProtocol                       2.0.0
-MCP revision                              2026-07-28
-EF Core / EF Core SQLite                  10.0.10
-SQLitePCLRaw.bundle_e_sqlite3              3.0.5
-native SQLite via bundle                  >= 3.53.4
-System.CommandLine                         2.0.10
-xunit.v3                                   3.2.2
-xunit.runner.visualstudio                  3.1.5 compatibility/private
-Microsoft Testing Platform                selected through .NET 10 test config
-```
-
-Preview dependencies are excluded unless a separate ADR demonstrates necessity.
-
-## MCP contract
-
-Exactly four MVP tools in deterministic order:
+Canonical stable order:
 
 ```text
 hero.start_quest
@@ -154,133 +95,120 @@ hero.current_quest
 hero.get_card
 ```
 
-Lifecycle:
+Register four adapter types explicitly. No assembly-wide scanning.
+
+Input design:
 
 ```text
-start once -> normal work -> finish once
+start: questType, goal
+finish: questId, result, summary, metrics, skillsUsed
+current: empty strict object
+card: empty strict object
 ```
 
-`current_quest` is recovery, `get_card` is a query. There is no per-step logging tool.
-
-### Important contract decisions
-
-- Explicit `questId` is the application handle across calls.
-- `finish_quest` does not resend immutable `questType`; server loads it from the quest.
-- `workspacePath` is absent. Local process resolves project; Codex `cwd` can be configured locally where needed.
-- Unknown/generic metadata bags are absent.
-- Inputs are bounded and reject unsupported values.
-- Compact output is default.
-- Tool errors use tool-result error semantics for valid `tools/call` requests.
-- Retried finish returns stored original reward, never recalculates under newer rules.
-
-## Domain rules v1.0.0
-
-### XP
-
-Base:
+Stable local state is not model input:
 
 ```text
-planning 30
-research 40
-coding 60
-review 50
-debugging 70
-documentation 40
-maintenance 40
+active hero
+project identity
+locale
+presentation mode
+data/config paths
+rule versions
 ```
 
-Result multipliers in integer permille:
+All input schemas use JSON Schema 2020-12-style strict object semantics with `additionalProperties:false`, closed enums and bounded text/counters.
+
+All outputs are typed through `outputSchema`/structured content and include one compact `displayText`, not duplicate status fields.
+
+Annotations accurately express read-only/idempotent/open-world semantics; Tasks are forbidden.
+
+## 7. MCP workflow guidance
+
+Static server instructions carry cross-tool guidance. For Codex, first 512 characters are self-contained.
+
+Semantic instruction:
 
 ```text
-success 1000
-partial 600
-failed 200
-blocked 300
-abandoned 0
+Use Hero Passport for meaningful coding/debugging/review/planning/research/docs tasks. Start one quest, keep questId, finish it once. Never send code, diffs, raw logs, prompts, secrets, environment or workspace paths. Show compact displayText in final output.
 ```
 
-Bonuses:
+AGENTS.md may repeat this briefly for project context; per-response `agentHint` is removed.
+
+## 8. Compatibility
+
+MCP 2026-07-28 is the protocol baseline. Application correctness does not rely on protocol session state.
+
+After 0.1.0:
+
+- tool names/schemas/descriptions are compatibility artifacts;
+- rename uses temporary deprecated alias if unavoidable;
+- breaking semantic changes require explicit contract evolution;
+- adding a fifth/sixth tool requires review/eval; >6 triggers a dedicated tool-surface architecture review.
+
+## 9. RPG engine
+
+Rule identifiers:
 
 ```text
-tests mentioned +10
-clean scope +10
-clear summary >= 40 chars +10
-no user corrections +5
+reward/1.0.0
+trust-risk/1.0.0
+traits/1.0.0
 ```
 
-Penalties:
+Clean coding golden = 95 XP.
+
+Everything uses deterministic integer arithmetic. Historical completion stores its original breakdown/rule versions; retry never reruns newer rules.
+
+Skill XP allocation always sums exactly to quest XP.
+
+Only three fully specified traits in MVP.
+
+No achievements/items/streak engine/LLM judge.
+
+## 10. Presentation
+
+Typed engine/use-case result and human output are separate.
 
 ```text
-scope violation -25 each
-short summary -10
-user correction -10 each
+Domain/Application -> numeric/canonical keys
+App HeroTextRenderer -> RU/EN compact/normal text
 ```
 
-Formula:
+This avoids coupling reward tests to punctuation and lets Web use typed data directly.
+
+RU canonical presentation includes:
 
 ```text
-resultXp = floor(baseXp * permille / 1000)
-finalXp = max(0, resultXp + bonuses + penalties)
+scope_control = Контроль
+clean scope bonus = Бонус за контроль
+scope violation = Выход за задачу
 ```
 
-Golden clean coding success = `95 XP`.
+## 11. Persistence
 
-### Levels
+SQLite + EF Core.
 
-Hero starts at level 1. Required XP for next level:
+Operational baseline:
 
 ```text
-xpToNext(L) = 100 + 50 * (L - 1)
+IDbContextFactory<HeroPassportDbContext>
+one short-lived context/unit of work
+synchronous DB operations
+Mode=ReadWriteCreate
+Cache=Default
+Foreign Keys=True
+Pooling=True
+Default Timeout=5 (validate before release)
+WAL
+synchronous=FULL
 ```
 
-Total threshold:
+Do not use `Task.Run` around DB calls or long-lived ambient DbContext.
 
-```text
-threshold(L) = (L - 1) * (25 * L + 50)
-```
+## 12. Storage model
 
-Total XP is the source of truth; level progress is derived.
-
-### Skills
-
-Normalize aliases to canonical keys, de-duplicate, preserve first occurrence, keep at most three.
-
-Allocation:
-
-```text
-1 skill: 100
-2: 60/40
-3: 50/30/20
-```
-
-Use cumulative-floor integer allocation. For 95 XP across three skills the exact deltas are `47/29/19`, conserving the total.
-
-### Trust/risk
-
-Initial:
-
-```text
-trust 50
-risk 20
-```
-
-Clamp `0..100`. Rules are exactly specified in `docs/ENGINE-SPEC.md` and versioned separately.
-
-### Traits
-
-Initial behaviors only:
-
-```text
-precise_executor  active after 5 qualifying clean successes
-test_scout        active after 5 qualifying tested coding/debugging successes
-quest_finisher    active after 10 success/partial finishes
-```
-
-Traits do not award XP and are not achievements.
-
-## Persistence
-
-One SQLite DB. Core tables:
+Core tables:
 
 ```text
 heroes
@@ -297,109 +225,177 @@ xp_events
 app_settings
 ```
 
-### Integrity
-
-- `xp_events.quest_id` unique for quest reward.
-- One short atomic finish transaction updates immutable history and projections together.
-- Retry of completed quest is read-only.
-- No DB transaction stays open across agent work.
-- Partial unique constraints protect active/idempotent start behavior where appropriate.
-- Real SQLite tests cover concurrency/rollback.
-
-### SQLite mode
+Critical integrity:
 
 ```text
-foreign_keys = ON
-journal_mode = WAL
-bounded busy timeout
-no Cache=Shared optimization with WAL
+quest report one-to-one with quest
+xp_events.quest_id UNIQUE
+at most one active quest per hero/project slot
+finish transaction atomic
 ```
 
-Native SQLite version is checked at runtime/integration release gate.
+No full workspace path/code/diff/raw log/prompt/env metadata columns.
 
-## Privacy/security
+## 13. Migrations
 
-The MCP schema/database intentionally have no fields for:
+EF migrations from first schema. Never `EnsureCreated` in product path.
+
+Use EF Core built-in database-wide migration locking; SQLite uses `__EFMigrationsLock`.
+
+No custom migration mutex/file lock.
+
+`doctor` diagnoses suspicious abandoned migration lock; normal startup does not blindly delete it.
+
+CI checks pending model changes and upgrade/fresh DB fixtures.
+
+## 14. App data/config
+
+Windows:
 
 ```text
-source code
-file contents
-diffs/patches
-raw terminal/build/test logs
-full prompts/chat history
-API keys/secrets
-environment-variable bags
-full workspace path
-arbitrary binary attachments
+%LOCALAPPDATA%\HeroPassport
 ```
 
-Project identity persists a display name plus versioned SHA-256 fingerprint; path use is transient/local.
+not roaming `%APPDATA%`.
 
-Logs do not record request/response bodies by default. MCP stdout is protocol only; stderr/local explicit sink is diagnostic output.
+macOS:
 
-Remote networking, auth and at-rest encryption are not claimed by MVP.
+```text
+~/Library/Application Support/HeroPassport
+```
 
-## Codex integration
+Linux respects XDG data/config/state roots.
 
-Preferred current native setup:
+Tests/dev use `HERO_PASSPORT_HOME`.
+
+`config.json` v1 is small/strict and contains only local presentation/diagnostics policy. Active hero is product state in SQLite.
+
+## 15. Privacy/security
+
+Contract-first minimization:
+
+```text
+no source code
+no diffs
+no raw logs
+no prompts/chat history
+no secrets/API keys
+no env dump
+no workspace path
+no arbitrary metadata JSON
+```
+
+Goal/summary are bounded untrusted data and never become server instructions/tool definitions.
+
+MVP requires no network and no elevation.
+
+MCP stdout is protocol only; logs go stderr/local file under safe-field policy.
+
+## 16. Libraries
+
+Accept stable minimal stack:
+
+```text
+ModelContextProtocol 2.0.0
+EF Core SQLite 10.0.10
+EF Core Design 10.0.10 dev/private
+SQLitePCLRaw.bundle_e_sqlite3 3.0.5
+System.CommandLine 2.0.10
+xunit.v3 3.2.2
+built-in Host/DI/Logging/Options/TimeProvider/System.Text.Json/UUIDv7
+```
+
+Reject/defer without demonstrated need:
+
+```text
+MediatR
+FluentValidation
+AutoMapper
+Dapper
+Polly
+Serilog/NLog
+Spectre.Console baseline
+OpenTelemetry exporters
+Testcontainers
+runtime plugins
+generic repository/CQRS framework
+```
+
+See `DEPENDENCIES.md` for rationale and re-evaluation conditions.
+
+## 17. Codex integration
+
+Codex owns its configuration.
+
+Preferred:
 
 ```bash
-hero-passport init
 codex mcp add hero-passport -- hero-passport mcp
 codex mcp list
 ```
 
-Do not mutate Codex config from Hero Passport. Root consumer `AGENTS.md` instructions should be concise because Codex project instructions have a bounded combined context budget.
+Project config may set `mcp_servers.hero-passport.cwd` and host-side `enabled_tools` based on current official Codex docs.
 
-First E2E acceptance is Codex CLI in the current repo/workspace. Explicit local `mcp_servers.hero-passport.cwd` is a documented fallback for host setups that launch the MCP server from another working directory.
+Hero Passport does not edit Codex TOML in MVP.
 
-## Test architecture
+## 18. Quality strategy
+
+Three layers:
 
 ```text
-Domain.Tests          pure formulas/goldens/boundaries
-Application.Tests     use cases with fake ports/time
-Infrastructure.Tests  real SQLite temp-file migrations/constraints/races
-App.Tests             CLI + MCP adapter + process stdout guard
-Architecture.Tests    dependency/privacy/contract fitness functions
+deterministic tests -> rules/storage correctness
+protocol/process tests -> actual MCP/CLI contract
+agent evals -> Codex chooses lifecycle/tools correctly
 ```
 
-Primary gates:
+Storage tests use real file-backed SQLite/WAL.
 
-```bash
-dotnet restore --locked-mode
-dotnet build --configuration Release --no-restore
-dotnet test --configuration Release --no-build
+MCP tests inspect real advertised catalog, schemas, annotations, output conformance and stdout.
+
+Codex E2E is required for 0.1.0.
+
+Agent eval corpus includes meaningful vs trivial tasks, recovery, conflict, retries and privacy-adversarial scenarios.
+
+## 19. Delivery
+
+```text
+0.0.1 foundation
+0.0.2 domain rules
+0.0.3 application lifecycle
+0.0.4 config/paths/presentation
+0.0.5 SQLite/migrations
+0.0.6 transaction/idempotency
+0.0.7 CLI/doctor
+0.0.8 MCP
+0.0.9 Codex E2E/evals
+0.1.0-rc.1 hardening
+0.1.0 MVP
+0.2.0 Blazor dashboard
 ```
 
-Full implementation PRs run Windows/Linux/macOS CI.
+No dashboard before MCP/core quality gates.
 
-## Packaging
+## 20. Implementation success condition
 
-First target: .NET tool. Self-contained per-RID follows after core validation. Single-file waits for explicit native SQLite packaging/extraction tests.
+The architecture is successful if a coding agent can implement one feature by loading only the relevant feature folder/spec plus a small set of contracts/tests, rather than understanding a generic framework/platform.
 
-## Release architecture
+That means choosing the simplest explicit implementation at every layer and adding abstraction only where this design identifies a real boundary.
 
-Milestones `0.0.1` through `0.0.10` build the foundation/domain/storage/CLI/MCP/Codex loop. `0.1.0-rc.1` is hardening; `0.1.0` is minimal MVP. `0.2.0` is the first local dashboard release.
+## 21. Normative detail
 
-See `docs/ROADMAP.md` and the implementation plan.
+This consolidated design is an index/summary. If implementation detail is needed, the specialized documents are normative:
 
-## Key deviations/corrections from supplied technical report
+```text
+ARCHITECTURE.md
+MCP-CONTRACT.md
+ENGINE-SPEC.md
+DATA-MODEL.md
+CONFIGURATION.md
+SECURITY-PRIVACY.md
+TESTING-QUALITY.md
+DEPENDENCIES.md
+integrations/CODEX.md
+DECISION-LOG.md
+```
 
-The report remains the product/technical starting point, but the August 10 verification changes several details:
-
-1. **MCP SDK:** stable official C# SDK v2.0.0 is now the baseline and implements MCP `2026-07-28`.
-2. **Protocol architecture:** explicit application handles/SQLite state align with the new stateless protocol direction; no hidden transport session dependency.
-3. **Tool catalog:** deterministic fixed ordering is explicitly required for cache/prompt-cache stability.
-4. **SQLite:** interim `SQLitePCLRaw 2.1.12` is superseded by stable `3.0.5`, with native SQLite `>=3.53.4`.
-5. **Contracts assembly:** deferred until a real independent boundary exists; contracts stay in Application for MVP.
-6. **Time:** use built-in `TimeProvider`, not a custom clock abstraction.
-7. **Codex config:** use current native `codex mcp add/list`; no custom config installer in MVP.
-8. **Workspace privacy:** no `workspacePath` in MCP schema or cleartext path persistence.
-9. **Finish schema:** no repeated `questType`; immutable quest data loads by `questId`.
-10. **Idempotency:** completed retry returns the original persisted outcome rather than rerunning current scoring rules.
-11. **Level curve/trait thresholds/concurrency details:** fully specified rather than left implicit.
-12. **Roadmap:** product gate is a real `0.1.0` MVP before `0.2.0` dashboard instead of many internal tail versions.
-
-## Design acceptance criteria
-
-The design is internally complete when every requirement maps to a canonical document and every implementation milestone has a corresponding test/acceptance gate. Implementation may not silently change formulas, contract schemas, privacy boundaries, storage semantics or dependency baseline without updating the appropriate specification and decision log.
+If the summary ever conflicts with a detailed spec, fix the summary before coding against it.

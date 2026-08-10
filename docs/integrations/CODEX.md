@@ -1,243 +1,406 @@
-# Hero Passport — Codex Integration
+# Hero Passport — Codex integration
 
-**Status:** Accepted MVP integration design  
-**Verified:** 2026-08-10 against current official OpenAI Codex documentation/source
+**Status:** Accepted primary-agent integration  
+**Snapshot:** 2026-08-10  
+**Primary target:** current OpenAI Codex CLI + shared MCP configuration model
 
-## 1. Supported first path
+## 1. Principle
 
-The first release-quality integration target is **local Codex CLI + local stdio MCP server**.
+Hero Passport is Codex-first, but must not hard-code Codex internals into Domain/Application.
 
-Hero Passport does not require a network server, OAuth or an OpenAI API key. Codex launches the local `hero-passport mcp` process and calls its tools over stdio.
+Codex integration is one host adapter/configuration contract:
 
-## 2. Prerequisites
-
-After Hero Passport is packaged/installed:
-
-```bash
-hero-passport init
-hero-passport doctor
+```text
+Codex stdio MCP
+  -> HeroPassport.App/Mcp
+  -> Application
+  -> Domain + Infrastructure
 ```
 
-The command `hero-passport` must be resolvable from the environment in which Codex starts MCP processes.
+The product remains usable by another conforming MCP client if that client supports the required tool semantics.
 
-## 3. Register with Codex
+---
 
-Current official Codex CLI syntax:
+## 2. Current official Codex MCP model
+
+Current Codex documentation supports MCP in:
+
+- Codex CLI;
+- Codex IDE extension;
+- ChatGPT desktop/Codex integrations that share the configuration model where documented.
+
+Codex supports local stdio and Streamable HTTP servers. Hero Passport chooses **stdio only** for MVP.
+
+Codex configuration lives in:
+
+```text
+~/.codex/config.toml
+```
+
+and trusted project-local:
+
+```text
+.codex/config.toml
+```
+
+where supported by current Codex configuration rules.
+
+Hero Passport does **not** own or rewrite these files.
+
+---
+
+## 3. Installation/registration
+
+Preferred user path:
 
 ```bash
 codex mcp add hero-passport -- hero-passport mcp
 codex mcp list
 ```
 
-`codex mcp add` is the preferred installation path. Hero Passport must **not** rewrite `~/.codex/config.toml` automatically.
+This keeps server registration under Codex's own supported CLI.
 
-The resulting logical config is equivalent to:
-
-```toml
-[mcp_servers.hero-passport]
-command = "hero-passport"
-args = ["mcp"]
-```
-
-Exact config shape remains owned by Codex; use `codex mcp` commands when possible.
-
-## 4. Working directory and project identity
-
-Hero Passport `projectId = "auto"` resolves a project from the MCP server process's local working context. The MCP payload intentionally does not send a full workspace path.
-
-Current Codex implementation creates an `mcp add` stdio entry with `cwd = None`. Codex also supports:
-
-```toml
-[mcp_servers.hero-passport]
-command = "hero-passport"
-args = ["mcp"]
-cwd = "/local/path/to/project"
-```
-
-Use explicit `cwd` **only** when the particular Codex client/setup launches Hero Passport outside the intended workspace. This path remains local Codex configuration; Hero Passport neither returns it to the model nor persists it in cleartext.
-
-### MVP acceptance assumption
-
-For the main acceptance test:
+Hero Passport may provide documentation/diagnostics such as:
 
 ```text
-1. open terminal in the repository/workspace;
-2. launch Codex CLI there;
-3. Codex launches Hero Passport locally;
-4. Hero Passport detects the Git root/current directory;
-5. project fingerprint/display name resolve correctly.
+hero-passport doctor
+hero-passport data path
 ```
 
-Codex desktop/IDE client behavior must be tested separately before claiming equal support because process working-directory behavior can differ by host/version.
+but not an MVP command that edits Codex TOML.
 
-## 5. Recommended repository `AGENTS.md` snippet for consumers
+Why:
 
-A consuming project that wants automatic Hero Passport usage can add:
+- OpenAI owns config schema/evolution;
+- avoids partial/TOML mutation bugs;
+- avoids overwriting unrelated user settings;
+- removes duplicate compatibility code;
+- `codex mcp` already solves registration.
+
+---
+
+## 4. Recommended explicit project configuration
+
+When a workspace-specific server cwd is required, Codex exposes `mcp_servers.<id>.cwd`.
+
+Example:
+
+```toml
+[mcp_servers.hero-passport]
+command = "hero-passport"
+args = ["mcp"]
+cwd = "/absolute/local/project/path"
+enabled = true
+enabled_tools = [
+  "hero.start_quest",
+  "hero.finish_quest",
+  "hero.current_quest",
+  "hero.get_card"
+]
+```
+
+The path lives in **Codex local configuration/process launch**, not in Hero Passport MCP request payload or SQLite.
+
+The exact config snippet in user-facing docs must be revalidated against the current official Codex config reference before each release because OpenAI can evolve keys/defaults.
+
+---
+
+## 5. `enabled_tools` as defense-in-depth
+
+Hero Passport already advertises only four tools. Codex's `enabled_tools` can still be documented as an explicit host-side allow-list.
+
+Benefits:
+
+- config clearly communicates expected inventory;
+- accidental future tool exposure is less likely to reach Codex before review;
+- easier diagnostic comparison between expected and host-enabled tools.
+
+This is defense-in-depth only. Hero Passport's own explicit registration remains authoritative.
+
+Do not depend on `disabled_tools`/host filtering to hide accidental tools from other MCP clients.
+
+---
+
+## 6. Server instructions
+
+Codex supports MCP server instructions and recommends concise cross-tool workflow constraints there. Current docs note that the first 512 characters should be self-contained because client handling can truncate/limit instructions.
+
+Hero Passport instructions must fit essential behavior immediately:
+
+```text
+Use Hero Passport for meaningful coding, debugging, review, planning, research, or documentation work. Start one quest before work, keep questId, finish it once when done. Never send code, diffs, raw logs, prompts, secrets, environment values, or workspace paths. Show returned displayText briefly in the final answer.
+```
+
+Then optional remainder may clarify:
+
+- tiny factual questions do not require quests;
+- use `current_quest` to recover after context/restart;
+- use `get_card` only when useful/requested;
+- do not print raw structured result unless user asks.
+
+Server instructions guide behavior; they are not access control.
+
+---
+
+## 7. AGENTS.md relationship
+
+Repository/project AGENTS guidance can strengthen intent for agents operating in that project, but it should remain short.
+
+Recommended project snippet:
 
 ```md
 ## Hero Passport
 
-For meaningful coding, review, debugging, documentation, research, or planning tasks:
-1. Call `hero.start_quest` once near the beginning with a concise goal and appropriate quest type.
-2. Work normally; do not call Hero Passport for every step/file/command.
-3. When the task is actually complete or blocked, call `hero.finish_quest` once with a concise semantic summary, result, quality counters, and up to three canonical/recognizable skills.
-4. Show only the returned `displayText` in a final `Hero Passport` section. Do not dump the structured JSON.
+For meaningful coding, debugging, review, planning, research, or documentation work:
+- start one Hero Passport quest before the work;
+- keep the returned `questId`;
+- finish that quest once when done;
+- show the returned compact `displayText` briefly.
 
-Never send Hero Passport source code, diffs, file contents, raw terminal/build/test logs, secrets, environment variables, or full prompts/chat history.
+Never send source code, diffs, raw logs, prompts, secrets, environment variables, or workspace paths to Hero Passport.
 ```
 
-Keep this compact. Current Codex project instructions have a finite combined size budget; architecture details belong in Hero Passport's own `docs/`, not every consuming repository.
+Do not paste the full architecture/roadmap into AGENTS.md. Tool selection becomes worse when every turn carries implementation history that is irrelevant to the current task.
 
-## 6. Hero Passport server instructions
+---
 
-The MCP server should publish concise cross-tool instructions whose first 512 characters are self-contained, matching current Codex guidance:
+## 8. Meaningful-task policy
+
+The desired behavior is not “call Hero Passport on every prompt”.
+
+Expected quest examples:
 
 ```text
-Hero Passport tracks local RPG progress for meaningful agent work. Call hero.start_quest once at the start and hero.finish_quest once after the work. Do not send source code, diffs, raw logs, secrets, environment variables, file contents, or full prompts/chat history. Show only displayText from Hero Passport results; never dump raw structured JSON. Use current_quest only for recovery and get_card only when status is requested.
+implement feature
+fix/debug bug
+perform code review
+write/refactor meaningful documentation
+research architecture/technology
+produce implementation plan
+perform substantial maintenance
 ```
 
-Do not duplicate the whole product manual in MCP instructions.
+Usually no quest:
 
-## 7. Recommended tool approvals
-
-Hero Passport writes only its own local RPG database. It does not edit the workspace or run shell commands through MCP tools.
-
-Current Codex supports server-level and per-tool approval configuration. The integration docs should initially rely on Codex defaults; advanced users may configure approvals according to their policy.
-
-Do not instruct users to disable the Codex sandbox or bypass approvals globally just to use Hero Passport.
-
-## 8. Expected agent lifecycle
-
-### Start
-
-Agent call conceptually:
-
-```json
-{
-  "schemaVersion": "1.0",
-  "heroId": "auto",
-  "projectId": "auto",
-  "questType": "coding",
-  "goal": "Implement reward calculation",
-  "host": {
-    "name": "codex",
-    "type": "coding-agent"
-  },
-  "outputMode": "compact",
-  "locale": "ru"
-}
+```text
+what does this word mean?
+show current time
+small factual lookup
+single-line clarification
+casual conversation
 ```
 
-Hero Passport returns an explicit `questId`. The model threads that application handle to `finish_quest`; no hidden MCP session state is required.
+This distinction is verified with agent evals rather than encoded as a brittle keyword classifier in Hero Passport.
 
-### Work
+Hero Passport server never decides whether Codex *should* have started; it only validates calls it receives.
 
-No Hero Passport calls are needed during ordinary edits/tests/review.
+---
 
-### Finish
+## 9. CWD/project identity behavior
 
-```json
-{
-  "schemaVersion": "1.0",
-  "questId": "<returned questId>",
-  "result": "success",
-  "summary": "Implemented deterministic reward calculation and verified it with focused xUnit tests.",
-  "metrics": {
-    "testsMentioned": true,
-    "scopeViolations": 0,
-    "userCorrections": 0,
-    "buildStatus": "passed",
-    "testsStatus": "passed"
-  },
-  "skillsUsed": ["coding", "scope_control", "testing_awareness"],
-  "outputMode": "compact",
-  "locale": "ru"
-}
+Normal project resolution:
+
+```text
+server process cwd
+ -> find Git root upward
+ -> use Git root identity if found
+ -> else normalized cwd fallback
 ```
 
-Then render only `displayText`.
+Acceptance tests cover:
 
-## 9. Recovery behavior
+1. Codex CLI invoked from project and server inheriting usable cwd;
+2. explicit `mcp_servers.hero-passport.cwd`;
+3. no Git repo fallback;
+4. restart preserves same fingerprint/project.
 
-If the agent loses `questId` after compaction/restart:
+Do not assume every Codex surface launches stdio with exactly the same cwd until tested. Support claims are tied to an actual acceptance matrix.
+
+---
+
+## 10. Timeout behavior
+
+Codex exposes MCP startup/tool timeout configuration. Hero Passport's normal calls should be far below those limits.
+
+Product target:
+
+```text
+start/get/current: local milliseconds-scale warm path
+finish: local milliseconds/low tens of ms under normal DB state
+```
+
+These are expectations, not fabricated release SLAs; release smoke measurements will establish actual numbers.
+
+Hero Passport DB busy policy is 5 seconds. A prolonged SQLite writer should produce actionable `HP202 database_busy` before an extremely long host timeout makes Codex appear hung.
+
+Do not increase Codex tool timeout to hide slow/migration-corrupt application behavior.
+
+---
+
+## 11. Approval behavior
+
+Codex configuration can have approval modes/policies for MCP tools. Hero Passport annotations accurately mark read-only/idempotent/open-world semantics so host UX can make informed choices.
+
+But:
+
+- annotations do not grant permission;
+- Hero Passport does not assume writes are auto-approved;
+- start/finish must remain retry-safe even if the client repeats after approval/network/process uncertainty.
+
+No destructive MCP tools in MVP.
+
+---
+
+## 12. Final response UX
+
+Desired agent output after finish:
+
+```text
+[normal task answer]
+
+Hero Passport: ✨ +95 XP · Nova ур.1 · XP 95/100 · Доверие 51 · Риск 19
+```
+
+Do not dump raw tool JSON by default.
+
+Do not repeat:
+
+```text
+statusText + displayText + field-by-field reward object
+```
+
+The structured object exists for machine/tool continuation; `displayText` is the compact human representation.
+
+---
+
+## 13. Recovery behavior
+
+If Codex loses conversational context or MCP server restarts:
 
 ```text
 hero.current_quest
 ```
 
-is the recovery path. It should not poll this tool routinely.
+returns the locally resolved active quest.
 
-If no open quest exists, the agent may start one if the task is still meaningful and active; do not synthesize a completed historical quest after the work merely to farm XP.
+If the agent still has `questId`, it can finish explicitly.
 
-## 10. Tool selection / prompt-cache discipline
+Because state is SQLite-backed and not MCP-session-backed, server restart does not invalidate an open quest.
 
-Hero Passport keeps:
+Do not introduce an in-memory “current session” cache as correctness state.
 
-- exactly four tools;
-- fixed registration order;
-- compact descriptions;
-- stable names;
-- bounded schemas;
-- no dynamic tool creation;
-- no per-step telemetry tool.
+---
 
-When adding a future tool, test whether Codex can already satisfy the experience with the four existing tools/read output before expanding the tool catalog.
+## 14. Codex-specific data minimization
 
-## 11. Manual Codex acceptance test
+Codex knows the repository/source; Hero Passport does not need copies.
 
-From a clean isolated user data directory/tool installation:
+Never ask Codex to provide:
 
-1. `hero-passport init`.
-2. `hero-passport doctor` is green.
-3. `codex mcp add hero-passport -- hero-passport mcp`.
-4. `codex mcp list` shows the server enabled.
-5. Start Codex in a Git repository.
-6. Ask for a small meaningful coding change and require Hero Passport lifecycle through consumer instructions.
-7. Confirm `hero.start_quest` is called once.
-8. Confirm no Hero Passport calls occur for each file/test command.
-9. Confirm `hero.finish_quest` is called after verification.
-10. Confirm final reply shows only the human `displayText`, not raw JSON.
-11. Retry `finish_quest` with the same quest ID; verify no extra XP event.
-12. Call `hero.get_card`; verify totals match.
-13. Restart Codex/Hero Passport and verify state persists.
-14. Run from a second repository; verify project stats separate.
-15. Inspect export/DB/logs for the privacy invariants.
-
-## 12. Troubleshooting design
-
-### Server not visible
-
-Check:
-
-```bash
-codex mcp list
-hero-passport --version
-hero-passport doctor
+```text
+git diff
+changed files
+source excerpts
+test output
+terminal transcript
+full prompt
+conversation history
+cwd path
 ```
 
-Then inspect Codex's current official MCP config/docs, not copied stale configuration examples.
+Quality signals in v1 are compact declarations/counters such as tests mentioned/status, scope violations and user corrections.
 
-### Wrong project is resolved
+If future verification wants trustworthy build/test signals, design a local evidence adapter that reads narrowly scoped status itself rather than asking the LLM to dump logs into MCP.
 
-Check the MCP server process working directory. If that Codex host does not launch it from the desired workspace, use an explicit local `mcp_servers.hero-passport.cwd` for that project/setup until a better stable host workspace signal exists.
+---
 
-Do not solve this by putting the full path into model-visible tool arguments.
+## 15. E2E acceptance
 
-### MCP startup failure
+Before 0.1.0:
 
-Hero Passport diagnostics belong on stderr. Verify there is no startup banner/log on stdout and increase Codex MCP startup timeout only if measurements demonstrate the need; the product should normally start quickly.
+```text
+fresh isolated HERO_PASSPORT_HOME
+restore/build/install tool
+hero-passport init
+codex mcp add hero-passport -- hero-passport mcp
+codex mcp list
+run coding eval task
+observe exactly one start
+complete task
+observe exactly one finish
+verify DB/card
+restart server/client
+verify persisted card/current state
+```
 
-### Agent does not call tools
+Repeat with explicit project `cwd` config.
 
-Keep server instructions and consuming `AGENTS.md` imperative and concise. Do not add more tools as a workaround for weak instructions.
+Capture:
 
-## 13. Claims we do not make for 0.1.0
+```text
+Codex version/build
+Hero Passport version
+MCP SDK version
+OS
+.NET version
+native SQLite version
+config mode
+```
 
-Before explicit qualification, do not claim:
+---
 
-- every Codex desktop/IDE build resolves working directories identically to CLI;
-- Codex cloud can run the local stdio server;
-- non-interactive Codex execution needs no approval-policy consideration;
-- Hero Passport modifies Codex config safely on the user's behalf.
+## 16. Agent eval regressions
 
-The integration is deliberately based on the official local stdio/config surfaces that can be tested and controlled.
+Any change to:
+
+```text
+tool name
+tool description
+server instructions
+input schema
+output schema
+annotations
+AGENTS snippet
+```
+
+requires rerunning representative Codex evals.
+
+Questions answered:
+
+- Does Codex still start once?
+- Does it finish once?
+- Does it keep/use questId?
+- Does it avoid forbidden content?
+- Does it avoid overusing card/current?
+- Does it render only compact display text?
+
+This is a product-quality gate learned from mature agent-oriented MCP servers.
+
+---
+
+## 17. Unsupported/deferred Codex features
+
+Not in 0.1:
+
+```text
+Hero Passport auto-editing ~/.codex/config.toml
+remote HTTP MCP
+OAuth
+Codex-specific proprietary tool APIs
+Codex cloud synchronization
+MCP Apps UI
+MCP Tasks
+automatic source/diff capture
+background continuous telemetry
+```
+
+Hero Passport stays portable at the MCP/Application boundary.
+
+## 18. Primary sources
+
+Current official OpenAI documentation only:
+
+- Codex MCP: https://developers.openai.com/codex/mcp/
+- Codex configuration reference: https://developers.openai.com/codex/config-reference/
+
+Release documentation must be rechecked against those pages before publishing install/config examples.

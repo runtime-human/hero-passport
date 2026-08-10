@@ -1,39 +1,41 @@
-# AGENTS.md
+# AGENTS.md — Hero Passport
 
-## Repository mission
+## Purpose
 
-Build Hero Passport as a local-first RPG state layer for AI coding agents. The MVP is Codex-first, MCP stdio-first, deterministic, privacy-preserving, and intentionally small.
+Build Hero Passport as a small local-first RPG state layer for AI coding agents. Follow the canonical docs in `docs/`; do not invent alternative architecture in implementation PRs.
 
-## Required baseline
+## Read before coding
 
-- Target `net10.0`, C# 14.
-- Pin the repository SDK through `global.json` to the approved .NET 10 SDK.
-- Use Central Package Management and committed package lock files.
-- Use stable dependencies only unless an ADR explicitly approves a preview.
-- Keep the official MCP C# SDK on the current approved stable major/revision.
-- Use real SQLite for storage/integration tests; do not substitute EF InMemory for SQLite semantics.
-
-## Architecture rules
-
-Dependency direction is strict:
+For any task, read the smallest relevant set:
 
 ```text
-HeroPassport.Domain            -> no project dependencies
-HeroPassport.Application       -> Domain
-HeroPassport.Infrastructure    -> Application + Domain
-HeroPassport.App               -> Application + Infrastructure
-HeroPassport.Web (later)       -> Application; Infrastructure only in composition root
+docs/PRODUCT-SPEC.md
+docs/ARCHITECTURE.md
++ the feature-specific spec
+docs/DECISION-LOG.md relevant ADRs
 ```
 
-Organize code by feature inside projects (`Quests`, `Heroes`, `Rewards`, `Skills`, `Traits`, `Projects`) rather than large technical catch-all folders.
+MCP work: also `MCP-CONTRACT.md` + `integrations/CODEX.md`.
+Storage work: also `DATA-MODEL.md` + `CONFIGURATION.md` + `SECURITY-PRIVACY.md`.
+Rules: `ENGINE-SPEC.md`.
+Dependencies: `DEPENDENCIES.md`.
+Tests/release: `TESTING-QUALITY.md`.
 
-Business rules belong in Domain/Application. EF Core, SQLite, filesystem, console, MCP SDK, ASP.NET Core and CLI types must not leak into Domain.
+## Hard architecture rules
 
-Do not add a runtime plugin system, external DLL loading, event bus, distributed cache, message broker, cloud backend, CQRS framework, MediatR, AutoMapper or repository abstraction per entity unless a concrete requirement and ADR justify it.
+```text
+Domain -> no EF/MCP/CLI/ASP.NET/localization/filesystem
+Application -> Domain only; typed use cases/ports; no MCP SDK or localized text
+Infrastructure -> EF/SQLite/filesystem/config adapters
+App -> composition + CLI + MCP + presentation
+Web later -> Application/read models; no DbContext in Razor components
+```
+
+Do not add a generic repository, mediator/event bus, runtime plugin framework or HTTP MCP abstraction without a superseding ADR.
 
 ## MCP invariants
 
-MVP exposes only:
+Exactly four MVP tools, explicit registration and stable order:
 
 ```text
 hero.start_quest
@@ -42,56 +44,114 @@ hero.current_quest
 hero.get_card
 ```
 
-Tool registration order must be deterministic. Tool schemas must be bounded and reject unknown properties where practical.
+Never use assembly-wide tool scanning in MVP.
 
-`hero-passport mcp` stdout is protocol-only. Never write banners, logs, Spectre output or diagnostics to stdout in MCP mode. Use stderr or an explicitly enabled local log sink.
-
-For meaningful coding/review/debugging/documentation/planning sessions, consumer instructions should call `hero.start_quest` once at the beginning and `hero.finish_quest` once at the end. Do not introduce step-by-step telemetry calls.
-
-## Privacy invariants
-
-Never add request fields or persistence for raw source code, file contents, diffs, patches, raw terminal/build/test logs, full prompts/chat history, secrets, API keys or environment variables in MVP.
-
-Do not persist the full workspace path by default. Resolve a project locally to a display name plus privacy-preserving fingerprint.
-
-Do not log tool request/response bodies by default.
-
-## Determinism invariants
-
-- XP and score rules use integer arithmetic.
-- Persist rule version with reward events/reports.
-- Repeating `finish_quest` for an already-finished quest must not grant XP twice.
-- Canonical skill keys are persisted; localized labels are presentation-only.
-- Time comes from injected `TimeProvider`, not direct `DateTime.UtcNow` calls in domain/application code.
-
-Russian UI terminology:
+Do not add MCP fields/tools for:
 
 ```text
-scope_control        -> Контроль
-Clean scope bonus    -> Бонус за контроль
-Scope violation      -> Выход за задачу
+source code
+file contents
+diffs
+raw logs
+prompts/chat history
+secrets
+environment
+workspace paths
+arbitrary metadata/context payloads
 ```
 
-## Testing rules
+All tool input objects reject additional properties and stay bounded.
 
-Development is test-first for domain behavior and regression fixes.
+Stable local state (active hero/project/locale/presentation) is resolved locally; do not put it back into every MCP call.
 
-Required gates before merging implementation changes:
+MCP stdout is protocol only. Diagnostics go to stderr/local logging.
+
+## Persistence invariants
 
 ```text
-dotnet restore --locked-mode
-dotnet build --configuration Release --no-restore
-dotnet test --configuration Release --no-build
+EF Core SQLite migrations from day one
+IDbContextFactory, short-lived contexts
+short synchronous SQLite operations
+no Task.Run around DB I/O
+WAL + synchronous=FULL + foreign_keys ON
+no Cache=Shared with WAL
+UNIQUE xp_events.quest_id
+FinishQuest is one atomic transaction
+finished retry returns original stored outcome
+no custom migration mutex; EF owns migration lock
 ```
 
-Add focused tests for every domain rule, idempotency path, migration/constraint, MCP stdout behavior and privacy invariant touched by a change.
+Persistence tests use real temporary file-backed SQLite.
 
-## Documentation discipline
+## RPG invariants
 
-Read the smallest relevant canonical document from `docs/` before changing behavior. Update the corresponding specification/decision when behavior changes.
+Canonical clean coding golden:
 
-Do not silently change formulas, persistence invariants, MCP schemas or privacy boundaries. Such changes require an entry in `docs/DECISION-LOG.md` and versioning consideration.
+```text
+60 base
++10 tests
++10 clean scope
++10 clear summary
++5 no corrections
+= 95 XP
+```
 
-## Scope control
+Use deterministic integer rules and persist rule versions.
 
-The minimal MVP excludes achievements, artifacts/items, runtime plugins, HTTP MCP, MCP Apps/Tasks, cloud sync, team/auth, LLM judging, self-evolution, continuous telemetry and per-keystroke/per-diff XP. Do not implement excluded scope as opportunistic cleanup.
+Skill XP distribution conserves total XP exactly.
+
+Russian terminology:
+
+```text
+scope_control -> Контроль
+clean scope bonus -> Бонус за контроль
+scope violation -> Выход за задачу
+```
+
+Localized text is App presentation, not Domain state.
+
+## Dependency policy
+
+Use Central Package Management and pinned stable packages in `DEPENDENCIES.md`.
+
+Do not introduce a package until its benefit beats the BCL/framework/direct code and the dependency checklist is answered.
+
+No preview dependency without ADR.
+
+## Testing workflow
+
+For behavior changes:
+
+```text
+write failing focused test
+run and confirm failure
+implement minimum coherent change
+run focused test
+run impacted suite
+run architecture/privacy tests when boundary changes
+update docs/goldens in same PR
+```
+
+MCP name/description/schema/instructions changes also require the agent-eval scenarios relevant to tool selection.
+
+Before claiming completion, run the exact verification commands defined by the implementation milestone and inspect output.
+
+## Scope guard
+
+0.1.0 excludes:
+
+```text
+dashboard
+achievements/items
+runtime plugins
+HTTP/OAuth
+MCP Apps/Tasks
+cloud/team/auth
+continuous telemetry
+LLM judge
+source/diff ingestion
+```
+
+0.2.0 introduces the local Blazor dashboard only after 0.1.0 gates pass.
+
+If a task seems to require a deferred subsystem, stop architecture expansion and document the actual requirement/ADR rather than prebuilding a framework.

@@ -2,85 +2,58 @@
 
 > Local-first RPG passport for AI coding agents.
 
-Hero Passport is a small, deterministic state layer for AI agents. An agent starts a quest, works normally, finishes the quest, and receives a compact RPG status. Progress is stored locally in SQLite and can later be visualized by a local dashboard.
-
-```text
-Hero Passport = local-first MCP server
-              + deterministic RPG engine
-              + SQLite persistence
-              + CLI
-              + compact end-of-session status
-              + local dashboard later
-```
-
-## Product direction
-
-The MVP is **Codex-first, MCP-first, status-first, dashboard-second**.
-
-Primary loop:
+Hero Passport is a small deterministic state layer that turns meaningful AI-agent work into persistent RPG progression without collecting source code or requiring a cloud account.
 
 ```text
 Codex / MCP client
-  -> hero.start_quest
-  -> normal agent work
-  -> hero.finish_quest
-  -> compact displayText
-  -> local SQLite history
+   -> hero.start_quest
+   -> normal work
+   -> hero.finish_quest
+   -> compact RPG status
+   -> local SQLite history
 ```
 
-Example final status:
+Example:
 
 ```text
 ✨ +95 XP · Nova ур.1 · XP 95/100 · Доверие 51 · Риск 19
 ```
 
-Hero Passport is **not** an agent orchestrator, telemetry collector, LLM judge, code scanner, cloud analytics service, or achievement marketplace.
-
-## Technology baseline — 10 August 2026
-
-- C# 14 / .NET 10 LTS
-- .NET SDK `10.0.302`, runtime/ASP.NET Core `10.0.10`
-- official `ModelContextProtocol` C# SDK `2.0.0`, MCP revision `2026-07-28`
-- SQLite + EF Core SQLite `10.0.10`
-- direct pin `SQLitePCLRaw.bundle_e_sqlite3` `3.0.5` (native SQLite `>= 3.53.4`)
-- System.CommandLine `2.0.10`
-- xUnit.net v3 `3.2.2`
-- Microsoft Testing Platform via .NET 10 `dotnet test`
-- Blazor Web App only after the MCP/status loop is stable
-
-Preview dependencies are not part of the MVP baseline.
-
-## Planned solution shape
+## Architecture snapshot — 10 August 2026
 
 ```text
-src/
-  HeroPassport.Domain/          # pure deterministic domain model and rules
-  HeroPassport.Application/     # use cases, ports, request/response contracts
-  HeroPassport.Infrastructure/  # SQLite/EF, filesystem, migrations, adapters
-  HeroPassport.App/             # executable: CLI + MCP stdio composition root
-  HeroPassport.Web/             # post-MVP local Blazor dashboard
-
-tests/
-  HeroPassport.Domain.Tests/
-  HeroPassport.Application.Tests/
-  HeroPassport.Infrastructure.Tests/
-  HeroPassport.App.Tests/
-  HeroPassport.Architecture.Tests/
+C# 14 / .NET 10 LTS
+.NET SDK 10.0.302
+official ModelContextProtocol C# SDK 2.0.0
+MCP revision 2026-07-28
+EF Core SQLite 10.0.10
+SQLitePCLRaw.bundle_e_sqlite3 3.0.5
+System.CommandLine 2.0.10
+xUnit.net v3 3.2.2
 ```
 
-Compile-time dependency rule:
+Architecture:
 
 ```text
-Domain <- Application <- Infrastructure
-                    \<- App
-Application <------- Web (later; Infrastructure only at composition root)
+HeroPassport.Domain
+        ^
+        |
+HeroPassport.Application
+        ^
+        |
+HeroPassport.Infrastructure
+        ^
+        |
+HeroPassport.App
+
+HeroPassport.Web -> Application   # 0.2.0
 ```
 
-The system is a modular monolith: one local product, explicit module boundaries, no runtime plugin loading before post-MVP.
+The product is a **modular monolith**, not an MCP gateway/platform.
 
-## MVP MCP surface
+## MCP MVP
 
-Exactly four tools:
+Exactly four explicitly registered stdio tools:
 
 ```text
 hero.start_quest
@@ -89,45 +62,129 @@ hero.current_quest
 hero.get_card
 ```
 
-No `hero.log_step`, per-file telemetry, diff ingestion, code upload, continuous activity stream, HTTP MCP, MCP Apps, MCP Tasks, achievements, artifacts, cloud sync, auth, team mode, or LLM judge in the minimal MVP.
+No dynamic tool discovery/toolsets, HTTP/OAuth, MCP Apps, Tasks, runtime plugins or hidden protocol-session state in 0.1.0.
 
-## Privacy contract
+MCP contracts are intentionally small:
 
-By default Hero Passport must not persist or request:
+- local application state resolves hero/project/locale/presentation;
+- strict JSON Schema with `additionalProperties: false`;
+- structured results + output schemas;
+- accurate read-only/idempotent/open-world annotations;
+- no source/diff/log/path/secret fields;
+- server instructions describe the cross-tool lifecycle.
 
-- source code or file contents;
-- diffs/patches;
-- raw terminal/build/test logs;
-- prompts or full chat history;
-- secrets, API keys, environment variables;
-- full workspace paths.
+## Privacy
 
-It stores compact quest metadata and game state only. See [`docs/SECURITY-PRIVACY.md`](docs/SECURITY-PRIVACY.md).
+Hero Passport does **not** intentionally collect or persist:
+
+```text
+source code
+file contents
+diffs/patches
+raw terminal/build/test logs
+full prompts/chat history
+API keys/secrets
+environment dumps
+full workspace paths
+```
+
+It stores compact quest/game state locally.
+
+## Persistence
+
+SQLite is authoritative local state.
+
+Key guarantees:
+
+```text
+one short DbContext/unit of work
+WAL + synchronous=FULL + foreign keys
+one atomic finish transaction
+UNIQUE xp_events.quest_id
+finish retry returns original persisted outcome
+EF migrations from migration 0001
+EF built-in migration locking; no custom migration mutex
+```
+
+Microsoft.Data.Sqlite does not provide real async SQLite I/O, so database segments are intentionally short and synchronous rather than wrapped in fake async/`Task.Run`.
+
+## Platform data locations
+
+```text
+Windows  %LOCALAPPDATA%\HeroPassport
+macOS    ~/Library/Application Support/HeroPassport
+Linux    XDG data/config/state roots
+```
+
+`HERO_PASSPORT_HOME` provides isolated development/test storage.
+
+## Codex-first integration
+
+Preferred registration:
+
+```bash
+codex mcp add hero-passport -- hero-passport mcp
+codex mcp list
+```
+
+Codex owns its own MCP configuration. Hero Passport does not mutate `~/.codex/config.toml` in MVP.
+
+`mcp_servers.<id>.cwd` can pin a local project working directory when needed; workspace path remains local host configuration, not MCP payload/database state.
+
+## Development philosophy
+
+Modernity here means current protocol semantics + precise boundaries + small mechanisms, not maximum framework count.
+
+Deliberately not baseline dependencies:
+
+```text
+MediatR
+FluentValidation
+AutoMapper
+Dapper
+Polly
+Serilog/NLog
+OpenTelemetry exporters
+runtime plugin frameworks
+CQRS/event-bus frameworks
+```
+
+See [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) for the full accept/reject analysis.
 
 ## Documentation
 
 Start with [`docs/README.md`](docs/README.md).
 
-Canonical documents:
+Most important:
 
-- [`docs/PRODUCT-SPEC.md`](docs/PRODUCT-SPEC.md) — product scope, UX and acceptance criteria
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system/module architecture and data flows
-- [`docs/MCP-CONTRACT.md`](docs/MCP-CONTRACT.md) — MCP tools, schemas and output policy
-- [`docs/ENGINE-SPEC.md`](docs/ENGINE-SPEC.md) — XP, levels, skills, traits, trust/risk rules
-- [`docs/DATA-MODEL.md`](docs/DATA-MODEL.md) — SQLite model, migrations and transactions
-- [`docs/SECURITY-PRIVACY.md`](docs/SECURITY-PRIVACY.md) — threat model and local-first privacy rules
-- [`docs/TESTING-QUALITY.md`](docs/TESTING-QUALITY.md) — test pyramid, CI gates and release quality
-- [`docs/integrations/CODEX.md`](docs/integrations/CODEX.md) — current Codex MCP integration
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — implementation sequence and release gates
-- [`docs/DECISION-LOG.md`](docs/DECISION-LOG.md) — architecture decision record
-- [`docs/REFERENCES.md`](docs/REFERENCES.md) — official documentation baseline
-- [`docs/superpowers/specs/2026-08-10-hero-passport-design.md`](docs/superpowers/specs/2026-08-10-hero-passport-design.md) — consolidated design specification
-- [`docs/superpowers/plans/2026-08-10-hero-passport-implementation.md`](docs/superpowers/plans/2026-08-10-hero-passport-implementation.md) — task-by-task implementation plan
+- [`docs/PRODUCT-SPEC.md`](docs/PRODUCT-SPEC.md)
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- [`docs/ECOSYSTEM-BENCHMARK.md`](docs/ECOSYSTEM-BENCHMARK.md)
+- [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md)
+- [`docs/MCP-CONTRACT.md`](docs/MCP-CONTRACT.md)
+- [`docs/ENGINE-SPEC.md`](docs/ENGINE-SPEC.md)
+- [`docs/DATA-MODEL.md`](docs/DATA-MODEL.md)
+- [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
+- [`docs/SECURITY-PRIVACY.md`](docs/SECURITY-PRIVACY.md)
+- [`docs/TESTING-QUALITY.md`](docs/TESTING-QUALITY.md)
+- [`docs/integrations/CODEX.md`](docs/integrations/CODEX.md)
+- [`docs/ROADMAP.md`](docs/ROADMAP.md)
+- [`docs/DECISION-LOG.md`](docs/DECISION-LOG.md)
+- [`docs/REFERENCES.md`](docs/REFERENCES.md)
+- [`docs/superpowers/specs/2026-08-10-hero-passport-design.md`](docs/superpowers/specs/2026-08-10-hero-passport-design.md)
+- [`docs/superpowers/plans/2026-08-10-hero-passport-implementation.md`](docs/superpowers/plans/2026-08-10-hero-passport-implementation.md)
 
-## Status
+## Current status
 
-Architecture/specification phase. The repository intentionally contains no product implementation yet; implementation begins from the reviewed design and roadmap.
+Architecture/specification phase. Implementation begins from the reviewed roadmap/plan; no product code is intentionally mixed into the architecture PR.
+
+Target:
+
+```text
+0.1.0 = local Codex-first MCP + CLI MVP
+0.2.0 = local Blazor dashboard
+```
 
 ## License
 
-Apache License 2.0. See [`LICENSE`](LICENSE).
+Apache License 2.0. See `LICENSE`.
