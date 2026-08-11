@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - agent/architecture-spec-roadmap-2026-08
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.302
+      - name: SDK
+        run: dotnet --info
+      - name: Restore
+        run: dotnet restore HeroPassport.slnx
+      - name: Build
+        run: dotnet build HeroPassport.slnx --no-restore -c Release
+      - name: Test
+        run: dotnet test HeroPassport.slnx --no-build -c Release --logger "console;verbosity=normal"
