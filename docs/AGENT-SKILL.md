@@ -1,298 +1,291 @@
 # Hero Passport — Agent Skill Contract
 
-**Status:** Accepted v1 orchestration contract for Hero Passport v3.2  
+**Status:** Accepted `hero-passport-skill/1` orchestration contract for v3.2.1  
 **Snapshot:** 2026-08-11
 
-This document defines the behavior of the official Hero Passport Agent Skill. It is not a game-engine contract: all rewards and durable invariants remain server-authoritative.
+This document defines the official Hero Passport Agent Skill. All game rewards/durable invariants remain Core-authoritative.
 
 ## 1. Purpose
 
-The Skill makes Hero Passport feel ambient during normal agent work:
+Ambient flow:
 
 ```text
+hydrate context
 recognize meaningful work
 -> start/resume Quest
 -> work normally
--> recognize completion or explicit switch
--> report bounded facts
+-> recognize completion/switch
+-> report bounded attestations
 -> finish Quest
 -> render canonical RPG result
 ```
 
-The user should rarely need to mention Hero Passport.
+Users should rarely need to mention Hero Passport.
 
 ## 2. Packaging
-
-Ship a portable Agent Skill:
 
 ```text
 skills/hero-passport/
   SKILL.md
   references/
     lifecycle.md
-    finish-facts.md
+    finish-attestations.md
     presentation.md
     recovery.md
 ```
 
-`SKILL.md` must remain concise and follow the open Agent Skills format. Detailed edge cases belong in focused references loaded on demand.
+`SKILL.md` stays concise and follows the open Agent Skills format. Host-specific setup belongs in `docs/integrations/*`.
 
-Validate distributable Skill content with the current Agent Skills reference validator (`skills-ref validate`) when available in release tooling.
+Skill metadata declares compatibility with:
 
-Host-specific setup belongs in `docs/integrations/*`, not in the portable lifecycle instructions.
+```text
+hero-passport-skill/1
+HP-MCP/2
+```
 
-## 3. Activation intent
+Release tooling validates distributable Skill content with the current Agent Skills validator when available.
 
-The Skill is relevant when the user works with a project and Hero Passport MCP tools are available, including implementation, debugging, review, planning, research, documentation, maintenance or testing work.
+## 3. Activation heuristic
 
-It should not force a Quest for casual conversation, short factual questions or low-effort clarification with no concrete project work.
+Start/finish recognition is model-driven heuristic policy, not Core truth.
 
-## 4. Lifecycle state machine
+Recommended granularity: one coherent meaningful user goal per Quest.
 
-Conceptual local reasoning states:
+Likely Quest work includes implementation, debugging, review, architecture/planning that produces a project result, research required for a project decision, documentation, maintenance and testing.
+
+Do not auto-start for casual conversation, short factual explanations or clarification with no meaningful project action.
+
+## 4. Hydrate before relying on remembered state
+
+At relevant Skill activation/restart/recovery, call:
+
+```text
+hero.get_context
+```
+
+Use it to learn:
+
+```text
+Core/Skill/contract versions
+setup state
+persisted auto-start/auto-finish preferences
+locale/presentation style
+default active Hero
+current Project
+open Quests across all Heroes in this Project
+```
+
+Do not substitute packaged defaults for persisted settings after restart.
+
+If `skillContractVersion`/`contractVersion` is incompatible, surface upgrade guidance and do not guess a newer/older wire shape.
+
+## 5. Onboarding
+
+If `setupCompleted=false`, the Skill may conduct the short setup conversationally:
+
+1. locale;
+2. initial Hero name;
+3. presentation style;
+4. auto-start preference;
+5. auto-finish preference + confirmation.
+
+Then generate one fresh `bootstrapRequestId` and call `hero.bootstrap`.
+
+If the transport result is ambiguous, retry the **same** bootstrap request ID/arguments.
+
+Do not call `hero.configure` to create the initial Hero. Configure is post-setup preferences only.
+
+## 6. Local reasoning state
+
+Conceptual Skill state:
 
 ```text
 NO_QUEST
-ACTIVE_QUEST(questId, title, goal)
+ACTIVE_QUEST(questId, heroId, title, goal)
 ```
 
-These are model/orchestration concepts, not trusted server state. Before relying on an uncertain remembered state, use `hero.list_active_quests`.
+This is orchestration memory only. Core state from `hero.get_context` is authoritative when memory is uncertain.
 
-### NO_QUEST -> ACTIVE_QUEST
+## 7. Start
 
-Start when meaningful project work is clearly beginning.
+When meaningful work clearly begins and auto-start is enabled (or the user explicitly asks), select the intended Hero.
 
-The Skill generates:
+Normal default selection:
+
+```text
+heroId = get_context.activeHero.heroId
+```
+
+The active pointer is a preference, not hidden server ownership. `hero.start_quest` always receives the explicit selected HeroId.
+
+Generate:
 
 ```text
 startRequestId = fresh UUIDv7 for this start intent
+heroId
 questType
 short title
 precise goal
 ```
 
-The same `startRequestId` must be reused only when retrying that same start call after an ambiguous transport/tool result. A separate intended Quest always gets a new request ID.
+Reuse the same `startRequestId` only for an ambiguous retry of that exact intended Start. A different intended Quest gets a new request ID.
 
-On success retain `questId` in working context.
+On success retain returned `questId` + persisted `heroId`.
 
-### ACTIVE_QUEST -> ACTIVE_QUEST
-
-Continue when follow-up work is materially part of the same goal. Examples:
-
-- add a test for the same fix;
-- adjust naming discovered during implementation;
-- update docs directly required by the feature;
-- continue after user supplies requested information.
-
-Do not fragment one coherent goal into micro-Quests.
-
-### ACTIVE_QUEST -> FINISHED
-
-Finish only when the goal is genuinely complete and the agent is ready to present the final work result.
-
-Do not finish merely because:
-
-- one sub-step ended;
-- the agent needs a user decision;
-- the agent is about to run verification;
-- the agent says “I can also…” while required work remains.
-
-### Explicit goal switch
-
-If the user clearly changes to an independent goal before the old one is complete:
+## 8. Conservative automation
 
 ```text
-useful completed result exists -> finish old as partial
-nothing useful completed       -> finish old as abandoned
-then start new Quest
-```
-
-If the switch is ambiguous, keep the old Quest and do not guess.
-
-## 5. Conservative automation
-
-Default policy is asymmetric in favor of avoiding user friction and false state:
-
-```text
-unsure whether to start  -> do not ask, wait for clearer work
+unsure whether to start  -> do not ask; wait for clearer meaningful work
 unsure whether to finish -> keep Quest open
 ```
 
-Manual user commands override this policy:
+Manual user intent overrides automation:
 
 ```text
-“начни квест” / equivalent -> start if server invariant allows
-“заверши квест”            -> finish with truthful current outcome/facts
-“не заканчивай”            -> keep open
-“брось/отмени квест”       -> abandoned
+start Quest          -> start if invariant permits
+finish Quest         -> finish with truthful current outcome/attestations
+keep it open         -> no finish
+abandon Quest        -> finish as abandoned
 ```
 
-## 6. Recovery and handoff
+## 9. Continue same goal
 
-When the Skill starts/reloads in a project and does not have a reliable `questId`, call `hero.list_active_quests` when meaningful work is about to begin.
+Keep one Quest for materially related follow-up work, such as tests for the same fix, necessary adjacent docs, or changes discovered while implementing the same outcome.
 
-Because the Core permits at most one open Quest for the active Hero+Project:
+Do not fragment one coherent goal into micro-Quests.
 
-- if none exists, normal start may proceed;
-- if one exists and the new work clearly continues it, resume that `questId`;
-- if one exists but the new goal differs, surface a concise continue/finish/abandon choice unless the user explicitly requested a switch that already determines `partial`/`abandoned` semantics.
+## 10. Recovery across Heroes
 
-Never invent a replacement `questId` or infer retry identity from similar text.
+`hero.get_context.openQuests` contains all current-Project open Quests across Heroes.
 
-## 7. Multiple agents
+Recovery policy:
 
-The Skill must treat a Quest as shared durable work state for the Hero+Project, not as owned by the current agent.
+- no plausible match -> form a new Quest for the selected/default Hero if its Hero+Project slot is free;
+- exactly one clearly matching Quest -> resume that `questId`, even if another host later changed global active-Hero preference;
+- several plausible matches -> do not guess; surface a concise choice;
+- a different open Quest for the same selected Hero blocks new Start with HP133 until explicit finish/abandon/switch semantics resolve it.
 
-If another agent already opened the Quest, this agent may resume it when the goal matches. Agent brand/name is not persisted as ownership and must never affect XP.
+Never infer Quest identity from similar title/goal text alone.
 
-## 8. Finish facts
+## 11. Explicit goal switch
 
-The Skill reports only truthful bounded facts it can derive from the interaction.
-
-### Outcome
+If user clearly switches to an independent goal before old work is complete:
 
 ```text
-success    goal accomplished
-partial    useful subset accomplished but requested goal not fully done
-blocked    meaningful work cannot continue because of an external blocking condition
-failed     attempted result did not reach a usable state
-abandoned  intentionally stopped without a scored result
+useful completed result -> finish old as partial
+no useful result        -> finish old as abandoned
+then start new Quest
 ```
 
-Do not classify a normal user-requested reprioritization as failure.
+If switch is ambiguous, keep current Quest open.
 
-### Skills
+## 12. Finish boundary
 
-Choose 1–3 canonical skills actually important to the Quest, ordered most-to-least important. Do not add `tool_use` merely because Hero Passport MCP itself was called.
+Finish only when the current goal is genuinely done and the agent is ready to provide its final work result, or when a truthful terminal outcome (`blocked`, `failed`, explicit `abandoned`) is reached.
 
-### Build/test evidence
-
-Evidence semantics:
+Generate one fresh:
 
 ```text
-observed  this agent directly invoked/observed the relevant check and result
-reported  user or another source stated the result; this agent did not directly verify it
-none      no supporting observation/report applies
+finishRequestId
 ```
 
-Never promote `reported` to `observed`.
+for the finalization intent.
 
-Do not send raw logs, source, diffs or command transcripts.
+Retry an ambiguous Finish using the same finishRequestId and identical canonical payload.
 
-### Scope violations
+If Core returns `HP136 quest_already_finalized_conflict`, do not retry with invented facts or overwrite history. Explain that another finalization won and use the persisted game state as authority.
 
-Count concrete departures from the requested goal that required unnecessary work or introduced out-of-scope changes. Do not count normal discovery or necessary adjacent fixes.
+## 13. Bounded attestations
 
-### User corrections
+The Skill reports validated bounded attestations, not quality scores.
 
-Count substantive corrections where the user had to redirect an incorrect assumption/output. Do not count ordinary preference choices or requested refinements.
+Outcome:
 
-## 9. Presentation
+```text
+success    requested goal accomplished
+partial    useful subset but goal not fully done
+blocked    external condition prevents meaningful continuation
+failed     attempt ended without a usable requested result
+abandoned  intentionally stopped without scored result
+```
 
-### Start
+Skills: choose 1–3 canonical Skills actually important to the work, primary to tertiary. Hero Passport calls themselves do not qualify for `tool_use`.
 
-Default start output is one short line and uses the Quest title:
+Build/test provenance:
+
+```text
+observed  agent asserts it directly invoked/saw the relevant result
+reported  user/other source stated it; agent did not directly observe it
+none      no supporting observation/report
+```
+
+Never upgrade reported -> observed and never send raw logs/source/diffs/command transcripts.
+
+Scope violations/user corrections are best-effort bounded self-attestations. Do not count normal discovery, preference choices or ordinary refinement as errors.
+
+## 14. Presentation
+
+Start remains compact:
 
 ```text
 ⚔ Добавить first-run onboarding
 ```
 
-Avoid boilerplate such as “Quest started:” unless a host’s UX requires it.
+Finish presents normal work summary plus canonical progression. Skill may reformat but never recalculate.
 
-### Finish
+Semantic result fields are authoritative over fallback displayText.
 
-First present concise work completion information, then canonical Hero Passport reward logs/table. The Skill may reformat canonical numeric fields but must not recalculate them.
+## 15. Milestone flavor
 
-Example shape:
+Core/engine milestone truth is semantic keys/events, not a deterministic flavor hash.
+
+Presentation maps milestone semantics to current curated localized flavor. Skill may lightly contextualize significant level/rank/title/trait/streak lines, but may not invent unlocks or alter numeric facts.
+
+Do not turn every Quest into comedy.
+
+## 16. Language
+
+Use persisted effective Quest locale for Hero Passport presentation. Supported MVP locales: `ru-RU`, `en-US`.
+
+Skill conversation language may follow the user independently, but canonical values/keys remain server-authoritative.
+
+## 17. Error handling
 
 ```text
-+60 XP  Базовая награда
-+10 XP  Тестирование
-+10 XP  Бонус за контроль
-+10 XP  Итоговый отчёт
- +5 XP  Без исправлений
-
-↑ Coding             +48 XP
-↑ Testing Awareness  +29 XP
-↑ Scope Control      +18 XP
-★ Level 7 → 8
-
-XP       +95
-Level    7 → 8
-Trust   52 → 54
-Strain  18 → 16
-Streak       6 🔥
+HP001 -> bootstrap/setup path
+HP002 -> setup already exists; rehydrate get_context
+HP133 -> resolve existing same-Hero Project Quest
+HP135 -> caller reused a mutation ID with changed canonical context/args; do not mint a replacement as a fake retry
+HP136 -> another different finalization already committed; do not overwrite
+HP202 -> bounded retry of the same retry-safe request identity/args after transient contention
 ```
 
-Use semantic result fields as authority even if fallback `displayText` exists.
+Never automatically abandon a Quest just to make a new Start succeed unless the user explicitly switched away and established abandoned/partial semantics.
 
-## 10. Flavor text
+## 18. Evals
 
-Core returns curated milestone flavor keys/text. The Skill may lightly contextualize a line to the current Quest, for example referencing migrations or legacy code, but it may not:
-
-- invent extra XP;
-- invent an unlock;
-- change Rank/Title/Trait meaning;
-- turn every Quest into comedy.
-
-Flavor is normally shown only for significant level/rank/title/trait/streak milestones.
-
-## 11. Onboarding
-
-If a gameplay call returns `HP001 setup_required`, the Skill conducts the five-step setup conversationally:
-
-1. language;
-2. Hero name;
-3. presentation style;
-4. auto-start/auto-finish preferences;
-5. confirmation.
-
-Then call `hero.configure` once with validated values. Do not instruct the user to edit SQLite/config files manually as the normal flow.
-
-## 12. Language
-
-Use the Quest’s effective locale for Hero Passport presentation. The Skill may converse in the user’s current language independently, but must not translate canonical game values differently from the server’s localization mapping.
-
-Supported MVP presentation locales:
+Minimum Agent Skill scenarios:
 
 ```text
-ru-RU
-en-US
-```
-
-## 13. Failure handling
-
-Tool errors are handled by stable code:
-
-```text
-HP001 -> onboarding
-HP133 -> recover/resolve existing active Quest
-HP135 -> do not invent a new request ID for the same retry; inspect caller logic
-HP202 -> bounded retry of the same safe request identity after transient DB busy condition
-other expected HP errors -> explain safe corrective action
-```
-
-Never automatically abandon an existing Quest merely to make a new start succeed.
-
-## 14. Evaluation requirements
-
-AgentEvals must cover at least:
-
-```text
-short factual question -> no Quest
-meaningful implementation request -> auto-start
-multi-step same goal -> one Quest
-clarification mid-work -> remains open
-complete goal -> auto-finish
-explicit different goal after complete -> finish then new start
+short factual question -> no start
+meaningful project work -> start
+persisted autoStart=false after restart -> no auto-start
+same-goal followups -> no fragmentation
+awaiting user decision -> no finish
+complete goal -> finish
 explicit mid-work switch -> partial/abandoned then new start
 ambiguous switch -> no silent close
-restart with matching open Quest -> resume
-restart with different request -> surface recovery choice
-same start transport retry -> reuse startRequestId
-build/test reported vs observed provenance
-Hero Passport MCP use -> no self-awarded tool_use
-milestone result -> flavor without changed facts
+restart same goal -> get_context -> resume matching questId
+inactive-Hero open Quest still discoverable
+multiple plausible open Quests -> no guess
+active Hero changes in another host after context -> Start retains explicitly selected heroId
+ambiguous Start retry -> same startRequestId
+ambiguous Finish retry -> same finishRequestId/payload
+conflicting finalized Quest -> honor HP136
+reported vs observed -> never promote
+Hero Passport MCP calls -> no self-awarded tool_use
+milestone flavor -> presentation only
+Skill/Core version mismatch -> fail safe with upgrade guidance
 ```
 
-These evals are release gates alongside MCP contract tests; Skill behavior is part of the product UX but never a substitute for Core invariants.
+Skill evals are product release gates but never substitutes for Core/storage invariants.
