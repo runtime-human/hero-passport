@@ -2,9 +2,11 @@
 
 ## Mission
 
-Build Hero Passport as a portable local-first RPG state layer for AI coding agents. Codex is the first Qualified reference host; product semantics and HP-MCP/2 remain host-neutral.
+Build Hero Passport as a local-first RPG companion for people working with AI coding agents.
 
-Do not invent alternate architecture inside implementation PRs.
+0.1 is **MCP Core + official Agent Skill + CLI**. Web is 0.2.
+
+Do not turn the product into source-code telemetry, employee monitoring, an LLM judge, an agent scheduler, or a cloud service by accident.
 
 ## Read before coding
 
@@ -15,354 +17,145 @@ docs/PRODUCT-SPEC.md
 docs/ARCHITECTURE.md
 ```
 
-Then read the relevant normative deep dive:
+Then the focused contract for the subsystem:
 
 ```text
-project/Git binding      -> docs/PROJECT-IDENTITY.md
-SQLite/write/recovery    -> docs/PERSISTENCE-RELIABILITY.md
-MCP schemas/results      -> docs/WIRE-CONTRACT.md
-RPG calculation          -> docs/ENGINE-SPEC.md
+MCP exact wire          docs/WIRE-CONTRACT.md
+RPG rules               docs/ENGINE-SPEC.md
+Agent orchestration     docs/AGENT-SKILL.md
+SQLite/recovery         docs/PERSISTENCE-RELIABILITY.md
+Data model              docs/DATA-MODEL.md
+Project identity        docs/PROJECT-IDENTITY.md
+Configuration/i18n      docs/CONFIGURATION.md
+Security/privacy        docs/SECURITY-PRIVACY.md
+Tests/release evidence  docs/TESTING-QUALITY.md
+Implementation plan     docs/superpowers/plans/2026-08-11-hero-passport-v3.2-implementation.md
 ```
 
-Also use the corresponding compact specs (`API-CONTRACTS`, `MCP-CONTRACT`, `DATA-MODEL`, `CONFIGURATION`, `SECURITY-PRIVACY`, `TESTING-QUALITY`). Normative precedence is in `docs/README.md`.
+`docs/README.md` defines documentation precedence.
 
----
-
-## Layer boundaries
+## Core architecture
 
 ```text
 Domain
-  deterministic game policy only
-  no EF/MCP/CLI/HTTP/localization/filesystem/Git/config
-
+  ^
 Application
-  typed semantic use cases + ports
-  Domain dependency only
-  no MCP SDK/host config/localized output
-
+  ^
 Infrastructure
-  EF/SQLite/filesystem/config/project+hero binding adapters
-
-App
-  composition root
-  CLI
-  MCP stdio adapter
-  presentation/localization
-
-Web 0.2+
-  Application/read models
-  no DbContext in Razor components
+  ^
+App (MCP stdio + CLI + presentation)
 ```
 
-Do not add generic repositories, MediatR/event-bus frameworks, runtime plugin frameworks, REST/GraphQL/gRPC, or HTTP MCP merely for hypothetical extensibility.
+Agent Skill is a portable orchestration package outside Domain/Application game logic.
 
----
+No separate Contracts assembly in 0.1.
 
-## HP-MCP/2
-
-Exactly four tools in stable order:
+## Critical v3.2 invariants
 
 ```text
-hero.start_quest
-hero.finish_quest
-hero.list_active_quests
-hero.get_card
+one meaningful goal = one Quest
+one open Quest per Hero + Project
+Quest owner fixed at start
+Quest is not owned by an AI agent
+startRequestId identifies caller start intent/retry
+questId identifies durable Quest
+natural-language goal is never an idempotency key
+Finish commits progression at most once
+historical finish result is immutable
 ```
 
-Explicit registration only. No assembly-wide scanning.
+## Game authority
 
-Protocol:
+The agent reports bounded facts only.
+
+Hero Passport Core calculates:
 
 ```text
-preferred semantics 2026-07-28
-McpServerOptions.ProtocolVersion unset/null
-qualification includes 2026-07-28 and 2025-11-25 paths
-application state never depends on MCP sessions/connections
+XP
+Skill XP
+Hero/Skill levels
+Rank
+Trust/Strain
+Streak
+Traits/Titles
+milestones
 ```
 
-### Tool annotations
+Never accept agent-supplied XP/quality score/game deltas.
+
+Canonical clean coding golden for `reward/2.0.0` is **95 XP**.
+
+## Privacy deny-list
+
+Never add routine model-facing fields/storage/logging for:
 
 ```text
-start_quest          readOnly=false destructive=false idempotent=false openWorld=false
-finish_quest         readOnly=false destructive=false idempotent=true  openWorld=false
-list_active_quests   readOnly=true  destructive=false idempotent=true  openWorld=false
-get_card             readOnly=true  destructive=false idempotent=true  openWorld=false
+source/file contents
+diffs/patches
+raw terminal/build/test logs
+full prompts/chat transcripts
+secrets/tokens/environment dumps
+full workspace paths
+Git remote URLs
+arbitrary metadata/context bags
 ```
 
-`start_quest` is retry-safe only while a matching normalized declaration remains open. The same arguments after finishing are allowed to create a new quest, therefore the MCP idempotent hint is false.
+Build/test provenance is `observed | reported | none`, not raw evidence storage.
 
-### Success representation
+## MCP
 
-Every successful tool call:
+Official C# SDK baseline: `ModelContextProtocol 2.1.0`.
+
+Preferred semantics: MCP `2026-07-28`, with `2025-11-25` compatibility qualification.
+
+Application correctness never depends on MCP session/connection state.
+
+Tool inventory/order is normative in `WIRE-CONTRACT.md`; register explicitly, never by broad assembly scan.
+
+For stdio:
 
 ```text
-structuredContent = typed result object
-content = exactly one TextContent containing minified JSON semantically equal to structuredContent
-displayText = required human field inside the object
+stdout = MCP protocol only
+stderr = safe diagnostics only
 ```
 
-Do not substitute an unrelated compact status as the only TextContent fallback.
-
-### Error representation
-
-Business/validation errors:
+## SQLite
 
 ```text
-isError=true
-exactly one safe TextContent
-no structuredContent
-```
-
-Protocol framing/unknown-tool errors remain protocol errors.
-
-### Runtime validation
-
-Official C# SDK schema/data annotations do not enforce runtime argument validation. Every MCP boundary explicitly validates SafeText, enum, UUID, ranges, metrics consistency and skills before Application.
-
----
-
-## SafeTextV1
-
-Model-supplied `goal` and `summary`:
-
-```text
-valid Unicode scalar values only
-reject unpaired surrogates
-reject non-whitespace C0/C1 controls
-reject bidi formatting controls listed in WIRE-CONTRACT.md
-NFC
-trim Unicode whitespace
-collapse whitespace runs to ASCII space
-Rune/scalar-aware length bounds
-```
-
-```text
-goal     1..500 scalars
-summary  1..2000 scalars
-```
-
-Never use `.Length` alone as the wire-length authority.
-
----
-
-## Quest dedup semantics
-
-`LogicalQuestKeyV1` is retired before public release.
-
-Use:
-
-```text
-QuestDedupKeyV1 = SHA-256(
-  UTF8(canonicalQuestType + "\n" + SafeTextV1(goal))
-)
-```
-
-**Case is preserved.** Do not lowercase/case-fold goal text: coding identifiers may be case-sensitive.
-
-Meaning is conservative retry deduplication of one normalized start declaration, not semantic equivalence of natural-language tasks.
-
-Multiple distinct open quests may coexist for one hero/project.
-
-```text
-max open quests per hero/project = 16
-```
-
-Recovery/handoff uses explicit `questId` from `list_active_quests` rather than fuzzy semantic matching.
-
----
-
-## Project identity
-
-Follow `PROJECT-IDENTITY.md` exactly.
-
-Core rules:
-
-```text
-explicit --project-root else process cwd
-Git repository -> anchor on canonical git-common-dir
-linked worktrees -> same project
-normal nested cwd -> whole repo scope '.'
-monorepo explicit subproject -> repo-relative explicit scope
-submodule/nested repo -> separate project by default
-bare repo -> rejected
-non-Git -> standalone canonical directory
-```
-
-Do not:
-
-```text
-persist full workspace path
-use remote URL as identity
-write .git identity files
-modify safe.directory
-shell-interpolate Git commands
-fall back to standalone when a repository exists but Git cannot safely resolve it
-```
-
-Project fingerprint is salted local SHA-256; it is not a credential or encryption.
-
----
-
-## SQLite reliability
-
-Follow `PERSISTENCE-RELIABILITY.md` exactly.
-
-All read-modify-write use cases start a short non-deferred Serializable transaction **before invariant reads**. With selected Microsoft.Data.Sqlite 10.0.10 this is `BEGIN IMMEDIATE` behavior.
-
-Start transaction:
-
-```text
-BEGIN writer
-same dedup key lookup
-active count
-insert if <16
-COMMIT
-```
-
-Finish transaction atomically writes report, XP event, hero/skills/traits/project stats and finished state.
-
-```text
+EF Core / Microsoft.Data.Sqlite 10.0.10
+SQLitePCLRaw.bundle_e_sqlite3 3.0.5
+actual SQLite runtime >= 3.53.4
 WAL
 synchronous=FULL
 foreign_keys=ON
-Default Timeout=5
-no Cache=Shared
-no Task.Run DB wrappers
-no Polly retry stack
-no custom writer mutex
+IDbContextFactory
 ```
 
-Release/runtime qualification checks `sqlite_version()`; normal supported WAL path requires `>=3.51.3` because SQLite fixed the 2026 WAL-reset corruption bug there.
+All read-modify-write operations acquire writer intent before invariant reads.
 
-Never `File.Copy` a live SQLite DB. Live backup uses SQLite/Microsoft.Data.Sqlite backup API and verifies the backup.
+No custom global writer mutex. No Polly retry layer. Never delete WAL/SHM as recovery.
 
-Never manually delete/rename `-wal` or `-shm` during recovery.
+## Development method
 
-Writable DB on network filesystems is not a supported 0.1 profile.
+Follow the accepted implementation plan.
 
----
-
-## Persistence uniqueness
+Use TDD for product code:
 
 ```text
-quest_sessions open dedup uniqueness:
-(hero_id, project_id, dedup_key_version, dedup_key) WHERE status='open'
-
-UNIQUE quest_reports.quest_id
-UNIQUE xp_events.quest_id
+write failing test
+run and observe failure
+minimal implementation
+run and observe pass
+refactor
+commit focused change
 ```
 
-Concurrent count=15 + two distinct starts must finish with exactly 16 open quests, not 17.
+Use real file-backed SQLite for persistence/concurrency/crash claims.
 
-Concurrent finish must produce exactly one report/event/reward mutation.
+Do not claim build/tests pass without running the exact commands and seeing successful output.
 
----
+## Extensibility rule
 
-## Wire IDs/timestamps/numbers
+Do not add MediatR, AutoMapper, Dapper, runtime plugin systems, event buses, HTTP/OAuth, cloud sync, CRDT/event sourcing, MCP Tasks, source ingestion, or another framework because it might be useful later.
 
-```text
-questId      canonical lowercase UUIDv7
-Timestamp    YYYY-MM-DDTHH:mm:ss.fffZ
-JSON long-lived integers <= 9_007_199_254_740_991
-no current HP-MCP null fields
-all nested schema objects additionalProperties:false
-```
-
-MCP `skillsUsed` accepts canonical skills only, 1..3, ordered primary->secondary->tertiary. CLI/import alias normalization is separate.
-
-`testsStatus != not_run` requires `testsMentioned=true`.
-
----
-
-## Privacy
-
-Never add MCP fields/storage/logging for:
-
-```text
-source code
-file contents
-diffs/patches
-raw logs
-full prompts/chat history
-secrets/API keys/tokens
-environment bags
-workspace paths
-remote Git URLs
-arbitrary metadata/context/payload bags
-```
-
-`questId` is an identifier, not a credential. Finish validates the quest against bound HeroId + ProjectId.
-
----
-
-## RPG rules
-
-Do not change rule set as a side effect of architecture work.
-
-Canonical clean coding golden:
-
-```text
-60 base
-+10 tests mentioned
-+10 clean scope
-+10 clear summary
-+5 no corrections
-=95 XP
-```
-
-Persist rule versions. Skill allocation conserves exact XP.
-
-RU terminology:
-
-```text
-scope_control -> Контроль
-clean scope bonus -> Бонус за контроль
-scope violation -> Выход за задачу
-```
-
----
-
-## Testing gates
-
-Changes to these areas require their deep-dive vectors, not only unit tests.
-
-Minimum release evidence:
-
-```text
-ProjectIdentity worktree/monorepo/submodule/privacy vectors
-SafeText/UUID/timestamp/wire goldens
-same-dedup Start race
-distinct Start race from count=15 -> exactly 16
-concurrent Finish -> one XP event
-child-process crash before commit -> no partial state
-crash after commit before response -> retry-safe
-live backup consistency
-actual sqlite_version qualification
-MCP 2026-07-28 + 2025-11-25 paths
-structuredContent == parsed JSON TextContent
-MCP Inspector
-Codex E2E
-cross-host RC smoke according to integrations/README.md
-```
-
-Do not claim implementation tests pass until product code exists and commands were actually run.
-
----
-
-## Scope through 0.1
-
-Still excluded:
-
-```text
-dashboard
-achievements/items
-runtime plugins
-our own Streamable HTTP listener
-remote OAuth/tenancy
-generic REST/GraphQL/gRPC
-MCP Apps/Tasks
-cloud/team mode
-continuous telemetry
-LLM judge
-source/diff ingestion
-```
+A demonstrated product requirement comes first; then update architecture/ADR/tests.

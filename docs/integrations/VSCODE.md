@@ -1,62 +1,36 @@
-# Hero Passport — VS Code Integration
+# VS Code Integration
 
-**Status:** Documented / protocol-compatible; RC smoke required before Qualified  
-**Documentation verified:** 2026-08-11  
-**Transport:** local stdio
+**Status:** documented compatibility candidate; release smoke required
 
-## 1. Recommended configuration
+Hero Passport expects a current VS Code agent/MCP environment capable of launching a local stdio MCP server and providing the intended workspace/project root.
 
-VS Code supports MCP configuration in workspace/user `mcp.json` and provides a stdio `cwd` setting. For a project-scoped Hero Passport server, prefer a workspace config such as:
+## Core
 
-```json
-{
-  "servers": {
-    "hero-passport": {
-      "type": "stdio",
-      "command": "hero-passport",
-      "args": ["mcp"],
-      "cwd": "${workspaceFolder}"
-    }
-  }
-}
-```
-
-This keeps project path in host launch configuration rather than MCP tool arguments.
-
-## 2. Required tools
+Configure the host through its current official MCP settings to launch:
 
 ```text
-hero.start_quest
-hero.finish_quest
-hero.list_active_quests
-hero.get_card
+hero-passport mcp
 ```
 
-Hero Passport requires only MCP Tools for the core lifecycle. VS Code support for additional MCP features does not change this baseline.
+Prefer workspace cwd. Use local launch argument `--project-root <path>` only when necessary.
 
-## 3. Scope
+## Skill/orchestration
 
-Workspace-level configuration is preferred for project identity. User-global configuration without a stable project cwd must use an explicit Hero Passport `--project-root` binding or is not considered project-aware.
+If the active VS Code agent surface supports Agent Skills or an equivalent reusable instruction package, install/map the official `skills/hero-passport/` lifecycle. Otherwise MCP remains manually usable, but ambient auto-start/auto-finish is not considered Qualified until equivalent orchestration is proven.
 
-## 4. RC smoke
+## Release smoke
 
-Before marking a Hero Passport release Qualified on VS Code, record:
+Verify on the exact supported VS Code/agent extension version:
 
 ```text
-VS Code version
-OS
-configuration scope
-${workspaceFolder}/cwd result
-exact four tools
-start/list/finish/card
-server restart/recovery
-parallel distinct quest behavior
+11 tools
+project binding
+first-run setup
+meaningful-work auto-start
+completion auto-finish
+restart recovery
+structured result rendering
+host confirmation behavior
 ```
 
-## 5. Security
-
-Do not add workspace path to MCP tool inputs. VS Code sandbox/trust features are host controls and do not replace Hero Passport's own narrow schema/privacy rules.
-
-## 6. Ownership
-
-VS Code owns `mcp.json` and host trust prompts. Hero Passport does not mutate this file automatically in 0.1.
+Do not copy stale third-party configuration syntax into Hero Passport architecture; update tested setup instructions only from current official host documentation.

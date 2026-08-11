@@ -1,178 +1,187 @@
 # Hero Passport
 
-> Portable local-first RPG passport for AI coding agents.
+> Local-first RPG companion for people working with AI coding agents.
 
-Hero Passport turns meaningful AI-agent work into persistent RPG progression without collecting source code or requiring a cloud account. Codex is the first Qualified reference host; HP-MCP/2 is host-neutral.
+Hero Passport turns meaningful agent-assisted work into persistent XP, Skills, Levels, Ranks, Trust/Strain, Streaks, Traits and Titles — without collecting source code or requiring a cloud account.
+
+## Experience
 
 ```text
-AI/MCP host
-  -> hero.start_quest
-  -> normal agent work
-  -> hero.finish_quest
-  -> deterministic local RPG progression
-  -> SQLite history
+You ask an AI agent to do meaningful project work
+        ↓
+Hero Passport Agent Skill starts/resumes a Quest automatically
+        ↓
+Agent works normally
+        ↓
+Skill finishes when the goal is genuinely done
+        ↓
+Hero Passport Core calculates deterministic progression
+        ↓
+Compact RPG logs + result card
 ```
 
-Example presentation:
+Typical start:
 
 ```text
-✨ +95 XP · Nova ур.1 · XP 95/100 · Доверие 51 · Риск 19
+⚔ Добавить first-run onboarding
 ```
 
-## Architecture snapshot — 11 August 2026
+Typical clean coding finish:
 
 ```text
-C# 14 / .NET 10 LTS
-.NET SDK 10.0.302
-official ModelContextProtocol C# SDK 2.0.0
-preferred MCP semantics 2026-07-28; protocol unpinned for SDK compatibility
-EF Core SQLite 10.0.10
++60 XP  Базовая награда
++10 XP  Тестирование
++10 XP  Бонус за контроль
++10 XP  Итоговый отчёт
+ +5 XP  Без исправлений
+
+★ Level 7 → 8
+XP      +95
+Trust   52 → 54
+Strain  18 → 16
+```
+
+## v3.2 architecture snapshot — 11 August 2026
+
+```text
+C# 14 / .NET 10 LTS / SDK 10.0.302
+ModelContextProtocol 2.1.0
+MCP semantics 2026-07-28; compatibility qualification 2025-11-25
+EF Core SQLite / Microsoft.Data.Sqlite 10.0.10
 SQLitePCLRaw.bundle_e_sqlite3 3.0.5
+qualified actual SQLite runtime >= 3.53.4
 System.CommandLine 2.0.10
-xUnit.net v3 3.2.2
+xunit.v3 3.2.2
 ```
 
+Runtime structure:
+
 ```text
-Domain
-  ^
+AI agent
+  ↕ Hero Passport Agent Skill
+  ↕ HP-MCP/2 stdio
+HeroPassport.App
+  ↓
 Application
-  ^
-Infrastructure
-  ^
-App (CLI + MCP stdio + presentation)
-
-Web -> Application   # 0.2+
+  ↓
+Domain
+  ↕
+Infrastructure -> SQLite
 ```
 
-MCP is an adapter over transport-neutral Application semantics, not the architecture of the whole product.
+0.1 ships MCP Core + Agent Skill + CLI. Local Web UI is 0.2.
 
-## HP-MCP/2
+## Quest identity
 
-Exactly four explicitly registered tools:
+Hero Passport v3.2 deliberately separates retry intent from work identity:
 
 ```text
+startRequestId = caller-generated identity of one start intent/retry sequence
+questId        = server-generated durable Quest identity
+```
+
+Exactly one Quest may be open for one Hero + Project.
+
+Natural-language goal text is **not** an idempotency key. Repeating the same start request safely replays the same Quest; a fresh request can later create another Quest with identical wording.
+
+A Quest belongs to the Hero + Project, not to Codex/Claude/another agent. Agents can hand the same `questId` to one another.
+
+## HP-MCP/2 v3.2
+
+Static explicit tool order:
+
+```text
+hero.configure
+hero.create
+hero.list
+hero.activate
+hero.archive
+hero.restore
+hero.delete
 hero.start_quest
 hero.finish_quest
 hero.list_active_quests
 hero.get_card
 ```
 
-Current exact wire behavior is specified in [`docs/WIRE-CONTRACT.md`](docs/WIRE-CONTRACT.md).
+Exact schemas/results/errors: [`docs/WIRE-CONTRACT.md`](docs/WIRE-CONTRACT.md).
 
-Important properties after the v3.1 deep dive:
+## Game rules
 
-- `start_quest` is **not** advertised MCP-idempotent; it is only retry/dedup-safe while the same normalized declaration remains open;
-- multiple distinct quests may be open for one hero/project, capped at 16;
-- `QuestDedupKeyV1` hashes `questType + SafeTextV1(goal)` with **case preserved**;
-- successful MCP calls return typed `structuredContent` plus one minified JSON TextContent representing the same object for backward compatibility;
-- tool/business errors return `isError=true` + safe TextContent and no structuredContent;
-- runtime validators explicitly enforce bounds/UUID/text rules because C# SDK schema annotations do not validate arguments at runtime;
-- no source/diff/log/path/secret fields exist in tool contracts.
+Game state is calculated locally and deterministically. The agent reports bounded facts and provenance; it never chooses its own reward.
 
-## Project identity
-
-Project binding is local launch state:
+Current outcome multipliers:
 
 ```text
-hero-passport mcp [--project-root <path>] [--hero <selector>]
+success    100%
+partial     60%
+blocked     30%
+failed      10%
+abandoned    0%
 ```
 
-Git-aware identity is specified in [`docs/PROJECT-IDENTITY.md`](docs/PROJECT-IDENTITY.md):
+Canonical clean coding golden remains **95 XP**.
 
-- linked Git worktrees share one project through canonical `git-common-dir`;
-- ordinary nested cwd maps to the whole Git repository;
-- explicit `--project-root` inside a monorepo creates a deliberate repo-relative scope;
-- submodules/nested repositories are separate by default;
-- Git safety failures never silently become standalone identities;
-- full paths and remote URLs are not persisted.
+Full rules: [`docs/ENGINE-SPEC.md`](docs/ENGINE-SPEC.md).
 
-## Persistence reliability
-
-SQLite is authoritative local state. [`docs/PERSISTENCE-RELIABILITY.md`](docs/PERSISTENCE-RELIABILITY.md) fixes the write protocol:
+## Trust + Strain
 
 ```text
-read-modify-write operation
-  -> short non-deferred Serializable transaction
-  -> selected Microsoft.Data.Sqlite 10.0.10 behavior: BEGIN IMMEDIATE
-  -> read/check/write
-  -> COMMIT
+Trust  = demonstrated reliability
+Strain = accumulated technical friction/turbulence
 ```
 
-This makes the 16-active-quest cap and finish idempotency race-safe without a custom mutex.
+Both are `0..100`, deterministic and Quest-driven. No passive time regeneration, no harsh XP feedback loop and no product features locked behind them.
 
-Operational baseline:
+## Heroes
+
+A Hero progresses globally across projects. Multiple Heroes are supported locally:
 
 ```text
-WAL
-synchronous=FULL
-foreign_keys=ON
-Default Timeout=5
-local filesystem only for writable supported DB
-actual sqlite_version() qualification >= 3.51.3
+create / list / activate / archive / restore / permanently delete
 ```
 
-Live database backup never uses raw `File.Copy`; use SQLite's online backup API and verify the result. WAL/SHM recovery files are never manually deleted.
+One Hero is globally active for **new** Quests. Existing Quests never change owner when the active Hero changes.
 
 ## Privacy
 
-Hero Passport does not intentionally request/persist:
+Hero Passport intentionally does not request or persist routine:
 
 ```text
 source/file contents
 diffs/patches
-raw build/test/terminal logs
-full prompts/chat history
-API keys/secrets/tokens
-environment dumps
+raw terminal/build/test logs
+full prompts/chat transcripts
+secrets/tokens/environment dumps
 full workspace paths
 Git remote URLs
-arbitrary metadata/context bags
+continuous activity/heartbeat telemetry
 ```
 
-## Deployment boundary
+This is a companion, not a work-surveillance product.
 
-```text
-0.1.0  local stdio MCP + CLI
-0.1.1  broader host qualification/distribution polish
-0.2.0  local Blazor dashboard
-later   own Streamable HTTP only after a concrete requirement
-```
+## Local-first
 
-Private OpenAI surfaces can use OpenAI Secure MCP Tunnel to the local server; public/multi-tenant HTTP remains a separate authorization/storage architecture.
+0.1 requires no account/cloud backend and uses same-host SQLite. The data model uses UUIDv7 and immutable completion facts so optional future sync can be designed later; sync itself is not part of MVP.
 
 ## Documentation
 
-Start with [`docs/README.md`](docs/README.md).
+Start at [`docs/README.md`](docs/README.md).
 
-The three high-risk deep dives are:
-
-- [`docs/PROJECT-IDENTITY.md`](docs/PROJECT-IDENTITY.md)
-- [`docs/PERSISTENCE-RELIABILITY.md`](docs/PERSISTENCE-RELIABILITY.md)
-- [`docs/WIRE-CONTRACT.md`](docs/WIRE-CONTRACT.md)
-
-Other normative files:
+Primary contracts:
 
 - [`docs/PRODUCT-SPEC.md`](docs/PRODUCT-SPEC.md)
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- [`docs/API-CONTRACTS.md`](docs/API-CONTRACTS.md)
-- [`docs/MCP-CONTRACT.md`](docs/MCP-CONTRACT.md)
+- [`docs/WIRE-CONTRACT.md`](docs/WIRE-CONTRACT.md)
 - [`docs/ENGINE-SPEC.md`](docs/ENGINE-SPEC.md)
-- [`docs/DATA-MODEL.md`](docs/DATA-MODEL.md)
-- [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
-- [`docs/SECURITY-PRIVACY.md`](docs/SECURITY-PRIVACY.md)
+- [`docs/AGENT-SKILL.md`](docs/AGENT-SKILL.md)
+- [`docs/PERSISTENCE-RELIABILITY.md`](docs/PERSISTENCE-RELIABILITY.md)
+- [`docs/PROJECT-IDENTITY.md`](docs/PROJECT-IDENTITY.md)
 - [`docs/TESTING-QUALITY.md`](docs/TESTING-QUALITY.md)
-- [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md)
-- [`docs/DEPLOYMENT-MODES.md`](docs/DEPLOYMENT-MODES.md)
-- [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md)
-- [`docs/DECISION-LOG.md`](docs/DECISION-LOG.md)
-- [`docs/REFERENCES.md`](docs/REFERENCES.md)
-- [`docs/integrations/README.md`](docs/integrations/README.md)
-- [`docs/superpowers/plans/2026-08-10-hero-passport-implementation.md`](docs/superpowers/plans/2026-08-10-hero-passport-implementation.md)
+- [`docs/ECOSYSTEM-BENCHMARK.md`](docs/ECOSYSTEM-BENCHMARK.md)
 
-## Current status
+Implementation plan:
 
-Architecture/specification phase. No product implementation is intentionally mixed into this documentation PR, so no product build/test claim is made yet.
+- `docs/superpowers/plans/2026-08-11-hero-passport-v3.2-implementation.md`
 
-## License
-
-Apache License 2.0. See `LICENSE`.
+This architecture PR is documentation-only; it does **not** claim product build/test success before implementation exists.

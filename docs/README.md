@@ -1,135 +1,110 @@
 # Hero Passport Documentation
 
-**Normative snapshot:** 11 August 2026  
-**Architecture:** v3.1 — portable local MCP core after project-identity, persistence-reliability and wire-contract deep dives
+**Current architecture:** v3.2  
+**Snapshot:** 2026-08-11
 
-This directory is the source of truth for product and implementation decisions.
+## Start here
+
+```text
+PRODUCT-SPEC.md     what the product is and how it behaves
+ARCHITECTURE.md     system boundaries and runtime design
+AGENT-SKILL.md      ambient agent lifecycle policy
+```
+
+For implementation, also read the subsystem’s normative deep dive.
 
 ## Normative precedence
 
-When documents disagree, use this precedence and fix the disagreement in the same change:
+When documents overlap, use this order for the relevant topic:
 
-```text
-1. PRODUCT-SPEC.md
-   product scope and user-visible guarantees
+1. `superpowers/specs/2026-08-11-hero-passport-v3.2-design.md` — consolidated accepted v3.2 product semantics;
+2. `WIRE-CONTRACT.md` — exact HP-MCP/2 fields, schemas, tool order, annotations, results/errors;
+3. `PERSISTENCE-RELIABILITY.md` — SQLite transactions, concurrency, crash recovery, backup;
+4. `PROJECT-IDENTITY.md` — Git/filesystem project identity;
+5. `ENGINE-SPEC.md` — exact deterministic game rules and versioned thresholds;
+6. `AGENT-SKILL.md` — official Skill trigger/lifecycle/report/presentation behavior;
+7. subsystem overview docs below;
+8. roadmap/integration/reference material.
 
-2. ARCHITECTURE.md
-   system/layer/runtime boundaries
+Older v3/v3.1 material is historical only where explicitly marked superseded. It must never override v3.2.
 
-3. Deep-dive contracts
-   PROJECT-IDENTITY.md
-   PERSISTENCE-RELIABILITY.md
-   WIRE-CONTRACT.md
-
-4. API-CONTRACTS.md / MCP-CONTRACT.md
-   semantic API and compact MCP overview
-
-5. ENGINE-SPEC.md / DATA-MODEL.md / CONFIGURATION.md / SECURITY-PRIVACY.md
-   game and infrastructure details
-
-6. DECISION-LOG.md
-   rationale and superseded decisions
-
-7. ROADMAP.md / superpowers implementation plan
-   ordering only; never permission to contradict a normative spec
-```
-
-The three deep-dive files intentionally have higher precedence than older compact clauses because they were produced specifically to resolve ambiguities found in architecture v3.
-
-## Core design
+## Product / architecture
 
 - [`PRODUCT-SPEC.md`](PRODUCT-SPEC.md)
 - [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- [`PROJECT-IDENTITY.md`](PROJECT-IDENTITY.md)
-- [`PERSISTENCE-RELIABILITY.md`](PERSISTENCE-RELIABILITY.md)
-- [`WIRE-CONTRACT.md`](WIRE-CONTRACT.md)
 - [`API-CONTRACTS.md`](API-CONTRACTS.md)
-- [`MCP-CONTRACT.md`](MCP-CONTRACT.md)
-- [`INTEROPERABILITY.md`](INTEROPERABILITY.md)
-- [`ENGINE-SPEC.md`](ENGINE-SPEC.md)
 - [`DATA-MODEL.md`](DATA-MODEL.md)
 - [`CONFIGURATION.md`](CONFIGURATION.md)
 - [`SECURITY-PRIVACY.md`](SECURITY-PRIVACY.md)
-- [`TESTING-QUALITY.md`](TESTING-QUALITY.md)
 
-## Deployment and distribution
+## Agent / protocol
 
+- [`AGENT-SKILL.md`](AGENT-SKILL.md)
+- [`MCP-CONTRACT.md`](MCP-CONTRACT.md)
+- [`WIRE-CONTRACT.md`](WIRE-CONTRACT.md)
+- [`INTEROPERABILITY.md`](INTEROPERABILITY.md)
+- [`integrations/README.md`](integrations/README.md)
+
+## Deterministic engine
+
+- [`ENGINE-SPEC.md`](ENGINE-SPEC.md)
+
+Key v3.2 terms:
+
+```text
+Risk                    -> retired; use Strain
+QuestDedupKeyV1         -> retired; use explicit mutation request IDs
+max 16 open Quests      -> retired; one open Quest per Hero+Project
+4-tool-only MCP surface -> retired; v3.2 has 11 explicit tools
+```
+
+## Persistence / platform
+
+- [`PROJECT-IDENTITY.md`](PROJECT-IDENTITY.md)
+- [`PERSISTENCE-RELIABILITY.md`](PERSISTENCE-RELIABILITY.md)
+- [`DEPENDENCIES.md`](DEPENDENCIES.md)
 - [`DEPLOYMENT-MODES.md`](DEPLOYMENT-MODES.md)
 - [`DISTRIBUTION.md`](DISTRIBUTION.md)
-- [`DEPENDENCIES.md`](DEPENDENCIES.md)
 
-## Research and decisions
+## Quality / decisions / research
 
-- [`ECOSYSTEM-BENCHMARK.md`](ECOSYSTEM-BENCHMARK.md)
+- [`TESTING-QUALITY.md`](TESTING-QUALITY.md)
 - [`DECISION-LOG.md`](DECISION-LOG.md)
+- [`ECOSYSTEM-BENCHMARK.md`](ECOSYSTEM-BENCHMARK.md)
 - [`REFERENCES.md`](REFERENCES.md)
 - [`ROADMAP.md`](ROADMAP.md)
 
-## Host integrations
+## Accepted design and plan
 
-Start with [`integrations/README.md`](integrations/README.md). Host pages describe launch/configuration and qualification status; they never define alternate Hero Passport product semantics.
+Current:
 
-```text
-integrations/
-  README.md
-  CODEX.md
-  CHATGPT.md
-  VSCODE.md
-  JETBRAINS.md
-  ZED.md
-  CURSOR.md
-  CLAUDE-CODE.md
-```
+- `superpowers/specs/2026-08-11-hero-passport-v3.2-design.md`
+- `superpowers/plans/2026-08-11-hero-passport-v3.2-implementation.md`
 
-## Agentic implementation artifacts
+The 2026-08-10 v3.1 design/plan are retained only as superseded pointers for history.
 
-- [`superpowers/specs/2026-08-10-hero-passport-design.md`](superpowers/specs/2026-08-10-hero-passport-design.md)
-- [`superpowers/plans/2026-08-10-hero-passport-implementation.md`](superpowers/plans/2026-08-10-hero-passport-implementation.md)
+## Documentation maintenance rule
 
-The implementation plan is synchronized to v3.1. If a task conflicts with a normative contract above, the task is wrong.
+When an architectural decision changes:
 
-## Key v3.1 corrections
+1. update the authoritative deep dive;
+2. update consolidated spec/decision log;
+3. update overview docs that repeat the contract;
+4. update implementation plan/tests;
+5. run stale-contract search;
+6. never leave contradictory active guidance because “the deep dive is newer”.
+
+Important stale-search terms after v3.2:
 
 ```text
-Project identity
-  Git worktree identity uses git-common-dir, not per-worktree git-dir
-  monorepo is one project by default; explicit --project-root creates a scope
-  submodule is a separate project by default
-  Git safety failures never silently fall back to standalone identity
-
-Quest retry identity
-  LogicalQuestKeyV1 retired before release
-  QuestDedupKeyV1 hashes exact SafeTextV1 declaration with CASE PRESERVED
-  this is retry/dedup identity, not semantic task understanding
-
-SQLite
-  all read-modify-write operations begin non-deferred Serializable writer transaction
-  selected Microsoft.Data.Sqlite 10.0.10 behavior = BEGIN IMMEDIATE
-  count=15 concurrent start race must finish at exactly 16
-  runtime SQLite must qualify >=3.51.3 for supported WAL path
-  never File.Copy a live DB; online backup uses SQLite BackupDatabase
-
-HP-MCP/2 wire
-  start_quest idempotentHint=false; it is only open-request retry-safe
-  success structuredContent + equivalent minified JSON TextContent
-  tool errors: isError=true + safe TextContent, no structuredContent
-  C# SDK generated schemas do not replace explicit runtime validation
-  SafeTextV1 uses Unicode-scalar-aware bounds
-  canonical UUIDv7 and fixed millisecond UTC timestamps
+QuestDedupKeyV1
+16 open quests
+Trust/Risk
+risk_before / risk_after
+start idempotent=false
+exactly four tools
+ModelContextProtocol 2.0.0
+SQLite >=3.51.3
 ```
 
-## Version axes
-
-```text
-MCP revision          negotiated protocol revision
-HP-MCP/2              Hero Passport four-tool contract epoch
-product version       e.g. 0.1.0
-configVersion         local config schema
-EF migration          database schema version
-reward rule           deterministic RPG calculation version
-QuestDedupKey V1      open-start retry/dedup algorithm
-project-identity/1    local project fingerprint algorithm
-SafeTextV1            model-text validation/normalization policy
-```
-
-Do not collapse these into a generic per-call `schemaVersion`.
+Occurrences are acceptable only inside explicit historical/supersession notes.

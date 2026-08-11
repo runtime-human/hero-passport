@@ -1,309 +1,125 @@
-# Hero Passport — Configuration and Binding
+# Hero Passport — Configuration and Onboarding
 
-**Status:** Accepted v3.1  
+**Status:** Accepted v3.2  
 **Snapshot:** 2026-08-11
 
-Exact project resolution/fingerprinting is normative in [`PROJECT-IDENTITY.md`](PROJECT-IDENTITY.md). This file owns configuration shape and launch precedence only.
+## 1. Principle
 
----
+Configuration is small, typed and user-owned. Game state is not configuration.
 
-## 1. Configuration philosophy
+Do not allow config/API fields for XP, levels, ranks, Skills, Trust, Strain, streak, Traits, Titles or historical Quest outcomes.
 
-Hero Passport owns Hero Passport configuration. MCP hosts own their registration/configuration files.
+## 2. First-run state
 
-```text
-Hero Passport config != Codex/VS Code/Cursor/Claude/JetBrains/Zed config
-```
+Persist `setup_completed=false` until the first setup transaction succeeds.
 
-Hero Passport does not mutate third-party configuration by default.
+Short onboarding:
 
----
+1. locale (`ru-RU` / `en-US`);
+2. initial Hero name;
+3. presentation style;
+4. auto-start Quest preference;
+5. auto-finish Quest preference + confirmation.
 
-## 2. Config v1
-
-```json
-{
-  "configVersion": 1,
-  "locale": "ru",
-  "presentation": "compact",
-  "diagnostics": {
-    "fileLogging": false
-  }
-}
-```
-
-Allowed:
+Defaults:
 
 ```text
-locale: ru | en
-presentation: compact | normal
-diagnostics.fileLogging: boolean
+presentationStyle = rpg_engineering
+autoStartQuest    = true
+autoFinishQuest   = true
 ```
 
-Unknown fields/current-version values are rejected.
+Locale is inferred by the host/agent when reasonable but explicitly confirmed as part of onboarding. User override always wins.
 
-Config v1 does not store:
+## 3. CLI
+
+Canonical first-run command:
 
 ```text
-API/model/Codex tokens
-workspace path
-project fingerprint salt
-MCP host definitions
-plugins
-active quest IDs
-raw environment dumps
+hero-passport init
 ```
 
-`project_identity_salt_v1` is durable product/database state, not user config.
+Interactive CLI may ask step-by-step questions on the terminal.
 
-Active/default hero is product state.
+Script/non-interactive paths must have explicit flags/JSON input rather than hanging for prompts.
 
----
+## 4. MCP first run
 
-## 3. Precedence
+stdio transport must remain protocol-pure.
 
-Where an option supports all levels:
+Before setup:
 
 ```text
-explicit CLI/startup option
-> documented HERO_PASSPORT_* env override
-> config.json
-> built-in default
+hero.configure -> allowed
+other HP-MCP game/hero tools -> HP001 setup_required
 ```
 
-Do not invent environment variables for internal constants.
+The Agent Skill handles conversational setup and sends the completed setting set through `hero.configure`.
 
----
+## 5. Mutable settings
 
-## 4. Data/config/state roots
-
-### Windows
+Post-setup `hero.configure` can change only:
 
 ```text
-%LOCALAPPDATA%\HeroPassport\
-  data\hero-passport.db
-  config\config.json
-  state\logs\
+locale
+presentationStyle
+autoStartQuest
+autoFinishQuest
 ```
 
-Do not use roaming `%APPDATA%` for the DB.
+Initial Hero name is onboarding-only through this tool; Hero lifecycle is managed through Hero operations, not generic config.
 
-### macOS
+## 6. Locale semantics
+
+Global locale affects general UI and new Quest presentation.
+
+A Quest snapshots effective locale at start. Historical game facts remain semantic keys/numbers and are not rewritten when locale changes.
+
+0.1 resources must be complete for:
 
 ```text
-~/Library/Application Support/HeroPassport/
-  data/hero-passport.db
-  config/config.json
-  state/logs/
+ru-RU
+en-US
 ```
 
-### Linux
+Missing keys fail tests/CI.
+
+## 7. Presentation style
+
+MVP enum:
 
 ```text
-$XDG_DATA_HOME/hero-passport/hero-passport.db
-$XDG_CONFIG_HOME/hero-passport/config.json
-$XDG_STATE_HOME/hero-passport/logs/
+rpg_engineering  default; concise RPG + developer vocabulary
+classic_rpg      less engineering humor
+minimal          numbers/status with minimal flavor
 ```
 
-Fallbacks:
+Style changes formatting/flavor only, never game calculations.
+
+## 8. Environment/config locations
+
+App data uses OS-standard locations documented in `DISTRIBUTION.md`.
+
+Development/test isolation override:
 
 ```text
-~/.local/share/hero-passport
-~/.config/hero-passport
-~/.local/state/hero-passport
+HERO_PASSPORT_HOME
 ```
 
----
+Do not create a broad environment-variable configuration surface for game rules.
 
-## 5. `HERO_PASSPORT_HOME`
+## 9. Project root override
 
-Overrides all roots for dev/test isolation:
+CLI/integration may supply explicit `--project-root`; otherwise current working directory is resolved by `project-identity/1`.
 
-```text
-$HERO_PASSPORT_HOME/
-  data/
-  config/
-  state/
-```
+This is process/invocation configuration, not stored user profile data.
 
-Tests use a unique temp root and never touch user state.
+## 10. Validation
 
-The override path does not appear in MCP snapshots/output.
+All configuration is validated at a single boundary and exposed internally as typed options/value objects.
 
----
+Unknown keys, malformed locales, unknown presentation styles and invalid Hero names fail deterministically with safe errors.
 
-## 6. Writable database location
+## 11. No hidden tuning
 
-The supported 0.1 writable SQLite/WAL profile is local filesystem on the same host.
-
-Known network filesystems/shares are rejected where reliably detectable:
-
-```text
-HP211 unsupported_storage_location
-```
-
-Do not use a cloud-sync/network-share folder as a multi-machine SQLite sharing mechanism.
-
-Exact policy: `PERSISTENCE-RELIABILITY.md`.
-
----
-
-## 7. Project startup binding
-
-Supported stdio command:
-
-```text
-hero-passport mcp [--project-root <directory>] [--hero <selector>]
-```
-
-Binding start:
-
-```text
-explicit --project-root
-else process cwd
-```
-
-Infrastructure then runs `project-identity/1` from `PROJECT-IDENTITY.md`.
-
-Important consequences:
-
-```text
-normal Git nested cwd -> whole repo
-linked worktree -> shared Git common-dir identity
-explicit in-repo --project-root -> deliberate repo-relative scope
-submodule/nested repo -> separate by default
-non-Git -> standalone local directory identity
-```
-
-Do not simplify this to “hash Git top-level path”; worktree/scoped semantics are part of the contract.
-
----
-
-## 8. Git binding errors
-
-```text
-HP310 invalid_project_binding
-HP311 git_repository_unavailable
-HP312 git_required_for_repository_binding
-HP313 bare_repository_unsupported
-```
-
-A Git safety/ownership failure does not fall back to a standalone project and Hero Passport never modifies `safe.directory`.
-
-Git location environment overrides are sanitized by the resolver according to `PROJECT-IDENTITY.md` so inherited variables do not silently redirect the requested binding.
-
----
-
-## 9. Why `--project-root` exists
-
-MCP host config is not standardized.
-
-Hosts may expose cwd/project settings differently. `--project-root` is the portable explicit fallback.
-
-Absolute path remains process-local binding input and is never sent as routine HP-MCP data or persisted as project identity.
-
----
-
-## 10. No MCP Roots dependency
-
-0.1 project identity does not depend on MCP Roots.
-
-A single global server cannot infer a different local project from each tool call unless the host provides a trusted binding channel; Hero Passport will not guess from goal text, editor file or client name.
-
-Supported stdio profile is project-bound launch.
-
----
-
-## 11. Hero binding
-
-Default: active/default local hero.
-
-Optional:
-
-```text
---hero <name-or-id>
-```
-
-Unknown/ambiguous selector fails before tool execution.
-
-Client/host name does not implicitly choose hero.
-
----
-
-## 12. Invocation metadata
-
-MCP client metadata may enter bounded in-memory diagnostics as `InvocationOrigin`.
-
-Default:
-
-```text
-not persisted raw
-not hero/project selection
-not auth
-not reward input
-```
-
----
-
-## 13. `doctor`
-
-Normal checks:
-
-```text
-Hero Passport/.NET/OS/arch
-resolved data/config/state roots
-configVersion/unknown properties
-hero binding
-project binding diagnostics when applicable
-DB readability/writability
-known local-storage support
-actual sqlite_version() and >=3.51.3 qualification
-journal_mode=WAL
-synchronous=FULL
-foreign_keys=ON
-EF migrations / suspicious migration-lock state
-PRAGMA quick_check
-PRAGMA foreign_key_check
-canonical seeds
-exact MCP four-tool manifest
-ProtocolVersion policy
-```
-
-Normal doctor is non-destructive. It does not delete WAL/SHM, modify Git safe.directory, drop migration locks, rewrite DB or change host config.
-
-Explicit verbose local diagnostics may show local paths to the user terminal; path data is never copied into MCP responses by default.
-
----
-
-## 14. Host integration descriptors
-
-A future polish command may print, but not auto-apply, host-specific snippets:
-
-```text
-hero-passport integration show codex
-hero-passport integration show vscode
-...
-```
-
-Host configuration remains external and versioned by each host.
-
----
-
-## 15. Future HTTP config
-
-No HTTP settings in config v1.
-
-Future project-scoped HTTP and future public/multi-tenant HTTP are separate deployment profiles with different auth/project binding/trust models; do not add a generic `http=true` switch.
-
----
-
-## 16. Config evolution
-
-```text
-unknown future configVersion -> fail clearly
-unknown property in current version -> reject
-migration deterministic
-never discard unknown security-relevant settings silently
-```
-
-Config version remains independent of HP-MCP, EF migrations, SafeText/Dedup/ProjectIdentity and RPG rule versions.
+XP/rule thresholds are versioned game content in Domain, not user configuration in 0.1. This avoids different agents silently changing the economy.

@@ -1,94 +1,79 @@
-# Hero Passport — MCP Host Integrations
+# Hero Passport — Host Integrations
 
-**Documentation snapshot:** 2026-08-11
+**Architecture:** v3.2  
+**Snapshot:** 2026-08-11
 
-Host integrations are configuration/qualification layers over the same `hero-passport mcp` runtime and HP-MCP/2 contract. They do not define alternate product semantics.
-
-## Support tiers
-
-### Qualified
-
-A specific Hero Passport release has passed the host smoke/E2E checklist with recorded version/environment evidence.
-
-### Documented / protocol-compatible
-
-Current official host documentation describes a compatible stdio/HTTP mechanism and Hero Passport provides a correct configuration pattern, but that host is not yet a release-blocking tested target.
-
-### Unsupported/unknown
-
-Known missing required behavior or no current evidence.
-
-## Initial target matrix
-
-| Host | Local stdio | URL MCP | Project binding option | Initial 0.1 status |
-|---|---:|---:|---|---|
-| Codex CLI / local Codex host | Yes | Streamable HTTP | `cwd`, project config, `--project-root` | **Qualified target** |
-| VS Code | Yes | HTTP | workspace `cwd` / `${workspaceFolder}` | Documented; RC smoke |
-| JetBrains AI Assistant | Yes | Streamable HTTP | Working directory + project level | Documented; RC smoke |
-| Zed Agent | Yes | remote URL | args/env; use `--project-root` when needed | Documented; RC smoke |
-| Cursor | Yes | Streamable HTTP | host config/project practice; `--project-root` fallback | Documented; RC smoke |
-| Claude Code | Yes | HTTP | project/local config; `--project-root` fallback | Documented; RC smoke |
-| ChatGPT web | not local-config stdio | hosted/plugin/tunnel paths | deployment-specific | Separate profile |
-
-Do not turn this table into a claim that untested hosts are Qualified.
-
-## Portable local command
+Host integrations configure two portable pieces:
 
 ```text
-hero-passport mcp [--project-root <path>] [--hero <selector>]
+Hero Passport local stdio MCP Core
+Hero Passport Agent Skill / equivalent host instructions
 ```
 
-If the host has a project-scoped working-directory field, prefer it. If it does not, pass `--project-root` in args.
+They never define alternate game semantics.
 
-Workspace paths remain host/local launch configuration and never enter Hero Passport MCP tool arguments.
-
-## Required host behavior
-
-For 0.1 core functionality a host needs only:
+## Support labels
 
 ```text
-MCP Tools
-local stdio process launch
+Qualified              current release passed recorded E2E/smoke on that host/version
+Documented compatible  official host capabilities appear compatible; limited current smoke evidence
+Unknown/unsupported    no current evidence or required behavior unavailable
+```
+
+Codex is the first release-blocking Qualified target. Other labels are earned by `TESTING-QUALITY.md`, not by this documentation table.
+
+## Required 0.1 host behavior
+
+Minimum Core integration:
+
+```text
+launch/connect to local MCP stdio process
+Tools support
 usable structured/text tool results
+correct project cwd or ability to pass --project-root
 ```
 
-Server instructions improve behavior but are not a correctness/security boundary. Hero Passport does not require Resources, Prompts, Roots, Tasks or Apps.
+Desired ambient UX additionally needs native Agent Skills support or an equivalent persistent instruction mechanism capable of applying `docs/AGENT-SKILL.md` semantics.
 
-## Qualification checklist
-
-Record per host/release:
+## Portable command
 
 ```text
-host name/version
-OS
-Hero Passport version
-transport
-configuration scope
-project binding method
-tools/list exact 4 names
-start quest
-list active quests
-finish quest
-get card
-server restart/recovery
-parallel distinct tasks when practical
-no stdout/config errors
-known limitations
-verified timestamp
+hero-passport mcp [--project-root <path>]
 ```
 
-## Pages
+There is no normal `--hero` binding in v3.2: the globally active Hero is persisted application state, and an existing Quest keeps its original Hero owner.
 
-- [`CODEX.md`](CODEX.md)
+## What qualification must prove
+
+Record host + version + OS + date, then test:
+
+```text
+11 exact HP-MCP/2 tools discovered
+fresh first-run setup
+Skill/equivalent starts meaningful work without user ritual
+short factual question does not start
+Quest result finishes automatically when truly complete
+restart/recovery uses same questId
+active Hero behavior correct
+structured result rendered usefully
+host confirmation behavior documented
+permanent delete remains explicit/destructive
+stdout/config errors absent
+known limitations recorded
+```
+
+## Current pages
+
+- [`CODEX.md`](CODEX.md) — first Qualified target
+- [`CLAUDE-CODE.md`](CLAUDE-CODE.md)
 - [`VSCODE.md`](VSCODE.md)
 - [`JETBRAINS.md`](JETBRAINS.md)
 - [`ZED.md`](ZED.md)
 - [`CURSOR.md`](CURSOR.md)
-- [`CLAUDE-CODE.md`](CLAUDE-CODE.md)
 - [`CHATGPT.md`](CHATGPT.md)
 
 ## Configuration ownership
 
-Hero Passport does not silently edit host configuration. Documentation/optional future `integration show` output is preferred to automatic mutation because host formats/scopes change independently.
+Hero Passport does not silently edit third-party host configuration. Prefer the host’s current native MCP/Skill installation mechanism and verify it against that host’s latest official documentation at release time.
 
-When a host offers its own `mcp add` command or settings UI, use that native mechanism first.
+Host configuration syntax/paths are compatibility data and may change independently of HP-MCP/2. Product invariants stay in Hero Passport docs/tests.

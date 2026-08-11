@@ -1,413 +1,203 @@
-# Hero Passport — Architecture Decision Log
+# Hero Passport — Decision Log
 
-**Snapshot:** 2026-08-11  
-**Current architecture:** v3.1
+**Current baseline:** v3.2  
+**Snapshot:** 2026-08-11
 
-A superseded decision stays historically visible but is not normative. Detailed algorithms live in the corresponding deep-dive specification.
+This log records architectural decisions. Detailed contracts live in focused specs; this file captures intent and supersession.
 
----
+## Earlier retained decisions
 
-## ADR-001 — C# 14 / .NET 10
+v3/v3.1 decisions retained unless explicitly superseded below:
 
-**Status:** Accepted.  
-Use C# 14 / .NET 10 for Domain, Application, Infrastructure, CLI/MCP and later Blazor.
+- C# 14 / .NET 10 LTS modular monolith;
+- Domain -> Application -> Infrastructure -> App boundaries;
+- same-host SQLite/WAL persistence;
+- EF migrations from day one;
+- Git-aware `project-identity/1` using canonical Git common-dir;
+- local privacy deny-list;
+- deterministic game engine, no LLM judge;
+- stdio as 0.1 MCP transport;
+- explicit MCP tool registration;
+- immutable completed Quest reward history;
+- UUIDv7 public IDs and JSON-safe integer ceiling;
+- no source/diff/raw-log ingestion;
+- Web UI deferred.
 
-## ADR-002 — Modular monolith
+## ADR-046 — One meaningful goal is one Quest
 
-**Status:** Accepted.  
-One local application/state core. No microservices/message bus/runtime module platform without a real distribution requirement.
+**Status:** Accepted v3.2.
 
-## ADR-003 — Layer direction
+A Quest represents one meaningful user goal, not a chat session, MCP connection or agent process lifetime. One conversation may contain zero or multiple Quests.
 
-**Status:** Accepted.
+The official Agent Skill performs conservative automatic start/finish; manual lifecycle controls are overrides/recovery.
 
-```text
-Domain <- Application <- Infrastructure <- App
-Web later -> Application; Infrastructure only at composition
-```
+## ADR-047 — One open Quest per Hero + Project
 
-Transport/UI/persistence types do not leak inward.
+**Status:** Accepted v3.2; supersedes the v3.1 “up to 16 active Quests” policy.
 
-## ADR-004 — No separate Contracts assembly initially
+Exactly one open Quest is permitted for a `(HeroId, ProjectId)` pair. A partial unique SQLite index is the durable backstop.
 
-**Status:** Accepted.  
-Transport-neutral contracts live in Application. Extract a separately versioned Client/Contracts package only for a real independent .NET consumer.
+Reason: ambient recovery and multi-agent handoff are clearer when a project has one current meaningful goal for a Hero.
 
-## ADR-005 — Official MCP C# SDK
+## ADR-048 — Caller request identity replaces goal-derived dedup
 
-**Status:** Accepted.  
-Use stable official `ModelContextProtocol 2.0.0`; do not hand-roll MCP/JSON-RPC.
+**Status:** Accepted v3.2; supersedes `QuestDedupKeyV1`.
 
-## ADR-006 — Four-tool MCP surface
+`startRequestId` identifies one caller start intent/retry sequence; server `questId` identifies the durable Quest.
 
-**Status:** Accepted, revised by ADR-023.  
-Tool count remains four in 0.1.
+Same request ID + changed canonical arguments fails `HP135 idempotency_conflict`.
 
-## ADR-007 — Explicit MCP registration
+Reason: identical natural-language arguments can represent a legitimate new future Quest; retry identity and work identity are different concepts.
 
-**Status:** Accepted.  
-No assembly-wide discovery. Exact tool inventory is code-reviewable and snapshot-tested.
+## ADR-049 — Mutation receipts
 
-## ADR-008 — MCP is not a CLI mirror
+**Status:** Accepted v3.2.
 
-**Status:** Accepted.  
-Administration/diagnostics/export/rich history remain CLI/Web unless a model-facing need is independently justified.
+Create Hero, Start Quest and permanent Delete Hero use caller-generated UUIDv7 request IDs. The mutation receipt stores operation, request ID, canonical argument hash, resulting/target entity ID and timestamp atomically with the mutation.
 
-## ADR-009 — Deterministic RPG engine
+No prompt/source/history payload is stored in a receipt.
 
-**Status:** Accepted.  
-Integer/versioned rules/goldens; no LLM judge in MVP.
+## ADR-050 — Agent Skill is a first-class MVP component
 
-## ADR-010 — Presentation outside Domain/Application
+**Status:** Accepted v3.2.
 
-**Status:** Accepted.  
-App presentation owns RU/EN text. Typed values are authoritative.
+MCP exposes safe semantic operations; the official portable Agent Skill owns lifecycle recognition, recovery guidance, bounded fact reporting and presentation.
 
-## ADR-011 — SQLite + EF Core migrations
+Core invariants/game calculations never rely on Skill correctness.
 
-**Status:** Accepted.  
-Real SQLite, EF migrations from day one, no product `EnsureCreated`.
+The Skill follows the open Agent Skills `SKILL.md` format and progressive disclosure.
 
-## ADR-012 — Direct native SQLite bundle pin
+## ADR-051 — Multiple Heroes with one global active default
 
-**Status:** Accepted, strengthened by ADR-039.  
-Pin `SQLitePCLRaw.bundle_e_sqlite3`; always verify actual loaded `sqlite_version()`.
+**Status:** Accepted v3.2.
 
-## ADR-013 — Short synchronous SQLite segments
+Multiple local Heroes can be created, activated, archived/restored and permanently deleted. One globally active Hero owns new Quests by default.
 
-**Status:** Accepted.  
-Microsoft.Data.Sqlite has no true SQLite async I/O; no `Task.Run` fake async.
+A Quest’s HeroId is immutable after start. Switching active Hero never transfers existing Quest XP/history.
 
-## ADR-014 — `IDbContextFactory`
+## ADR-052 — Archive is normal removal; permanent delete is explicit
 
-**Status:** Accepted.  
-Short-lived context per unit of work.
+**Status:** Accepted v3.2.
 
-## ADR-015 — WAL + FULL durability
+Archive is reversible. Permanent delete is destructive, requires exact name confirmation + request identity, and rejects globally active/open-Quest Heroes.
 
-**Status:** Accepted.  
-Low write volume justifies stronger progression durability. Effective PRAGMAs are verified.
+Normal rule-version upgrades never delete historical events; explicit user deletion is the privacy/lifecycle exception.
 
-## ADR-016 — EF migration locking only
+## ADR-053 — Trust + Strain supersede Trust + Risk
 
-**Status:** Accepted.  
-Use provider migration locking; no parallel custom migration mutex.
+**Status:** Accepted v3.2.
 
-## ADR-017 — Platform-correct local data paths
+`Risk` is retired. `Trust` models demonstrated reliability; `Strain` models accumulated technical friction/turbulence.
 
-**Status:** Accepted.  
-Windows LocalApplicationData, macOS Application Support, Linux XDG; `HERO_PASSPORT_HOME` for isolated dev/tests.
+Both are deterministic `0..100`, Quest-driven only, do not regenerate by time, do not directly alter XP and do not gate product functionality in 0.1.
 
-## ADR-018 — Dependency minimalism
+## ADR-054 — Bounded fact provenance, no surveillance verifier
 
-**Status:** Accepted.  
-No baseline MediatR/AutoMapper/Dapper/Polly/Serilog/Spectre/OTel exporters/plugin/CQRS frameworks without measured need.
+**Status:** Accepted v3.2.
 
-## ADR-019 — Codex reference qualification host
+Build/test facts carry `observed | reported | none`. Only direct observed passed tests get the testing XP bonus.
 
-**Status:** Accepted, reframed by ADR-022.  
-Codex is first automated host E2E, not the source of product semantics.
+Hero Passport does not ingest source/diffs/raw logs to independently audit the agent.
 
-## ADR-020 — Agent evaluations
+## ADR-055 — Reward engine v2
 
-**Status:** Accepted.  
-Deterministic tests do not prove LLM tool-selection behavior; maintain host-neutral eval scenarios.
+**Status:** Accepted v3.2.
 
-## ADR-021 — Singular current quest / one-open-per-project
-
-**Status:** Superseded by ADR-023.  
-This architecture-v2 constraint caused artificial parallel-agent conflicts.
-
-## ADR-022 — Universal semantics, host-specific binding/config
-
-**Status:** Accepted v3.  
-Standardize Domain/Application/HP-MCP semantics. Do not invent one universal third-party config file or host-specific runtime business adapters.
-
-## ADR-023 — HP-MCP/2 multiple active quests
-
-**Status:** Accepted v3, dedup wording refined by ADR-037.  
-0.1 tools:
+XP is transparent: quest-type base + small fixed bonuses/penalties, then fixed outcome multiplier.
 
 ```text
-hero.start_quest
-hero.finish_quest
-hero.list_active_quests
-hero.get_card
+success 1.00
+partial 0.60
+blocked 0.30
+failed 0.10
+abandoned 0.00
 ```
 
-Multiple distinct active quests per hero/project, bounded at 16. Singular `current_quest` is removed before public release.
+Clean successful coding remains 95 XP. Time/tokens/lines/diff size/agent complexity are excluded.
 
-## ADR-024 — Unpinned MCP protocol negotiation
+## ADR-056 — Soft versioned progression tables
 
-**Status:** Accepted v3.  
-Design against `2026-07-28`; leave ordinary `McpServerOptions.ProtocolVersion` null/unset. Qualification includes 2026-07-28 and 2025-11-25 paths.
+**Status:** Accepted v3.2.
 
-## ADR-025 — Session-independent Application state
+Hero Level and Skill Level use static versioned threshold tables. Rank is a cosmetic milestone derived from Hero Level.
 
-**Status:** Accepted v3.  
-SQLite + explicit `questId`, never MCP connection/session identity. Future HTTP configures stateless transport deliberately.
+Traits/Titles/Streak are cosmetic and never create XP multipliers or feature locks in 0.1.
 
-## ADR-026 — Project-bound launch, no MCP Roots dependency
+## ADR-057 — RU/EN localization and first-run onboarding in MVP
 
-**Status:** Accepted v3, replaced in detail by ADR-036.  
-Project is local launch/application state; never routine `workspacePath` MCP input.
+**Status:** Accepted v3.2.
 
-## ADR-027 — `HeroOperationContext`
+MVP supports `ru-RU` and `en-US`. Domain/Application use semantic keys; App/Skill render localized text.
 
-**Status:** Accepted v3.  
-Application receives HeroId + ProjectId + diagnostic InvocationOrigin. Client metadata is not auth/hero/reward identity.
+First-run setup is a short five-step wizard. stdio MCP never prints interactive prompts into protocol stdout; the Skill can onboard conversationally via `hero.configure`.
 
-## ADR-028 — No second public API for hypothetical integrations
+## ADR-058 — HP-MCP/2 expands to explicit Hero/config operations
 
-**Status:** Accepted v3.
+**Status:** Accepted v3.2; supersedes the v3.1 four-tool-only decision.
+
+v3.2 statically registers eleven narrow tools: configure, six Hero-management tools, start/finish/list-active/card.
+
+Reason: multiple Heroes and conversational onboarding are real product requirements; narrow explicit operations are safer than a generic `hero.manage` bag.
+
+## ADR-059 — MCP C# SDK 2.1.0 and sessionless design
+
+**Status:** Accepted v3.2.
+
+Baseline updates to official `ModelContextProtocol 2.1.0`. Preferred protocol remains MCP `2026-07-28`, with release qualification against `2025-11-25` compatibility behavior.
+
+Application state uses ordinary explicit IDs/handles and never depends on protocol connection/session lifetime.
+
+## ADR-060 — SQLite runtime floor 3.53.4
+
+**Status:** Accepted v3.2; supersedes the v3.1 `>=3.51.3` minimum.
+
+Selected `SQLitePCLRaw.bundle_e_sqlite3 3.0.5` currently resolves native SQLite >=3.53.4. Doctor/release checks the actual loaded runtime and requires >=3.53.4.
+
+## ADR-061 — Local-first now, sync-ready only
+
+**Status:** Accepted v3.2.
+
+No account/cloud/sync dependency in 0.1. UUIDv7 identities, immutable completion facts, explicit timestamps/versions and archive/delete semantics preserve a future sync design seam.
+
+No CRDT/event-sourcing framework is adopted preemptively.
+
+## ADR-062 — Quest belongs to work, not an agent
+
+**Status:** Accepted v3.2.
+
+No agent ownership, lease, heartbeat, leader election or dispatcher. Multiple agents may continue the same durable Quest handle.
+
+SQLite serializes only Hero Passport’s own state changes; it does not coordinate code editing among agents.
+
+## ADR-063 — Prior-art gate for nontrivial mechanisms
+
+**Status:** Accepted process rule.
+
+For a nontrivial mechanism:
 
 ```text
-AI hosts -> MCP
-shell/scripts -> CLI/--json
-local Web -> Application
+identify prior art
+isolate mechanism + limitation
+compare several strong sources
+verify actual stack behavior against latest official docs/source
+adapt minimally
+encode the claim in tests
 ```
 
-REST/GraphQL/gRPC needs a concrete consumer and separate design.
+NeuroArxiv inspired this research process; it is not a runtime dependency.
 
-## ADR-029 — Conservative MCP schema profile
+## Superseded active v3.1 concepts
 
-**Status:** Accepted v3.  
-Use shallow closed object schemas/enums/bounds instead of advanced JSON Schema features without need.
-
-## ADR-030 — Tool-list cache metadata explicit; TTL policy only
-
-**Status:** Accepted v3.  
-Static local list can use public cache scope. TTL is tuning/freshness policy, not HP-MCP semantic versioning.
-
-## ADR-031 — Streamable HTTP trigger-based
-
-**Status:** Accepted v3.  
-Own HTTP listener / `ModelContextProtocol.AspNetCore` deferred until a concrete URL deployment requirement. No new legacy SSE.
-
-## ADR-032 — Secure MCP Tunnel external private OpenAI path
-
-**Status:** Accepted deployment option.  
-Private OpenAI remote access can forward to local stdio without forcing Hero Passport HTTP into 0.1.
-
-## ADR-033 — MCP Registry distribution metadata only
-
-**Status:** Accepted/deferred publication.  
-No runtime dependency on preview Registry.
-
-## ADR-034 — Host support tiers
-
-**Status:** Accepted v3.
+The following are historical only and must not appear as active requirements:
 
 ```text
-Qualified
-Documented/protocol-compatible
-Unsupported/unknown
+QuestDedupKeyV1 / goal-derived start dedup
+up to 16 open Quests per Hero+Project
+Risk as a Hero stat
+hero.start_quest idempotent=false
+exactly four HP-MCP tools
+ModelContextProtocol 2.0.0 baseline
+SQLite runtime floor 3.51.3
+failed outcome multiplier 0.20
+old large XP penalties
 ```
-
-Config documentation alone is not qualification evidence.
-
-## ADR-035 — Contract snapshots from implementation
-
-**Status:** Accepted v3.  
-Generate tool/schema/result snapshots from actual SDK registration; do not hand-maintain duplicate executable schemas.
-
----
-
-## ADR-036 — `project-identity/1`: Git common-dir + explicit repo scope
-
-**Status:** Accepted v3.1.  
-**Details:** `PROJECT-IDENTITY.md`.
-
-For a Git worktree:
-
-```text
-anchor = canonical absolute git-common-dir
-scope  = . by default
-scope  = explicit repo-relative --project-root subdirectory when deliberately selected
-```
-
-Consequences:
-
-- linked worktrees share project identity;
-- nested cwd does not split a repository;
-- monorepo is one project by default;
-- explicit monorepo subdirectory can be separate;
-- submodule/nested repo is separate by default;
-- no remote URL/branch/HEAD identity.
-
-Reason: `$GIT_COMMON_DIR` is the standard Git metadata shared by linked worktrees; current filesystem cwd is not a stable product boundary.
-
----
-
-## ADR-037 — `QuestDedupKeyV1`, not semantic LogicalQuestKey
-
-**Status:** Accepted v3.1; supersedes the active part of ADR-023 referring to semantic logical-key matching.  
-**Details:** `WIRE-CONTRACT.md`.
-
-Retire before public release:
-
-```text
-LogicalQuestKeyV1
-logical_key
-logical_key_version
-```
-
-Use:
-
-```text
-QuestDedupKeyV1
-dedup_key
-dedup_key_version
-```
-
-Algorithm hashes canonical quest type plus SafeTextV1 normalized goal **with case preserved**.
-
-Reason:
-
-- natural-language hashing does not prove semantic identity;
-- case folding can merge distinct code identifiers;
-- retry deduplication needs conservative equality, not fuzzy semantics;
-- handoff/recovery uses explicit active-quest listing/questId.
-
----
-
-## ADR-038 — All read-modify-write DB use cases acquire writer intent first
-
-**Status:** Accepted v3.1.  
-**Details:** `PERSISTENCE-RELIABILITY.md`.
-
-`StartQuest` and `FinishQuest` begin a non-deferred Serializable transaction before reading mutable invariants.
-
-For selected Microsoft.Data.Sqlite 10.0.10 this is qualified as `BEGIN IMMEDIATE` behavior.
-
-Reason:
-
-- SQLite has one writer;
-- early writer acquisition makes `count -> insert` and `check finished -> mutate` race reasoning simple;
-- count=15 + two starts ends exactly at 16 without custom mutex;
-- short local writes make serialization acceptable.
-
-Provider upgrades must re-prove this behavior.
-
----
-
-## ADR-039 — SQLite WAL runtime safety floor
-
-**Status:** Accepted v3.1.  
-**Details:** `PERSISTENCE-RELIABILITY.md`.
-
-Normal supported WAL runtime requires:
-
-```text
-sqlite_version() >= 3.51.3
-```
-
-Reason: SQLite documents a rare WAL-reset corruption race through 3.51.2, fixed in 3.51.3+ (plus selected older backports not included in our primary qualification matrix).
-
-Actual loaded native SQLite is tested per artifact; NuGet version alone is not proof.
-
----
-
-## ADR-040 — Live DB backup uses SQLite backup API
-
-**Status:** Accepted v3.1.  
-**Details:** `PERSISTENCE-RELIABILITY.md`.
-
-Never use raw `File.Copy` for an active database.
-
-Use `SqliteConnection.BackupDatabase`, independently open/verify the destination, then publish it. Never manually delete/rename WAL/SHM for recovery.
-
-Reason: WAL/hot journals are part of live SQLite state and naive file copying can produce an inconsistent backup.
-
----
-
-## ADR-041 — HP-MCP structured success mirrors JSON into TextContent
-
-**Status:** Accepted v3.1.  
-**Details:** `WIRE-CONTRACT.md`.
-
-Success:
-
-```text
-structuredContent = typed result
-one TextContent = minified JSON semantically equal to structuredContent
-displayText = human field inside result
-```
-
-Tool/business error:
-
-```text
-isError=true
-one safe TextContent
-no structuredContent
-```
-
-Reason: MCP `2026-07-28` recommends serialized JSON TextContent for backward compatibility when structured content is returned; structured errors would also complicate success output-schema conformance.
-
----
-
-## ADR-042 — `hero.start_quest` idempotent hint is false
-
-**Status:** Accepted v3.1; supersedes v3 annotation matrix.  
-**Details:** `WIRE-CONTRACT.md`.
-
-`start_quest` is retry/dedup-safe while a matching normalized declaration remains open, but:
-
-```text
-start(args)
-finish
-start(args)
-```
-
-legitimately creates a new quest. Therefore MCP `idempotentHint=true` would overstate behavior.
-
-`finish_quest`, `list_active_quests` and `get_card` remain idempotent.
-
----
-
-## ADR-043 — Explicit `SafeTextV1` runtime validation
-
-**Status:** Accepted v3.1.  
-**Details:** `WIRE-CONTRACT.md`.
-
-`goal`/`summary` are Unicode-scalar validated, NFC-normalized, single-line whitespace-normalized, bounded and stripped of prohibited control/bidi-formatting characters before persistence.
-
-Reason:
-
-- model text is untrusted;
-- `.NET string.Length` is UTF-16 code units, not the intended wire character metric;
-- generated C# SDK/DataAnnotation schema does not enforce runtime validation;
-- compact single-line persistence avoids terminal/log formatting hazards.
-
----
-
-## ADR-044 — HP-MCP canonical IDs/time/numeric profile
-
-**Status:** Accepted v3.1.  
-**Details:** `WIRE-CONTRACT.md`.
-
-```text
-UUID       canonical lowercase UUIDv7
-Timestamp  YYYY-MM-DDTHH:mm:ss.fffZ
-JSON long-lived integer max 9_007_199_254_740_991
-null       absent from current HP-MCP fields
-```
-
-Reason: deterministic snapshots and broad cross-language JSON interoperability.
-
----
-
-## ADR-045 — MCP skill input is canonical-only and ordered
-
-**Status:** Accepted v3.1.  
-**Details:** `WIRE-CONTRACT.md` / `ENGINE-SPEC.md`.
-
-HP-MCP `skillsUsed` accepts canonical keys only, 1..3, ordered primary->secondary->tertiary. This ordering drives v1 skill-XP weighting.
-
-Aliases remain possible for human CLI/import adapters but are not advertised to the model.
-
----
-
-## Decision-change rule
-
-A PR changing a public contract, project identity, persistence invariant, privacy/deployment trust model or deterministic rule must update this log and its normative spec in the same change.

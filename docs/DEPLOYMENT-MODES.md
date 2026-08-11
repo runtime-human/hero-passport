@@ -1,204 +1,128 @@
 # Hero Passport — Deployment Modes
 
-**Status:** Accepted v3.1 boundary specification  
+**Status:** Accepted v3.2 boundary specification  
 **Snapshot:** 2026-08-11
 
-A local stdio process, loopback HTTP endpoint and public multi-tenant service have different trust/project/storage boundaries; never model them as one `transport` flag over identical assumptions.
-
----
-
-## 1. Profile A — Local Project-Bound STDIO
-
-**Release:** 0.1.0  
-**Status:** primary/required
+## 1. 0.1 primary profile — local project-bound stdio
 
 ```text
-MCP host
- -> hero-passport mcp
- -> stdin/stdout
- -> local Application
- -> same-host local SQLite
+AI/MCP host
+  -> launches hero-passport mcp
+  -> stdin/stdout MCP
+  -> local Application
+  -> same-host SQLite
 ```
 
-Trust:
+Trust boundary:
 
 ```text
 one local OS user
-host allowed to execute local command
+host allowed to execute the command
 local filesystem permissions
 ```
 
-No network listener/OAuth.
+No Hero Passport network listener, cloud account or OAuth flow.
 
 Project binding:
 
 ```text
-host cwd or --project-root
+explicit --project-root else process cwd
 -> project-identity/1
 ```
 
-The process binds one project identity for its lifetime. Git identity uses `git-common-dir`/explicit scope rules from `PROJECT-IDENTITY.md`.
+Hero binding: globally active Hero for new Quests; existing Quest owner is persisted and immutable.
 
-Hero binding: active/default or explicit local `--hero`.
+## 2. Agent Skill deployment
 
-Security:
+The official Hero Passport Agent Skill is installed into a host-supported Skill/instruction location separately from the executable when necessary.
+
+The portable Skill does not contain secrets or mutable game state. It only contains lifecycle/report/presentation instructions and references.
+
+Host-specific installation paths/config are documented under `docs/integrations/` and are release-smoke-tested; they do not define product semantics.
+
+## 3. stdio rules
 
 ```text
-stdout protocol only
-safe stderr/local logs
-no forbidden source/path data
-quest HeroId+ProjectId context check
+stdout -> MCP protocol frames only
+stderr -> safe diagnostics/logs
 ```
 
----
+No first-run terminal wizard is written into MCP stdout. Conversational onboarding occurs through the host/Skill and `hero.configure`.
 
-## 2. Profile B — Private OpenAI Secure MCP Tunnel
+## 4. 0.2 local Web profile
 
-**Release:** optional external integration  
-**Status:** documented path
+Future local browser UI:
 
 ```text
-OpenAI product
- -> OpenAI tunnel endpoint
- -> outbound tunnel-client
- -> local hero-passport stdio
- -> local SQLite
+Browser
+  -> HeroPassport.Web on loopback/local process
+  -> Application/read models
+  -> same local SQLite
 ```
 
-Hero Passport remains Profile A internally. Tunnel credentials/identity belong to OpenAI platform configuration, not game/project identity.
+This is primarily presentation/management; MCP Core semantics do not change.
 
-This is not the public plugin/server distribution model; public distribution needs a public HTTPS MCP endpoint under OpenAI requirements.
+Exact hosting/origin/security design is finalized before 0.2 implementation.
 
----
+## 5. Future project-scoped Streamable HTTP
 
-## 3. Profile C — Project-Scoped Streamable HTTP
+Deferred until a concrete consumer requires URL-based MCP.
 
-**Release:** future, concrete trigger only  
-**Status:** deferred
+A future HTTP deployment must bind Project identity explicitly from server configuration/auth context; process cwd is not a caller identity mechanism for a shared HTTP service.
 
-```text
-MCP client
- -> http(s)://host/mcp
- -> HTTP adapter
- -> one configured project binding
- -> Application
- -> local/private storage
-```
+If implemented, use the official MCP ASP.NET Core adapter and current transport/security requirements. Do not build custom HTTP framing when the official SDK already supplies it.
 
-HTTP process cwd is not caller project identity. Endpoint binds one configured project explicitly.
+## 6. Future public/multi-tenant service
 
-Conceptual future launch only:
+This is a **different security/storage architecture**, not local mode with a public bind.
+
+It requires at minimum:
 
 ```text
-hero-passport serve --project-root <path> --listen http://127.0.0.1:<port>
-```
-
-When implemented:
-
-```text
-ModelContextProtocol.AspNetCore
-explicit stateless HTTP mode
-Origin validation
-loopback bind default
-restricted expected Host names
-no unauthenticated 0.0.0.0 default
-```
-
-Beyond-loopback exposure requires explicit authentication design.
-
----
-
-## 4. Profile D — Public/Hosted Multi-Tenant Streamable HTTP
-
-**Release:** separate future product phase  
-**Status:** not MVP architecture
-
-Not Profile C with public bind.
-
-Requires:
-
-```text
-TLS/public HTTPS
-MCP HTTP authorization
-OAuth/resource audience validation
+public HTTPS
+current MCP authorization compliance
 authenticated principal
-principal -> hero/project authorization
+Hero/Project authorization
 tenant isolation
-remote durable storage
-backup/restore
+remote durable store choice
 rate/abuse controls
 secret management
+backup/restore
+privacy/retention/delete policy
 security/operational logging
-retention/privacy policy
 ```
 
-`HeroOperationContext` must be resolved from authenticated/authorized server state; `clientInfo`, questId and project fingerprint never become authentication shortcuts.
+Local project fingerprints, client name, `questId` and request IDs are never authentication credentials.
 
-Storage is re-evaluated rather than assuming one local SQLite file is a hosted multi-tenant DB.
+## 7. Optional future sync
 
----
+Sync is not a deployment requirement in 0.1/0.2. The local database remains useful offline with no server.
 
-## 5. Legacy SSE
+A sync service requires its own conflict/delete/security design. Do not point two machines at one shared SQLite WAL file.
 
-Do not implement a new legacy SSE server. Future URL deployments use Streamable HTTP.
+## 8. Unsupported 0.1 profiles
 
----
+```text
+writable SQLite on network/NFS/cloud-shared filesystem
+multiple hosts writing one DB file
+public unauthenticated HTTP
+legacy SSE server
+team/shared local DB
+```
 
-## 6. Project binding matrix
-
-| Profile | Project binding | Model sends local path? |
-|---|---|---:|
-| Local stdio | cwd / `--project-root` -> project-identity/1 | No |
-| Secure tunnel to stdio | same local binding | No |
-| Project HTTP | deployment-configured project | No |
-| Hosted multi-tenant | authorized server-side resource | No by default |
-
-A future remote multi-project selector, if needed, is an authorized opaque server identifier—not a local filesystem path.
-
----
-
-## 7. Hero binding matrix
-
-| Profile | Hero binding |
-|---|---|
-| Local stdio | active/default or `--hero` |
-| Tunnel | same local binding |
-| Project HTTP | configured local/principal policy |
-| Multi-tenant | authenticated principal + authorization |
-
-Never equate host/client product name with hero identity.
-
----
-
-## 8. Application invariants across profiles
+## 9. Invariants across future adapters
 
 Every future adapter preserves:
 
 ```text
-same StartQuest lifecycle semantics
-same QuestDedupKeyV1 open-declaration retry behavior
-same 16-active cap semantics
-same quest-context validation
-same FinishQuest idempotency
-same deterministic RPG rules
-same SafeText/wire meanings where MCP is used
+explicit mutation request identity
+one open Quest per Hero+Project
+immutable Quest owner
+at-most-once committed progression
+same deterministic rule versions
+same bounded fact/provenance semantics
 same privacy deny-list
 same stable HP error meanings
 ```
 
-Transport/auth/binding may differ only through an explicitly designed adapter/context resolver.
-
----
-
-## 9. Trigger criteria for own HTTP
-
-Do not implement HTTP because the SDK supports it.
-
-At least one concrete need must exist:
-
-1. priority host cannot launch stdio but needs URL MCP;
-2. private network deployment needs stable URL;
-3. public/plugin distribution requires HTTPS endpoint;
-4. measured operations show shared URL deployment materially improves product.
-
-Before implementation update Architecture, Security, Dependencies, Testing, API contracts if auth/binding changes, Roadmap and Decision Log.
+Transport differences never silently change game semantics.

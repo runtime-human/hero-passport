@@ -1,13 +1,10 @@
 # Hero Passport — Data Model and Persistence
 
-**Status:** Accepted v3.1  
+**Status:** Accepted v3.2  
 **Snapshot:** 2026-08-11  
-**Database:** SQLite via EF Core 10.0.10  
-**Native bundle baseline:** `SQLitePCLRaw.bundle_e_sqlite3 3.0.5`
+**Database:** SQLite via EF Core 10.0.10 / Microsoft.Data.Sqlite 10.0.10
 
-Exact transaction/crash/backup policy is normative in [`PERSISTENCE-RELIABILITY.md`](PERSISTENCE-RELIABILITY.md). Exact project fingerprint algorithm is normative in [`PROJECT-IDENTITY.md`](PROJECT-IDENTITY.md).
-
----
+`PERSISTENCE-RELIABILITY.md` is normative for transactions/crash/backup. `PROJECT-IDENTITY.md` is normative for project identity.
 
 ## 1. Persistence goals
 
@@ -15,469 +12,420 @@ SQLite is authoritative durable local game state.
 
 Guarantees:
 
-1. a quest rewards at most once;
-2. one finish commits all progression or none;
-3. distinct open quests may coexist for one hero/project;
-4. concurrent matching starts converge through a DB-backed dedup invariant;
-5. the active cap remains exactly enforced under races;
-6. historical reward interpretation survives rule upgrades;
-7. source/diffs/raw logs/prompts/secrets/full workspace paths are not stored;
-8. migrations are reproducible and upgrade-tested;
-9. crash recovery/backup are performed through SQLite semantics rather than file hacks.
+1. at most one open Quest per Hero+Project;
+2. safe retry identities are persisted atomically with their mutation;
+3. a Quest commits progression at most once;
+4. Finish commits all progression or none;
+5. historical outcomes retain exact rule versions and deltas;
+6. multiple Heroes and archive/delete semantics are explicit;
+7. no source/diff/raw-log/prompt/secret/full-path storage;
+8. migration/crash/backup behavior is executable-testable;
+9. public identities are sync-ready UUIDv7, never rowids.
 
----
+## 2. EF boundary
 
-## 2. EF boundaries
+Infrastructure owns DbContext/entities/configurations/migrations/SQLite write coordination/read queries/backup/diagnostics.
 
-Infrastructure owns:
+Use `IDbContextFactory<HeroPassportDbContext>` and one short-lived context per operation/unit of work.
 
-```text
-HeroPassportDbContext
-EF entities/configurations
-migrations/model snapshot
-SQLite transaction coordinator/stores/queries
-database diagnostics/backup adapter
-```
+Do not use singleton DbContext, concurrent DbContext access, lazy-loading proxies or EF InMemory as a SQLite correctness substitute.
 
-Use:
+## 3. Core tables
 
 ```text
-IDbContextFactory<HeroPassportDbContext>
-one short-lived context per operation/unit of work
-```
-
-Never:
-
-```text
-singleton/long-lived DbContext
-share DbContext concurrently
-inject DbContext into MCP tools/Razor components
-lazy-loading proxies
-EF InMemory as a SQLite substitute
-```
-
----
-
-## 3. Database execution model
-
-Actual SQLite I/O is short and synchronous; do not wrap it in `Task.Run`.
-
-Read-modify-write operations (`StartQuest`, `FinishQuest`, future mutation use cases) start a non-deferred Serializable transaction before reading the invariants they mutate. With selected Microsoft.Data.Sqlite 10.0.10 this is qualified as `BEGIN IMMEDIATE` behavior; implementation tests must keep proving it.
-
-Read-only card/list operations do not take writer transactions.
-
----
-
-## 4. Database location
-
-See `CONFIGURATION.md`.
-
-```text
-Windows: %LOCALAPPDATA%\HeroPassport\data\hero-passport.db
-macOS:   ~/Library/Application Support/HeroPassport/data/hero-passport.db
-Linux:   $XDG_DATA_HOME/hero-passport/hero-passport.db
-         fallback ~/.local/share/hero-passport/hero-passport.db
-```
-
-`HERO_PASSPORT_HOME` isolates dev/tests.
-
-Supported writable DB profile is local filesystem on the same host. Known network filesystems are outside 0.1 supported WAL deployment; see `PERSISTENCE-RELIABILITY.md`.
-
----
-
-## 5. Connection/PRAGMA policy
-
-Build connection strings with `SqliteConnectionStringBuilder`.
-
-```text
-Mode=ReadWriteCreate
-Cache=Default
-Foreign Keys=True
-Pooling=True
-Default Timeout=5
-```
-
-Do not use `Cache=Shared` with WAL.
-
-Required effective state:
-
-```sql
-PRAGMA journal_mode = WAL;
-PRAGMA synchronous = FULL;
-PRAGMA foreign_keys = ON;
-```
-
-Doctor/tests verify these plus the actual loaded:
-
-```sql
-SELECT sqlite_version();
-```
-
-Normal supported WAL runtime requires SQLite `>=3.51.3` under the v3.1 qualification policy.
-
----
-
-## 6. IDs, time and JSON-safe numeric ceiling
-
-IDs:
-
-```text
-Guid.CreateVersion7()
-```
-
-Persistence representation must round-trip exactly and be consistent across tables.
-
-External HP-MCP UUID form is defined by `WIRE-CONTRACT.md`.
-
-Time:
-
-```text
-UTC only
-Application TimeProvider
-HP-MCP output millisecond UTC canonicalization
-```
-
-Long-lived nonnegative counters/XP that can be exposed through JSON are bounded by:
-
-```text
-9_007_199_254_740_991
-```
-
-Use checked arithmetic and persistence validation; never wrap.
-
----
-
-## 7. Core tables
-
-```text
+app_settings
 heroes
 projects
 hero_project_stats
+mutation_receipts
 quest_sessions
 quest_reports
+quest_reward_components
+quest_trust_strain_components
 quest_report_skills
 skills
 hero_skills
 traits
 hero_traits
+titles
+hero_titles
+quest_milestones
 xp_events
-app_settings
 ```
 
-`app_settings` includes installation-local identity material such as the random `project_identity_salt_v1` used by `project-identity/1`. It is product state, not model input.
+## 4. `app_settings`
 
----
+Typed settings, not an arbitrary key/value dumping ground.
 
-## 8. `heroes`
+Required logical values:
 
 ```text
-id                    PK
-name                  required bounded SafeText-compatible text
-total_xp              integer 0..JSON-safe-max
-trust                 integer 0..100
-risk                  integer 0..100
+setup_completed
+active_hero_id
+locale
+presentation_style
+auto_start_quest
+auto_finish_quest
+project_identity_salt_v1
+config_version
+```
+
+Implementation may use typed columns in a single installation row or a strictly allowlisted key/value table. Unknown model-provided keys are never persisted.
+
+## 5. `heroes`
+
+```text
+id                    UUIDv7 PK
+name                  SafeTextV1 1..64
+total_xp              0..JSON-safe-max
+trust                 0..100
+strain                0..100
+success_streak        >=0
+archived_at_utc       nullable
 created_at_utc
 updated_at_utc
 ```
 
-Level is derived from total XP/rules, not authoritative duplicated storage.
+Hero Level, Rank and active Title are derived from rule tables/unlocks rather than authoritative duplicated values.
 
----
+Archived Heroes retain all game history. Permanent delete explicitly removes it.
 
-## 9. `projects`
+## 6. `projects`
 
 ```text
-id                    PK
-display_name          bounded text
-workspace_fingerprint char(64), unique
-identity_version      required, `project-identity/1`
+id                    UUIDv7 PK
+display_name          bounded local presentation text
+workspace_fingerprint char(64) UNIQUE
+identity_version      `project-identity/1`
 created_at_utc
 last_seen_at_utc
 ```
 
 No full workspace path or Git remote URL.
 
-Fingerprint is local identity aid, not authentication material.
+## 7. `hero_project_stats`
 
-`PROJECT-IDENTITY.md` defines Git common-dir/scoped/standalone behavior and the salted hash material.
+Unique `(hero_id, project_id)`.
 
----
+```text
+quests_started
+quests_finished
+quests_succeeded
+total_xp_earned
+last_quest_at_utc nullable
+```
 
-## 10. `hero_project_stats`
+Success rate and top Skill contributions are derived/read projections.
+
+## 8. `mutation_receipts`
+
+Supports caller-generated request idempotency for resource/destructive mutations.
+
+```text
+operation_key       create_hero | start_quest | delete_hero
+request_id          UUIDv7
+args_hash           32-byte SHA-256 of canonical semantic arguments
+entity_id           UUIDv7 text/binary value; no FK requirement
+effective_at_utc
+```
 
 Unique:
 
 ```text
-(hero_id, project_id)
+(operation_key, request_id)
 ```
 
-Fields:
+The receipt contains no prompt/source/history payload. Its purpose is only safe retry and argument-mismatch detection.
+
+For `start_quest`, `entity_id` is QuestId. For create it is HeroId. For delete it is the deleted HeroId and the timestamp is the deletion receipt needed for a late retry.
+
+Mutation receipt insertion and the corresponding mutation are in one DB transaction.
+
+## 9. Canonical argument hashing
+
+Hash only already-validated canonical fields in a versioned, length-delimited binary encoding; do not concatenate arbitrary strings with ambiguous separators.
+
+Initial `mutation-args/1` encoding:
 
 ```text
-quests_started       >=0
-quests_finished      >=0
-quests_succeeded     >=0
-total_xp_earned      0..JSON-safe-max
-last_quest_at_utc    nullable
+UTF-8 operation key length + bytes
+for each field in fixed schema order:
+  field tag byte
+  byte length as fixed unsigned integer
+  canonical UTF-8/value bytes
 ```
 
-This is a projection for reads. Quest reports/events remain historical record.
+Then SHA-256 the complete buffer.
 
----
+This hash proves retry argument equivalence; it is not task identity, authentication or semantic natural-language matching.
 
-## 11. `quest_sessions` — v3.1
+## 10. `quest_sessions`
 
 ```text
-id                    PK
-hero_id               FK
-project_id            FK
+id                    UUIDv7 PK
+hero_id               FK heroes
+project_id            FK projects
 quest_type            canonical key
-goal                  SafeTextV1 bounded normalized text
-dedup_key             32-byte SHA-256 / fixed 64-hex representation
-dedup_key_version     integer, initially 1
-status                open | finished
+title                 SafeTextV1 1..120
+goal                  SafeTextV1 1..500
+locale                 ru-RU | en-US
+status                 open | finished
 started_at_utc
-finished_at_utc       nullable
+finished_at_utc        nullable
 created_at_utc
 ```
 
-### 11.1 Retired naming
+Start request identity lives in `mutation_receipts`; natural-language content is never a dedup key.
 
-Before public 0.1 release:
+### One-open invariant
 
-```text
-LogicalQuestKeyV1 -> QuestDedupKeyV1
-logical_key       -> dedup_key
-logical_key_version -> dedup_key_version
-```
-
-Reason: this key represents exact normalized retry declaration identity, not semantic natural-language task equivalence.
-
-### 11.2 Dedup key
-
-Normative algorithm is in `WIRE-CONTRACT.md`:
-
-```text
-SHA-256(UTF8(canonicalQuestType + "\n" + SafeTextV1(goal)))
-```
-
-Case is preserved.
-
-### 11.3 Open dedup uniqueness
+Database backstop:
 
 ```sql
-CREATE UNIQUE INDEX ux_quest_sessions_open_dedup
-ON quest_sessions(hero_id, project_id, dedup_key_version, dedup_key)
+CREATE UNIQUE INDEX ux_quest_sessions_one_open_per_hero_project
+ON quest_sessions(hero_id, project_id)
 WHERE status = 'open';
 ```
 
-Observable uniqueness is normative even if exact EF migration SQL differs.
+Normal races serialize through the writer transaction; this index is the final invariant barrier.
 
-This is a final database backstop. Normal races serialize through the immediate writer transaction defined in `PERSISTENCE-RELIABILITY.md`.
+Active query index may additionally cover `(hero_id, project_id, status, started_at_utc, id)`.
 
-### 11.4 Active query index
+## 11. `quest_reports`
 
-Conceptually:
-
-```sql
-CREATE INDEX ix_quest_sessions_active
-ON quest_sessions(hero_id, project_id, status, started_at_utc DESC, id);
-```
-
-Exact layout may be tuned from query plans without changing API ordering semantics.
-
-### 11.5 Active cap
-
-Application policy:
-
-```text
-<=16 open quests per hero/project
-```
-
-This is enforced through a writer transaction that acquires writer intent **before** same-key lookup/count/insert. It is not a global unique constraint and not a custom mutex.
-
-Count=15 + two concurrent distinct starts must finish exactly at count 16; one call returns HP133.
-
----
-
-## 12. `quest_reports`
-
-Exactly one per finished quest:
+Exactly one per finished Quest:
 
 ```text
 id
-quest_id              FK + UNIQUE
-result                canonical key
-summary               SafeTextV1 bounded normalized text
-tests_mentioned       bool
-scope_violations      0..20
-user_corrections      0..20
-build_status          canonical key
-tests_status          canonical key
+quest_id                  FK + UNIQUE
+result
+summary
+
+tests_mentioned
+scope_violations
+user_corrections
+build_status
+build_evidence
+tests_status
+tests_evidence
+
 reward_rule_version
-trust_risk_rule_version
-trait_rule_version
+hero_progression_version
+skill_progression_version
+skill_allocation_version
+trust_strain_rule_version
+streak_rule_version
+unlock_rule_version
+rank_rule_version
+
 base_xp
-result_xp
 bonus_xp
 penalty_xp
+raw_xp
+outcome_permille
 xp_gained
-trust_before
-trust_after
-risk_before
-risk_after
-level_before
-level_after
-total_xp_before
-total_xp_after
+
+hero_total_xp_before/after
+hero_level_before/after
+rank_before/after
+trust_before/after
+strain_before/after
+streak_before/after
+active_title_before/after
+
 created_at_utc
 ```
 
-Persist enough immutable outcome data to return a finished retry without recalculating under newer rules.
+Persist enough immutable result data to answer retries without recalculating under later rules.
 
-`testsStatus != not_run` is valid only when `tests_mentioned=true`, according to `WIRE-CONTRACT.md`/Application validation.
+## 12. `quest_reward_components`
 
----
-
-## 13. `quest_report_skills`
+One row per applied XP component:
 
 ```text
 quest_report_id FK
-ordinal         0..2
-skill_key       canonical FK/key
-xp_gained       >=0
+ordinal
+component_key
+xp_delta signed integer
 ```
 
-Unique:
+Examples: `base`, `observed_tests`, `clean_scope`, `clear_summary`, `no_corrections`, `scope_violation`, `user_correction`.
+
+## 13. `quest_trust_strain_components`
 
 ```text
-(quest_report_id, ordinal)
-(quest_report_id, skill_key)
+quest_report_id FK
+ordinal
+component_key
+trust_delta signed
+strain_delta signed
 ```
 
-Ordinal preserves semantic primary/secondary/tertiary order used by deterministic skill XP weighting.
+This preserves explainability of Trust/Strain changes.
 
----
+## 14. `skills` and `hero_skills`
 
-## 14. `skills` / `hero_skills`
+`skills` is a seeded canonical catalog.
 
-`skills` seeds the canonical set. MCP accepts canonical keys only; CLI/import may normalize documented aliases before Application.
-
-`hero_skills`:
+`hero_skills` unique `(hero_id, skill_key)`:
 
 ```text
-(hero_id, skill_key) unique
-xp 0..JSON-safe-max
+xp
 updated_at_utc
 ```
 
-No model-invented persistent skill keys.
+Skill Level is derived from `skill-progression/*` threshold content.
 
----
-
-## 15. `traits` / `hero_traits`
-
-Traits are a small seeded rule catalog, not achievements.
-
-`hero_traits` unique:
+## 15. `quest_report_skills`
 
 ```text
-(hero_id, trait_key)
+quest_report_id FK
+ordinal 0..2
+skill_key
+xp_gained
+xp_before
+xp_after
+level_before
+level_after
 ```
 
-Unlock is monotonic in rule v1.
+Unique `(quest_report_id, ordinal)` and `(quest_report_id, skill_key)`.
 
----
+## 16. Traits and Titles
 
-## 16. `xp_events`
+Seeded catalogs:
 
-Immutable XP ledger.
+```text
+traits { trait_key, catalog_version }
+titles { title_key, priority, catalog_version }
+```
+
+Hero unlock rows:
+
+```text
+hero_traits { hero_id, trait_key, unlocked_at_utc, source_quest_id }
+hero_titles { hero_id, title_key, unlocked_at_utc, source_quest_id }
+```
+
+Unique by Hero + key. Unlock is monotonic for a living Hero under v3.2.
+
+## 17. `quest_milestones`
+
+Immutable bounded semantic milestone events generated by a completed Quest:
+
+```text
+quest_report_id
+ordinal
+event_key
+semantic_key
+flavor_key nullable
+```
+
+No rendered localized text is stored as game truth.
+
+## 18. `xp_events`
+
+Immutable ledger while the Hero exists:
 
 ```text
 id
-quest_id         FK + UNIQUE
-hero_id          FK
-project_id       FK
-xp_delta         >=0
+quest_id UNIQUE
+hero_id
+project_id
+xp_delta >=0
 reward_rule_version
 created_at_utc
 ```
 
-`UNIQUE quest_id` is the last-resort double-reward barrier.
+`UNIQUE quest_id` is the final double-reward barrier.
 
-Never mutate/delete a prior XP event merely because a new rule version exists.
+Permanent Hero deletion is an explicit privacy/lifecycle exception that removes this Hero’s ledger/history rows; normal balance upgrades never mutate them.
 
----
-
-## 17. Start transaction
-
-Normative sequence from `PERSISTENCE-RELIABILITY.md`:
+## 19. Start transaction
 
 ```text
-resolve/validate/context + SafeText + dedup key outside transaction
+resolve active Hero + Project
+canonicalize request + args hash outside transaction
 BEGIN non-deferred Serializable writer transaction
-query matching open dedup key
-  found -> return existing
-count open hero/project
-  >=16 -> HP133
-insert quest + start projections
+lookup mutation receipt(start_quest, startRequestId)
+  found + hash equal -> load persisted Quest and return replay
+  found + hash differs -> HP135
+query open Quest for Hero+Project
+  found -> HP133
+insert Quest
+insert mutation receipt pointing to Quest
+update hero_project_stats quests_started
 SaveChanges
 COMMIT
 ```
 
-Do not use a deferred read-then-upgrade pattern for this invariant.
+The partial unique open index protects the invariant even if application logic regresses.
 
----
-
-## 18. Finish transaction
+## 20. Finish transaction
 
 ```text
-BEGIN non-deferred Serializable writer transaction
-load quest
-context check
-already finished -> persisted original outcome
-calculate deterministic reward
-insert quest report
-insert report skills
-insert UNIQUE xp event
-update hero/skills/traits/project stats
-mark quest finished
+BEGIN writer
+load Quest by questId
+check process-bound ProjectId
+already finished -> load immutable stored result
+calculate current deterministic rules once
+insert report/component/skill/milestone rows
+insert UNIQUE xp_event
+update Hero/Skills/Streak/unlocks/project stats
+mark Quest finished
 SaveChanges
 COMMIT
 ```
 
-No transaction spans actual agent work.
+Current active Hero is irrelevant to an existing Quest’s owner.
 
-Success is not returned until COMMIT succeeds.
+## 21. Hero management transactions
 
----
-
-## 19. Busy/storage/corruption mapping
-
-Detailed mapping lives in `PERSISTENCE-RELIABILITY.md`.
-
-Core codes:
+Create Hero:
 
 ```text
-HP202 database_busy
-HP203 storage_full
-HP204 storage_read_only
-HP205 storage_io_error
-HP206 database_corrupt
-HP207 storage_constraint
-HP208 unsupported_sqlite_version
-HP211 unsupported_storage_location
+request receipt check
+insert Hero
+insert create receipt
+commit
 ```
 
-Expected dedup/finish uniqueness is translated to domain retry/reload semantics before generic HP207.
+Activate Hero:
 
----
+```text
+validate non-archived target
+update one installation active_hero_id
+commit
+```
 
-## 20. Migrations
+Archive:
 
-EF migrations from schema `0001`; never use `EnsureCreated` as product schema management.
+```text
+reject active Hero
+reject any open Quest owned by Hero
+set archived_at_utc
+commit
+```
 
-Use EF provider migration locking; no second custom migration mutex/table.
+Restore clears archive state; it does not activate automatically.
+
+Permanent delete:
+
+```text
+request receipt check
+validate exact confirmation name
+reject active Hero
+reject any open Quest owned by Hero
+insert minimal delete mutation receipt
+delete Hero-owned history/progression rows explicitly/cascade by reviewed FK policy
+commit
+```
+
+Never silently abandon Quests as part of Hero management.
+
+## 22. Migrations
+
+Use EF migrations from schema `0001`; never `EnsureCreated` for product schema management.
 
 Every release migration gate:
 
@@ -486,87 +434,30 @@ empty -> latest
 previous release fixture -> latest
 model snapshot diff review
 SQLite rebuild/destructive operation review
-pending model-change gate
+foreign-key/index/partial-index review
+pending-model-change gate
 backup/recovery consideration
 ```
 
-Do not blindly delete `__EFMigrationsLock`; diagnose explicit abandoned-lock state.
-
----
-
-## 21. Crash/WAL recovery
-
-Never manually delete/rename:
+## 23. File location
 
 ```text
-hero-passport.db-wal
-hero-passport.db-shm
-rollback journals
+Windows: %LOCALAPPDATA%\HeroPassport\data\hero-passport.db
+macOS:   ~/Library/Application Support/HeroPassport/data/hero-passport.db
+Linux:   $XDG_DATA_HOME/hero-passport/hero-passport.db
+         fallback ~/.local/share/hero-passport/hero-passport.db
 ```
 
-SQLite owns journal recovery after unclean shutdown.
+`HERO_PASSPORT_HOME` is the dev/test isolation override.
 
-Crash-before-commit leaves no partial progression. Crash-after-commit-before-response is recovered by retrying explicit `questId` and returning the persisted result.
+## 24. Numeric/time rules
 
-Child-process crash injection tests prove these states.
+UUIDs: `Guid.CreateVersion7()`.
 
----
+Time: injected `TimeProvider`, UTC persistence.
 
-## 22. Backup
+JSON-exposed long-lived integers must remain <= `9_007_199_254_740_991` with checked arithmetic.
 
-A logical `export` is not a physical DB backup.
+## 25. Test rule
 
-A future/pre-migration live DB backup uses `SqliteConnection.BackupDatabase`, not raw `File.Copy` while active.
-
-Verified backup flow:
-
-```text
-backup to temporary destination
-open destination independently
-PRAGMA quick_check
-PRAGMA foreign_key_check
-read schema/migration metadata
-publish completed backup safely
-```
-
-Never replace the only good backup before the new one passes validation.
-
----
-
-## 23. Doctor storage checks
-
-Normal doctor checks:
-
-```text
-open database through SQLite
-actual sqlite_version() >= qualified floor
-journal_mode=WAL
-synchronous=FULL
-foreign_keys=ON
-migration state/core schema
-PRAGMA quick_check
-PRAGMA foreign_key_check
-known storage-location support
-```
-
-No automatic destructive repair.
-
----
-
-## 24. Testing rule
-
-Only real temporary file-backed SQLite proves:
-
-```text
-partial indexes
-BEGIN IMMEDIATE writer behavior
-active-cap race
-finish race
-busy timeout
-WAL recovery
-crash atomicity
-backup consistency
-migration behavior
-```
-
-EF InMemory cannot substitute for these tests.
+Only real temporary file-backed SQLite proves partial indexes, writer behavior, race invariants, busy behavior, WAL recovery, crash atomicity, backups and migrations. EF InMemory is not accepted evidence for those properties.
