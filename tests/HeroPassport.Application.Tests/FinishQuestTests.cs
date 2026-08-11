@@ -18,7 +18,7 @@ public sealed class FinishQuestTests
         {
             await HeroPassportDatabase.InitializeAsync(path, cancellationToken);
             var application = CreateApplication(path);
-            var (hero, quest, project) = await StartCodingQuestAsync(application, cancellationToken, 'a');
+            var (hero, quest, project) = await StartCodingQuestAsync(application, 'a', cancellationToken);
             var requestId = MutationRequestId.New();
             var request = Finish(requestId, quest.QuestId, "success", "Completed the requested implementation cleanly.");
 
@@ -59,7 +59,7 @@ public sealed class FinishQuestTests
         {
             await HeroPassportDatabase.InitializeAsync(path, cancellationToken);
             var application = CreateApplication(path);
-            var (_, quest, project) = await StartCodingQuestAsync(application, cancellationToken, 'b');
+            var (_, quest, project) = await StartCodingQuestAsync(application, 'b', cancellationToken);
             var first = Finish(MutationRequestId.New(), quest.QuestId, "partial", "Delivered a useful subset of the requested work.");
 
             var committed = await application.FinishQuestAsync(first, project, cancellationToken);
@@ -95,7 +95,7 @@ public sealed class FinishQuestTests
         {
             await HeroPassportDatabase.InitializeAsync(path, cancellationToken);
             var application = CreateApplication(path);
-            var (hero, quest, project) = await StartCodingQuestAsync(application, cancellationToken, 'c');
+            var (hero, quest, project) = await StartCodingQuestAsync(application, 'c', cancellationToken);
             var other = await application.CreateHeroAsync(new CreateHeroRequest(MutationRequestId.New(), "Other"), cancellationToken);
             await application.ActivateHeroAsync(other.Hero.HeroId, cancellationToken);
 
@@ -122,7 +122,7 @@ public sealed class FinishQuestTests
         {
             await HeroPassportDatabase.InitializeAsync(path, cancellationToken);
             var application = CreateApplication(path);
-            var (_, quest, _) = await StartCodingQuestAsync(application, cancellationToken, 'd');
+            var (_, quest, _) = await StartCodingQuestAsync(application, 'd', cancellationToken);
 
             var error = await Assert.ThrowsAsync<HeroPassportException>(() => application.FinishQuestAsync(
                 Finish(MutationRequestId.New(), quest.QuestId, "success", "Completed work in the original project."),
@@ -146,7 +146,7 @@ public sealed class FinishQuestTests
         {
             await HeroPassportDatabase.InitializeAsync(path, cancellationToken);
             var setupApplication = CreateApplication(path);
-            var (_, quest, project) = await StartCodingQuestAsync(setupApplication, cancellationToken, 'f');
+            var (_, quest, project) = await StartCodingQuestAsync(setupApplication, 'f', cancellationToken);
             var firstApplication = CreateApplication(path);
             var secondApplication = CreateApplication(path);
 
@@ -184,8 +184,8 @@ public sealed class FinishQuestTests
 
     private static async Task<(HeroSummary Hero, QuestSummary Quest, ProjectBindingContext Project)> StartCodingQuestAsync(
         HeroPassportApplication application,
-        CancellationToken cancellationToken,
-        char fingerprintCharacter)
+        char fingerprintCharacter,
+        CancellationToken cancellationToken)
     {
         var bootstrap = await application.BootstrapAsync(
             new BootstrapRequest(MutationRequestId.New(), "en-US", "Nova", "rpg_engineering", true, true),
