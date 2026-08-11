@@ -39,9 +39,9 @@ public sealed partial class SqliteHeroPassportStateStore
                 command.Goal);
             EnsureReceiptMatches(receipt, HeroPassportVersions.MutationArgsVersion, hash);
             var quest = await GetQuestRequiredAsync(connection, transaction, receipt.ResultEntityId, cancellationToken).ConfigureAwait(false);
-            var hero = await GetHeroRequiredAsync(connection, transaction, receipt.HeroId, cancellationToken).ConfigureAwait(false);
+            var replayHero = await GetHeroRequiredAsync(connection, transaction, receipt.HeroId, cancellationToken).ConfigureAwait(false);
             transaction.Commit();
-            return new StartQuestResult(quest, hero, true);
+            return new StartQuestResult(quest, replayHero, true);
         }
 
         var settings = await GetSettingsRowAsync(connection, transaction, cancellationToken).ConfigureAwait(false)
