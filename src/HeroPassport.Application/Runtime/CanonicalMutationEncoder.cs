@@ -109,10 +109,10 @@ public static class CanonicalMutationEncoder
 
         using var payload = new MemoryStream();
         payload.WriteByte((byte)values.Count);
+        Span<byte> length = stackalloc byte[4];
         foreach (var value in values)
         {
             var bytes = Encoding.UTF8.GetBytes(value);
-            Span<byte> length = stackalloc byte[4];
             BinaryPrimitives.WriteUInt32BigEndian(length, checked((uint)bytes.Length));
             payload.Write(length);
             payload.Write(bytes);
