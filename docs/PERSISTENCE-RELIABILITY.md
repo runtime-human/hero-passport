@@ -1,19 +1,20 @@
 # Hero Passport — SQLite Persistence and Reliability
 
-**Status:** Accepted v3.2 reliability contract  
+**Status:** Accepted v3.2.1 reliability contract  
 **Snapshot:** 2026-08-11
 
 ## 1. Supported storage profile
 
 0.1 supports one writable database on a **same-host local filesystem**.
 
-Required effective state:
+Qualified effective state:
 
 ```text
 SQLite runtime >= 3.53.4
 journal_mode=WAL
 synchronous=FULL
 foreign_keys=ON
+trusted_schema=OFF
 Cache=Default
 Pooling=True
 Default Timeout=5 seconds
@@ -21,17 +22,17 @@ Default Timeout=5 seconds
 
 Do not use `Cache=Shared` with WAL.
 
-The runtime floor is checked through `SELECT sqlite_version()`; package metadata alone is not sufficient release evidence.
+Runtime floor is checked with `SELECT sqlite_version()`; package metadata alone is not release evidence.
 
-Network/shared filesystems, NFS-like mounts, cloud-shared SQLite files and multi-host writers are unsupported for 0.1.
+Network/NFS/cloud-shared SQLite files and multi-host writers are unsupported.
 
-## 2. Why the runtime floor is 3.53.4
+## 2. Runtime floor
 
-The selected `SQLitePCLRaw.bundle_e_sqlite3 3.0.5` resolves native SQLite >=3.53.4. SQLite 3.51.3 was the first patch containing the WAL-reset corruption fix; 3.53.4 is the current bundled/runtime baseline and includes that fix plus subsequent maintenance.
+`SQLitePCLRaw.bundle_e_sqlite3 3.0.5` is the selected native bundle wrapper. Release/doctor verifies the actually loaded SQLite library and requires >=3.53.4.
 
-Release/doctor must reject an unexpectedly loaded older native library rather than assuming NuGet restore proves runtime identity.
+The required floor includes the WAL-reset corruption fix present in current supported SQLite and subsequent maintenance.
 
-## 3. Connection policy
+## 3. Connection string policy
 
 Construct with `SqliteConnectionStringBuilder`:
 
@@ -43,94 +44,161 @@ Pooling=True
 Default Timeout=5
 ```
 
-On initialization/doctor verify effective pragmas after opening a connection.
+Microsoft.Data.Sqlite has no connection-string `Synchronous=Full` keyword; Hero Passport therefore treats synchronous/trusted-schema as explicit connection-open policy.
 
-Do not set WAL/synchronous repeatedly on every routine command when a dedicated initialization/qualification path can establish and verify them safely.
+## 4. Database-persistent vs connection-scoped policy
 
-## 4. DbContext lifetime
+### Initialization/database qualification
+
+On database initialization/upgrade qualification:
+
+```text
+PRAGMA journal_mode=WAL;
+verify journal_mode == wal
+SELECT sqlite_version();
+verify >=3.53.4
+```
+
+WAL is a database-level persistent property and need not be reset for every command.
+
+### Every opened product connection
+
+Immediately after open and before ordinary application work:
+
+```text
+PRAGMA synchronous=FULL;
+PRAGMA trusted_schema=OFF;
+```
+
+Foreign keys are enabled through `Foreign Keys=True` and verified in qualification/doctor paths.
+
+Do not assume one initialization connection configured pooled/future connections.
+
+Required connection-policy tests:
+
+```text
+fresh connection -> FULL / foreign_keys ON / trusted_schema OFF
+pooled reopen -> same
+clear pool + reopen -> same
+new process -> same
+```
+
+## 5. DbContext lifetime
 
 Use `IDbContextFactory<HeroPassportDbContext>`.
 
-One operation/unit of work gets one short-lived context. Never share a DbContext across concurrent tool calls and never hold one for an entire agent Quest.
+One operation/unit of work gets one short-lived context. Never share DbContext across concurrent MCP calls and never hold it for an entire agent Quest.
 
-SQLite I/O is intentionally short synchronous local I/O; do not wrap it in `Task.Run` to simulate asynchronous database support.
+SQLite I/O is short local I/O; do not use `Task.Run` as fake async database support.
 
-## 5. Writer transaction rule
+## 6. Writer transaction rule
 
 All read-modify-write operations begin a **non-deferred Serializable transaction before invariant reads**.
 
-Conceptual provider call:
+Qualified provider behavior:
 
 ```text
-connection.BeginTransaction(IsolationLevel.Serializable, deferred: false)
+connection.BeginTransaction(IsolationLevel.Serializable, deferred:false)
 ```
 
-Microsoft.Data.Sqlite documents Serializable as the normal isolation and warns that deferred read transactions can fail during read-to-write upgrade if the database becomes locked. Hero Passport avoids that upgrade pattern for mutation invariants.
+Release tests prove this obtains immediate writer intent with the selected Microsoft.Data.Sqlite version. Do not rely only on an assumed `BEGIN IMMEDIATE` mapping.
 
-Release tests must prove the selected provider version obtains immediate writer intent (qualified as `BEGIN IMMEDIATE` behavior) rather than relying on documentation wording alone.
+Only one SQLite writer may have pending changes; transactions must remain short and never span agent work/user interaction.
 
-## 6. Busy handling
+## 7. Busy handling
 
-SQLite is the writer coordinator. Hero Passport adds no process-global writer mutex.
+SQLite is the writer coordinator. No custom process-global writer mutex.
 
-Provider/SQLite busy timeout is 5 seconds. Do not stack an independent Polly retry policy around transactions; nested retry layers make latency/error behavior less predictable.
+Default/provider busy timeout is 5 seconds. No Polly transaction retry layer is added.
 
-Map exhausted contention to:
+Exhausted contention maps to:
 
 ```text
 HP202 database_busy
 ```
 
-The caller may retry an idempotent mutation using the **same** request identity/arguments. A Finish retry uses the same `questId`.
+Caller retries a retry-safe mutation with the same request ID and same canonical arguments.
 
-## 7. StartQuest transaction
+## 8. Bootstrap transaction
 
-Canonical request validation/argument hashing occurs before opening the transaction.
+Canonicalize bootstrap payload and `mutation-args/1` hash before writer acquisition.
 
-Inside the writer transaction:
+Inside writer:
 
 ```text
-1. lookup mutation receipt for (start_quest, startRequestId)
-2. if found:
-     args hash equal -> load persisted Quest and return replay
-     args hash differs -> HP135
-3. query open Quest for resolved Hero+Project
-4. if present -> HP133 active_quest_exists
-5. insert Quest
-6. insert matching mutation receipt
-7. update start projection
-8. SaveChanges
-9. COMMIT
+1 lookup receipt(bootstrap, bootstrapRequestId)
+2 found + same hash/version -> replay persisted bootstrap target
+3 found + changed -> HP135
+4 no receipt + setup already complete -> HP002
+5 create initial Hero
+6 update typed singleton settings + active Hero
+7 insert bootstrap receipt
+8 SaveChanges
+9 COMMIT
 ```
+
+Two concurrent fresh bootstrap requests serialize. Exactly one initializes; the other observes completed setup and fails HP002 unless it is replaying the winning request ID.
+
+## 9. StartQuest transaction
+
+ProjectId is resolved before DB work. Canonical Start scope includes ProjectId + explicit HeroId + quest type/title/goal.
+
+Inside writer:
+
+```text
+1 lookup receipt(start_quest, startRequestId)
+2 found:
+     same encoding/hash/context -> load ORIGINAL persisted Quest or safe target-deleted state
+     changed -> HP135
+3 validate setup
+4 validate explicit Hero exists and not archived
+5 snapshot settings.locale
+6 query open Quest for HeroId+ProjectId
+7 found -> HP133 active_quest_exists
+8 create Project row if this first meaningful mutation needs it
+9 insert Quest
+10 insert receipt with ProjectId/HeroId/QuestId
+11 update project projection
+12 SaveChanges
+13 COMMIT
+```
+
+`active_hero_id` is never read to decide Start ownership.
 
 DB backstops:
 
 ```text
-UNIQUE mutation_receipts(operation_key, request_id)
+PRIMARY/UNIQUE mutation_receipts(operation_key, request_id)
 UNIQUE quest_sessions(hero_id, project_id) WHERE status='open'
 ```
 
-Two concurrent new starts for the same Hero+Project must produce one open Quest and one `HP133` result, never two rows.
+## 10. FinishQuest transaction
 
-## 8. FinishQuest transaction
+Canonicalize finish payload and hash before writer acquisition.
+
+Inside writer:
 
 ```text
-1. BEGIN writer
-2. load Quest by questId
-3. verify process-bound ProjectId
-4. if already finished -> load/return persisted result
-5. calculate deterministic current rule versions
-6. insert Quest report + reward/Trust-Strain/Skill/milestone children
-7. insert UNIQUE xp_event for questId
-8. update Hero + HeroSkills + Streak + unlocks + project stats
-9. mark Quest finished + timestamp
-10. SaveChanges
-11. COMMIT
+1 lookup receipt(finish_quest, finishRequestId)
+2 found:
+     same hash/version -> persisted replay
+     changed -> HP135
+3 load Quest by questId and verify invocation ProjectId
+4 if already finished:
+     compare payload hash to persisted finalization hash
+     equal -> persist/accept this finish request receipt; return original result, alreadyFinalized=true
+     different -> HP136 quest_already_finalized_conflict
+5 calculate current deterministic rule versions once
+6 insert Quest report + reward/Trust-Strain/Skill/milestone rows
+7 insert UNIQUE xp_event
+8 insert finish receipt
+9 update Hero/Skill/Streak/project projections + unlocks
+10 mark Quest finished + timestamp
+11 SaveChanges
+12 COMMIT
 ```
 
 Do not return success until COMMIT succeeds.
-
-Current globally active Hero is not substituted for the Quest’s persisted Hero owner.
 
 Durable backstops:
 
@@ -141,40 +209,43 @@ UNIQUE xp_events.quest_id
 
 Correct guarantee: **at-most-once committed progression per Quest**.
 
-## 9. Concurrent Finish
+## 11. Concurrent Finish
 
-Two callers may concurrently finish the same Quest.
+Two agents may attempt different finalizations.
 
-Expected result:
+Expected behavior:
 
-- one transaction commits one immutable report/event/progression update;
-- the other waits/fails busy/reloads according to SQLite timing;
-- a retry returns the persisted original result;
-- current game rules are never applied twice.
+- one transaction commits the immutable final report/progression;
+- equivalent later payloads return that result;
+- different later payloads return HP136;
+- no overwrite/recalculation occurs;
+- no lease/heartbeat/agent owner is introduced.
 
-Tests must cover both same and conflicting finish payloads. Once a Quest is finished, persisted first committed outcome is authoritative; later different finish arguments do not rewrite history.
+Required race tests cover identical and conflicting payloads.
 
-## 10. Create/Delete mutation receipts
+## 12. Mutation receipts and deleted targets
 
-Create Hero and permanent Delete Hero use caller request IDs and the same receipt pattern as Start.
-
-Receipt insertion and the mutation are atomic.
-
-For permanent delete, the receipt stores only:
+Receipts persist:
 
 ```text
-operation key
-request ID
-canonical args hash
-deleted HeroId
-deleted timestamp
+operation/request ID
+args_encoding_version
+args_hash
+result kind/entity ID
+bound ProjectId/HeroId as applicable
+result_status active|target_deleted
+effective timestamp
 ```
 
-It does not retain the deleted Hero’s game history.
+Receipt target/context IDs intentionally have no FK.
 
-## 11. Crash semantics
+Permanent CLI Hero deletion marks related surviving receipts `target_deleted` before/while deleting private Hero history in the same transaction.
 
-Never manually delete/rename SQLite sidecar files:
+Late retry never resurrects a deleted Hero/Quest and never requires deleted title/goal/report data.
+
+## 13. Crash semantics
+
+Never manually delete/rename SQLite sidecars:
 
 ```text
 *.db-wal
@@ -187,21 +258,19 @@ SQLite owns crash recovery.
 Required outcomes:
 
 ```text
-crash before COMMIT -> no partial progression/mutation receipt
-crash after COMMIT before response -> retry converges to persisted result
+crash before COMMIT -> no partial mutation/receipt/progression
+crash after COMMIT before response -> same request converges to persisted result
 ```
 
-Child-process crash injection, not only exceptions in one process, proves this.
+Use child-process termination, not only in-process exceptions.
 
-## 12. WAL checkpoint policy
+## 14. WAL/checkpoint policy
 
-Do not invent custom checkpoint loops in 0.1 without measured need. Use SQLite’s WAL behavior and test database growth/recovery under representative workloads.
+No custom checkpoint loop in 0.1 without measured need. Use SQLite WAL behavior and test representative growth/recovery.
 
-Doctor may inspect WAL-related state but must not “repair” by deleting sidecar files.
+Doctor may inspect WAL state but never “repair” by deleting sidecars.
 
-## 13. Storage/error mapping
-
-Stable storage meanings:
+## 15. Storage/error mapping
 
 ```text
 HP200 storage_unavailable
@@ -216,88 +285,155 @@ HP210 app_data_unavailable
 HP211 unsupported_storage_location
 ```
 
-Expected unique-constraint races for request/open-Quest/Finish invariants are first translated into their semantic replay/conflict outcome rather than leaked as generic HP207.
+Expected unique-constraint races are translated into semantic replay/conflict outcomes rather than leaked as generic HP207.
 
-## 14. Corruption/integrity
+## 16. Doctor/integrity
 
-Doctor:
+Doctor inspects:
 
 ```text
-open DB through SQLite
-SELECT sqlite_version()
-PRAGMA journal_mode
-PRAGMA synchronous
-PRAGMA foreign_keys
-migration/schema state
+actual sqlite_version()
+journal_mode
+synchronous
+foreign_keys
+trusted_schema
+current/pending EF migration state
+__EFMigrationsLock presence/state
 PRAGMA quick_check
 PRAGMA foreign_key_check
-supported local storage location
+supported storage location
 ```
 
-Do not perform destructive automatic repair. A corruption signal becomes safe diagnostics/recovery guidance.
+Read-only doctor inspection must not mutate state.
 
-## 15. Backup
+## 17. EF migration abandoned locks
 
-Logical export is not physical database backup.
+EF Core SQLite uses `__EFMigrationsLock` to serialize migrations. Unexpected process termination can leave an abandoned lock that prevents future migration completion.
 
-A future/pre-migration live backup uses `SqliteConnection.BackupDatabase` or equivalent SQLite backup API, never raw `File.Copy` of an active WAL database.
+Hero Passport must **not** silently clear it at ordinary startup.
+
+Doctor reports a suspicious lock with safe recovery guidance.
+
+An explicit CLI repair path may clear/drop the abandoned migration lock only when:
+
+1. the user has stopped competing Hero Passport processes;
+2. repair opens the DB and performs a fresh safety/integrity check;
+3. the operation is explicitly requested;
+4. post-repair migration state is revalidated.
+
+Required child-process scenario:
+
+```text
+migration lock acquired
+process killed
+next startup/doctor detects lock
+explicit repair
+migration completes
+quick_check/foreign_key_check pass
+```
+
+## 18. Backup
+
+Live backup uses `SqliteConnection.BackupDatabase`/SQLite backup API, never raw `File.Copy` of an active WAL DB.
 
 Verified flow:
 
 ```text
-backup into temporary destination
-open destination independently
-PRAGMA quick_check
-PRAGMA foreign_key_check
-validate schema/migration metadata
+backup temporary destination
+open independently
+quick_check
+foreign_key_check
+validate migration/schema metadata
 publish completed backup atomically
 ```
 
-Never replace the only known-good backup before the new candidate passes validation.
+Do not replace the only known-good backup before candidate validation.
 
-## 16. Migrations
+## 19. Permanent Hero delete semantics
 
-Use EF migrations; no `EnsureCreated` product database.
+Permanent Hero deletion is CLI-only in 0.1.
 
-Use provider migration locking rather than adding a second custom migration lock mechanism.
+It is a **logical irreversible deletion from the active Hero Passport database state**, not forensic secure erasure.
 
-Release migration matrix:
+Hero Passport does not claim removed bytes are unrecoverable from:
+
+```text
+SQLite free pages
+filesystem snapshots
+OS/cloud backups of app-data
+previous Hero Passport backups
+previous exports
+storage media forensics
+```
+
+Do not add `secure_delete`/VACUUM erasure guarantees unless a future threat model explicitly requires them.
+
+## 20. Rebuildable projections
+
+Canonical surviving Quest/report/event/delta/unlock history is sufficient to rebuild:
+
+```text
+Hero total XP
+Trust/Strain
+success streak
+hero_skills
+hero_project_stats
+```
+
+Release test:
+
+```text
+capture public card/project read models
+destroy/recompute projection rows/values from canonical history
+capture again
+assert semantic equality
+```
+
+This is repair/migration insurance, not event sourcing.
+
+## 21. Migrations
+
+Use EF migrations; no `EnsureCreated` product DB.
+
+Migration 0001 must include critical CHECK/FK/partial-index/singleton invariants to avoid preventable later SQLite table rebuild debt.
+
+Release matrix:
 
 ```text
 empty -> latest
-previous-release fixture -> latest
-crash/interruption around migration as applicable
+previous fixture -> latest
 model snapshot review
-partial/unique index preservation
-FK/cascade review
+CHECK/FK/index review
+abandoned-lock recovery
+projection rebuild
 backup consideration
+quick_check + foreign_key_check
 ```
 
-Permanent-delete cascade paths require explicit review because they are privacy-sensitive destructive behavior.
+## 22. Local filesystem detection
 
-## 17. Local filesystem support detection
+Do not claim reliable WAL semantics on arbitrary remote/network storage. Known unsupported locations return HP211. Unknown characteristics are documented outside the support guarantee rather than advertised as multi-host safe.
 
-Do not pretend reliable SQLite WAL semantics on arbitrary remote/network storage. Known unsupported location detection returns `HP211` with a safe message. Unknown location characteristics are documented as outside the support guarantee rather than silently advertising multi-host safety.
+## 23. Required persistence qualification
 
-## 18. Release qualification tests
-
-File-backed SQLite only:
+Real file-backed SQLite only:
 
 ```text
+runtime >=3.53.4
+WAL
+per-connection FULL/foreign_keys/trusted_schema across pooling/processes
 non-deferred writer intent
-same request ID same args replay
-same request ID changed args conflict
-two-new-start race -> one open Quest
-two-Finish race -> one progression event
+bootstrap same/different request replay + crash
+Start context-aware replay/mismatch/race + crash
+Finish identical/conflicting request/race + crash
+receipt target_deleted lifecycle
+DB CHECK/FK violations rejected physically
+one-open partial index
 busy timeout mapping
-crash before/after commit
-partial unique indexes
-foreign key behavior
-permanent Hero delete transaction
-WAL recovery
-runtime version/pragmas
-backup consistency
-migration upgrade fixtures
+WAL crash recovery
+migration abandoned-lock recovery
+backup validation
+projection rebuild
 ```
 
-EF InMemory cannot substitute for any of these guarantees.
+EF InMemory cannot substitute for these guarantees.
