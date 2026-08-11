@@ -6,7 +6,7 @@ namespace HeroPassport.Architecture.Tests;
 public sealed class ProjectDependencyTests
 {
     [Fact]
-    public void Project_reference_graph_matches_v3_2_1_architecture()
+    public void ProjectReferenceGraphMatchesV321Architecture()
     {
         var root = FindRepositoryRoot();
 
@@ -20,7 +20,7 @@ public sealed class ProjectDependencyTests
     }
 
     [Fact]
-    public void Domain_and_application_do_not_reference_forbidden_adapter_packages()
+    public void DomainAndApplicationDoNotReferenceForbiddenAdapterPackages()
     {
         var root = FindRepositoryRoot();
 
