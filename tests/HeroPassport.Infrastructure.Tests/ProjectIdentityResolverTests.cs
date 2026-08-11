@@ -1,5 +1,5 @@
-using System.Diagnostics;
 using HeroPassport.Infrastructure.ProjectIdentity;
+using System.Diagnostics;
 using Xunit;
 
 namespace HeroPassport.Infrastructure.Tests;
@@ -20,12 +20,11 @@ public sealed class ProjectIdentityResolverTests
             var nested = Path.Combine(repository, "src", "component");
             Directory.CreateDirectory(nested);
 
-            var resolver = new ProjectIdentityResolver();
             var salt = Enumerable.Range(0, 32).Select(static value => (byte)value).ToArray();
 
-            var fromRoot = await resolver.ResolveAsync(null, repository, salt, cancellationToken);
-            var fromNested = await resolver.ResolveAsync(null, nested, salt, cancellationToken);
-            var explicitNested = await resolver.ResolveAsync(nested, repository, salt, cancellationToken);
+            var fromRoot = await ProjectIdentityResolver.ResolveAsync(null, repository, salt, cancellationToken);
+            var fromNested = await ProjectIdentityResolver.ResolveAsync(null, nested, salt, cancellationToken);
+            var explicitNested = await ProjectIdentityResolver.ResolveAsync(nested, repository, salt, cancellationToken);
 
             Assert.Equal("git", fromRoot.Kind);
             Assert.Equal(".", fromRoot.Scope);
@@ -54,11 +53,10 @@ public sealed class ProjectIdentityResolverTests
             await RunGitAsync(repository, cancellationToken, "-c", "user.name=Hero Passport", "-c", "user.email=hero@example.invalid", "commit", "--allow-empty", "-m", "initial");
             await RunGitAsync(repository, cancellationToken, "worktree", "add", "-b", "feature", worktree);
 
-            var resolver = new ProjectIdentityResolver();
             var salt = Enumerable.Repeat((byte)0x5A, 32).ToArray();
 
-            var primary = await resolver.ResolveAsync(null, repository, salt, cancellationToken);
-            var linked = await resolver.ResolveAsync(null, worktree, salt, cancellationToken);
+            var primary = await ProjectIdentityResolver.ResolveAsync(null, repository, salt, cancellationToken);
+            var linked = await ProjectIdentityResolver.ResolveAsync(null, worktree, salt, cancellationToken);
 
             Assert.Equal(primary.WorkspaceFingerprint, linked.WorkspaceFingerprint);
             Assert.Equal(".", linked.Scope);
@@ -76,10 +74,9 @@ public sealed class ProjectIdentityResolverTests
         var root = CreateTemporaryDirectory();
         try
         {
-            var resolver = new ProjectIdentityResolver();
             var salt = Enumerable.Repeat((byte)0xA5, 32).ToArray();
 
-            var identity = await resolver.ResolveAsync(null, root, salt, cancellationToken);
+            var identity = await ProjectIdentityResolver.ResolveAsync(null, root, salt, cancellationToken);
 
             Assert.Equal("standalone", identity.Kind);
             Assert.Equal(".", identity.Scope);
