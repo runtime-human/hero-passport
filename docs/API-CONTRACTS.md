@@ -1,11 +1,11 @@
 # Hero Passport — API Contracts
 
-**Status:** Accepted application semantics v3.2  
+**Status:** Accepted application semantics v3.2.1  
 **Snapshot:** 2026-08-11
 
-Exact MCP fields are in `WIRE-CONTRACT.md`; persistence and project binding are separate normative contracts.
+Exact model-facing MCP fields are normative in `WIRE-CONTRACT.md`; persistence/project identity are separate focused contracts.
 
-## 1. Contract layers
+## 1. Layers
 
 ```text
 Domain rules
@@ -22,119 +22,161 @@ Do not force one DTO across layers.
 
 ## 2. Application operations
 
+MCP-facing semantic use cases:
+
 ```text
+BootstrapApplication
 ConfigureApplication
+GetRuntimeContext
 CreateHero
 ListHeroes
 ActivateHero
 ArchiveHero
 RestoreHero
-DeleteHero
 StartQuest
 FinishQuest
-ListActiveQuests
 GetHeroCard
-InitializeApplication
-GetDiagnostics
-ExportData
 ```
 
-First eleven map to HP-MCP/2 except `InitializeApplication/GetDiagnostics/ExportData`, which are CLI/admin in 0.1.
-
-## 3. Context
-
-Project-bound operations receive a resolved ProjectId. The resolver is Infrastructure and follows `project-identity/1`.
-
-New Quest creation resolves the global active Hero. Existing Quest operations use the persisted Quest Hero; switching active Hero never transfers an open/finished Quest.
-
-Client/agent identity is diagnostic only and never Hero identity, ownership, authorization or reward input.
-
-## 4. Request identity
-
-Resource/destructive operations that need safe retry carry caller request identity:
+CLI/admin also owns:
 
 ```text
-CreateHero(createRequestId, name)
-StartQuest(startRequestId, questType, title, goal)
-DeleteHero(deleteRequestId, heroId, confirmHeroName)
+DeleteHeroPermanently
+GetDiagnostics
+RepairMigrationLock
+ExportData
+BackupData
+GetDataPath
 ```
 
-Same request ID + same canonical args returns semantically equivalent persisted result. Same request ID + changed canonical args is `HP135 idempotency_conflict`.
+Permanent logical delete is not model-facing in 0.1.
 
-## 5. StartQuest
+## 3. Operation context
+
+Project-bound operations receive a resolved `ProjectId` from `project-identity/1`.
+
+`activeHeroId` is a default preference only. New Start receives explicit `heroId`; existing Quest operations always use persisted Quest ownership.
+
+Client/agent identity is diagnostic only and never Hero identity, authorization, ownership or reward input.
+
+## 4. Mutation request identity
+
+```text
+BootstrapApplication(bootstrapRequestId, settings + heroName)
+CreateHero(createRequestId, name)
+StartQuest(startRequestId, heroId, questType, title, goal, Context(ProjectId))
+FinishQuest(finishRequestId, questId, result, summary, attestations, skills, Context(ProjectId))
+```
+
+Same request ID + same canonical operation scope/arguments -> persisted replay.
+
+Same request ID + changed scope/arguments -> `HP135 idempotency_conflict`.
+
+Canonical hashing persists `args_encoding_version` and never depends on JSON serializer formatting.
+
+## 5. Bootstrap
+
+```text
+receipt replay/mismatch check inside writer
+fresh request + setup already complete -> HP002
+otherwise create initial Hero + settings + active preference + receipt atomically
+```
+
+Crash-after-commit retry therefore converges.
+
+Configure is preference-only after setup.
+
+## 6. Runtime context
+
+`GetRuntimeContext` is read-only and works before/after setup.
+
+Returns versions/setup/settings/default Hero/current Project display data/open Quests across **all Heroes for that Project**/rule versions.
+
+It must not create/update durable Project rows or bookkeeping simply because the read occurs.
+
+## 7. StartQuest
 
 Conceptual input:
 
 ```text
 Context(ProjectId + invocation origin)
 startRequestId
+heroId
 questType
 title
 goal
 ```
 
-Semantics:
+ProjectId + explicit HeroId are part of the idempotency scope.
 
 ```text
-resolve active Hero
+resolve ProjectId
 canonicalize
 writer transaction
-request replay/mismatch check
+receipt replay/mismatch
+validate setup/explicit Hero
+snapshot locale
 one-open Hero+Project check
-create Quest + receipt atomically
+create Quest + receipt + projection atomically
 ```
 
-`HP133 active_quest_exists` means the caller must recover/finish/abandon the existing Quest, never silently replace it.
+No current-active-Hero lookup determines ownership.
 
-## 6. FinishQuest
+`HP133` means an open Quest already occupies that Hero+Project slot.
+
+## 8. FinishQuest
 
 Conceptual input:
 
 ```text
 Context(ProjectId + invocation origin)
+finishRequestId
 questId
 result
 summary
-bounded metrics/provenance
+bounded attestations/provenance
 ordered Skills
 ```
 
-Semantics:
-
 ```text
 writer transaction
-load Quest by ID
-verify Project binding
-if finished -> persisted original result
-otherwise run deterministic versioned rules once
-commit report/ledger/all progression atomically
+finish receipt replay/mismatch
+load Quest + verify Project binding
+already finalized + equivalent payload -> original result / alreadyFinalized
+already finalized + different payload -> HP136
+otherwise run current deterministic rules exactly once
+commit final report/ledger/receipt/all progression atomically
 ```
 
-Current active Hero is not consulted for ownership of the loaded Quest.
+Current active Hero is irrelevant to loaded Quest ownership.
 
-## 7. Hero management
+## 9. Hero management
 
 Create does not auto-activate.
 
-Activate chooses the default owner of future Quests.
+Activate changes only the default Hero preference for future Start formation.
 
-Archive/Restore are reversible and idempotent state setters. Archive rejects globally active Hero and any Hero with an open Quest.
+Archive/Restore are reversible idempotent state setters. Archive rejects active default Hero and any Hero with open Quest(s).
 
-Permanent Delete is destructive, request-idempotent, requires exact target-name confirmation, rejects active/open-Quest Heroes, and deletes that Hero’s local game/history data in one transaction.
+Permanent logical delete is explicit CLI administration. It rejects active/open-Quest Heroes, marks relevant surviving receipts `target_deleted`, deletes Hero-owned history/projections and does not claim forensic storage erasure.
 
-## 8. ListActiveQuests
+## 10. Hero card
 
-Returns `0..1` open Quest for current active Hero + current bound Project. Empty is success.
+`GetHeroCard(heroId, Context(ProjectId))` uses explicit HeroId.
 
-This is explicit recovery/handoff, not fuzzy semantic search.
+Returns global Hero progression plus bounded current-project projection.
 
-## 9. Hero card
+At Hero/Skill cap, `isLevelCapped=true` and `nextLevelXpRequired` is absent.
 
-Returns global active Hero progression plus bounded current-project projection and optional active Quest.
+No path/fingerprint/internal ProjectId/raw history/source/log data.
 
-No path/fingerprint/project internal ID/raw history/source/log data.
+## 11. Attestations
 
-## 10. Errors
+Build/test/scope/correction inputs are bounded agent attestations/reported signals.
+
+`observed` means caller agent asserts direct observation; it is not independent Core verification.
+
+## 12. Errors
 
 Application uses typed safe errors:
 
@@ -146,30 +188,31 @@ MessageKey
 SafeDetails? allowlisted only
 ```
 
-Important codes are enumerated in `WIRE-CONTRACT.md`.
+Important codes are in `WIRE-CONTRACT.md`, including HP001/HP002/HP133/HP135/HP136.
 
-Never put SQL, absolute paths, request bodies, source, prompts, secrets or environment values in model-facing details.
+Never include SQL, absolute paths, request bodies, source, prompts, secrets or environment data in model-facing details.
 
-## 11. Time/IDs/integer range
+## 13. IDs/time/integer range
 
 ```text
 IDs       typed UUIDv7 wrappers
 Time      injected .NET TimeProvider, UTC persistence
-JSON ints 0..9_007_199_254_740_991 where long-lived/exposed
+JSON ints 0..9_007_199_254_740_991 where exposed/long-lived
 ```
 
-Domain never calls wall clock directly.
+Domain never reads wall clock directly.
 
-## 12. Version axes
+## 14. Version axes
 
-Keep independent:
+Independent versions include:
 
 ```text
-Hero Passport product version
-MCP negotiated protocol revision
-HP-MCP/2 contract epoch
-config schema version
-EF migration id
+Hero Passport product
+MCP protocol revision
+HP-MCP/2
+hero-passport-skill/1
+config schema
+EF migration
 project-identity/1
 SafeTextV1
 mutation-args/1
@@ -183,4 +226,4 @@ unlock/2.0.0
 rank/1.0.0
 ```
 
-Game balance changes never rewrite persisted historical Quest results.
+Game balance changes never rewrite historical completed Quest results.
