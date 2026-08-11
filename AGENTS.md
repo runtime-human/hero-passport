@@ -6,7 +6,7 @@ Build Hero Passport as a local-first RPG companion for people working with AI co
 
 0.1 is **MCP Core + official Agent Skill + CLI**. Web is 0.2.
 
-Do not turn the product into source-code telemetry, employee monitoring, an LLM judge, an agent scheduler, or a cloud service by accident.
+Do not turn the product into source-code telemetry, employee monitoring, an LLM judge, an agent scheduler or a cloud service.
 
 ## Read before coding
 
@@ -17,7 +17,7 @@ docs/PRODUCT-SPEC.md
 docs/ARCHITECTURE.md
 ```
 
-Then the focused contract for the subsystem:
+Then the focused contract:
 
 ```text
 MCP exact wire          docs/WIRE-CONTRACT.md
@@ -29,46 +29,46 @@ Project identity        docs/PROJECT-IDENTITY.md
 Configuration/i18n      docs/CONFIGURATION.md
 Security/privacy        docs/SECURITY-PRIVACY.md
 Tests/release evidence  docs/TESTING-QUALITY.md
-Implementation plan     docs/superpowers/plans/2026-08-11-hero-passport-v3.2-implementation.md
+Implementation plan     docs/superpowers/plans/2026-08-11-hero-passport-v3.2.1-implementation.md
 ```
 
-`docs/README.md` defines documentation precedence.
+`docs/README.md` defines precedence.
 
 ## Core architecture
 
 ```text
-Domain
-  ^
-Application
-  ^
-Infrastructure
-  ^
-App (MCP stdio + CLI + presentation)
+Domain <- Application <- Infrastructure <- App
 ```
 
-Agent Skill is a portable orchestration package outside Domain/Application game logic.
+Agent Skill is a portable orchestration package outside authoritative game logic.
 
 No separate Contracts assembly in 0.1.
 
-## Critical v3.2 invariants
+## Critical v3.2.1 invariants
 
 ```text
-one meaningful goal = one Quest
+Core Quest = explicitly started durable progression unit
+one coherent meaningful goal = Skill heuristic, not server truth
 one open Quest per Hero + Project
+linked worktrees share Project -> same-Hero parallel independent Quests unsupported in 0.1
 Quest owner fixed at start
 Quest is not owned by an AI agent
-startRequestId identifies caller start intent/retry
-questId identifies durable Quest
-natural-language goal is never an idempotency key
-Finish commits progression at most once
-historical finish result is immutable
+active Hero is a default preference, not hidden Start ownership
+Start carries explicit heroId
+bootstrapRequestId/createRequestId/startRequestId/finishRequestId are retry identities
+questId is durable work identity
+natural-language goal is never idempotency identity
+Finish conflicting finalization is HP136; history never overwritten
+at-most-once committed progression per Quest
 ```
 
 ## Game authority
 
-The agent reports bounded facts only.
+Agent sends **bounded attestations/reported signals**, not XP or a quality score.
 
-Hero Passport Core calculates:
+`observed` means the agent asserts it directly saw/ran a result; Hero Passport does not independently verify raw evidence.
+
+Core calculates:
 
 ```text
 XP
@@ -78,12 +78,12 @@ Rank
 Trust/Strain
 Streak
 Traits/Titles
-milestones
+semantic milestones
 ```
 
-Never accept agent-supplied XP/quality score/game deltas.
-
 Canonical clean coding golden for `reward/2.0.0` is **95 XP**.
+
+Trust/Strain are RPG stats, not objective productivity telemetry.
 
 ## Privacy deny-list
 
@@ -100,7 +100,7 @@ Git remote URLs
 arbitrary metadata/context bags
 ```
 
-Build/test provenance is `observed | reported | none`, not raw evidence storage.
+Quest title/goal/summary can still be sensitive local project metadata; do not imply SafeText redacts secrets.
 
 ## MCP
 
@@ -110,7 +110,9 @@ Preferred semantics: MCP `2026-07-28`, with `2025-11-25` compatibility qualifica
 
 Application correctness never depends on MCP session/connection state.
 
-Tool inventory/order is normative in `WIRE-CONTRACT.md`; register explicitly, never by broad assembly scan.
+Current tool inventory/order is normative in `WIRE-CONTRACT.md`; register explicitly.
+
+`hero.delete` is not model-facing in 0.1; permanent logical delete is CLI-only.
 
 For stdio:
 
@@ -128,18 +130,24 @@ actual SQLite runtime >= 3.53.4
 WAL
 synchronous=FULL
 foreign_keys=ON
+trusted_schema=OFF
+Cache=Default
 IDbContextFactory
 ```
 
-All read-modify-write operations acquire writer intent before invariant reads.
+WAL/runtime are initialization/qualification concerns. Connection-scoped policy (`FULL`, foreign keys, trusted_schema) must hold on every product connection, including pooled/new-process paths.
 
-No custom global writer mutex. No Polly retry layer. Never delete WAL/SHM as recovery.
+All invariant read-modify-write operations acquire writer intent before invariant reads.
+
+No custom global writer mutex. No Polly retry layer. Never delete WAL/SHM for recovery.
+
+EF SQLite abandoned `__EFMigrationsLock` is diagnosed by doctor and repaired only via explicit safe administration, never silently at ordinary startup.
 
 ## Development method
 
-Follow the accepted implementation plan.
+Follow the v3.2.1 **risk-first** implementation plan.
 
-Use TDD for product code:
+Use TDD for every product-code task:
 
 ```text
 write failing test
@@ -147,15 +155,33 @@ run and observe failure
 minimal implementation
 run and observe pass
 refactor
-commit focused change
+focused commit
 ```
 
 Use real file-backed SQLite for persistence/concurrency/crash claims.
 
-Do not claim build/tests pass without running the exact commands and seeing successful output.
+Do not claim build/tests pass without executing and observing the exact commands.
+
+## Pre-code checkpoint
+
+Before full RPG expansion, prove the real vertical loop:
+
+```text
+scaffold/dependency restore
+SQLite/migrations/connection policy
+project identity
+bootstrap/get_context
+minimal Start
+minimal Finish/base XP
+real MCP adapter
+minimal packaged Skill
+Codex E2E + restart/retry/race/crash
+```
+
+Only then expand the complete RPG layers.
 
 ## Extensibility rule
 
-Do not add MediatR, AutoMapper, Dapper, runtime plugin systems, event buses, HTTP/OAuth, cloud sync, CRDT/event sourcing, MCP Tasks, source ingestion, or another framework because it might be useful later.
+Do not add MediatR, AutoMapper, Dapper, runtime plugin systems, event buses, HTTP/OAuth, cloud sync, CRDT/event sourcing, MCP Tasks, source ingestion or another framework because it might be useful later.
 
-A demonstrated product requirement comes first; then update architecture/ADR/tests.
+Future sync language is **sync-conscious**, not sync-ready: current local data choices do not solve cross-device identity/conflicts/deletion/causality.
