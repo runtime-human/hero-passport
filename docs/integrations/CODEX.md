@@ -1,9 +1,9 @@
 # Codex Integration
 
 **Target status:** first release-blocking Qualified host  
-**Architecture:** Hero Passport v3.2
+**Architecture:** Hero Passport v3.2.1
 
-Codex is the reference host for 0.1 qualification, but HP-MCP/2 remains host-neutral.
+Codex is the reference host for 0.1 qualification; HP-MCP/2 remains host-neutral.
 
 ## Integration shape
 
@@ -14,53 +14,56 @@ Codex
   -> same-host SQLite
 ```
 
-Current OpenAI documentation supports Skills in Codex and describes OpenAI Skills as following the open Agent Skills standard. Hero Passport therefore ships its portable Skill in that format rather than duplicating the complete lifecycle in `AGENTS.md`.
+Use current official OpenAI/Codex Skills and MCP mechanisms at release time. Hero Passport ships the lifecycle as a portable Agent Skill rather than duplicating full policy in `AGENTS.md`.
 
 ## MCP setup rule
 
-Use Codex’s **current official native MCP configuration mechanism** to launch:
+Configure Codex using its **current official native MCP configuration mechanism** to launch:
 
 ```text
 hero-passport mcp
 ```
 
-from the project workspace, or pass:
+from project workspace, or pass `--project-root <project>` when launch cwd is not the intended boundary.
 
-```text
---project-root <project>
-```
+Do not send local filesystem path as an HP-MCP tool argument.
 
-when the host’s launch cwd is not the intended project boundary.
+Exact Codex config syntax/paths are release-time compatibility data, not frozen architecture.
 
-Do not send the local path as an HP-MCP tool argument.
+## Skill behavior
 
-Exact Codex configuration syntax/paths are release-time compatibility data and must be copied from current official OpenAI docs/tested tooling, not frozen as Hero Passport architecture.
+Install/enable `skills/hero-passport/` with the current supported Skill mechanism.
 
-## Skill
+Expected behavior:
 
-Install/enable `skills/hero-passport/` using the current Codex Skill/plugin mechanism. The Skill is expected to:
-
+- call `hero.get_context` for persisted settings/recovery/version compatibility;
+- bootstrap first run with one `bootstrapRequestId`;
 - avoid Quests for short factual questions;
-- auto-start meaningful project work;
-- retain/recover `questId`;
+- auto-start meaningful project work conservatively;
+- pass explicit selected `heroId` to Start;
+- retain/recover `questId` across restart/handoff;
 - auto-finish only at genuine completion;
-- report bounded provenance facts;
-- render canonical result data without recalculation.
+- use `finishRequestId` and respect HP136 finalization conflict;
+- report bounded attestations, not “verified facts”;
+- render canonical result without recalculation.
 
-## Qualification gate
+## Risk-first qualification checkpoint
 
-Before labeling a release Qualified on Codex, record Codex version/OS/date and prove:
+Before implementing/claiming all RPG polish, prove packaged Codex vertical E2E:
 
 ```text
-11 tools discovered in order
-first-run conversational onboarding
-clean Quest start/finish
-95-XP golden through real MCP path
-restart/recovery
-Hero switch ownership
-structuredContent compatibility output
-Skill trigger/finish evals
-no MCP stdout contamination
+current HP-MCP/2 v3.2.1 tools discovered
+get_context pre-setup
+first-run conversational bootstrap
+minimal Quest Start explicit Hero
+minimal Finish/base XP
+server restart/recovery
+Start/Finish retry behavior
+conflicting Finish HP136
+SQLite pooled/new-process effective pragmas
+stdio purity
 ```
 
-Codex may show its own tool confirmation UI; that host UX does not change Hero Passport invariants.
+After Phase-B RPG implementation, full 0.1 qualification additionally proves 95-XP golden, Skill/Level/Rank/Trust-Strain/cosmetic progression, RU/EN presentation and full Agent Skill evals.
+
+Codex may show its own tool confirmation UI; host UX never changes Core invariants.
