@@ -22,7 +22,7 @@ public static class HeroPassportDatabase
         }
 
         var factory = new HeroPassportDbContextFactory(fullPath);
-        await using var context = await factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var context = factory.CreateDbContext();
         await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
     }
 
