@@ -1,6 +1,6 @@
 # Hero Passport — Interoperability
 
-**Status:** Accepted v3.2 interoperability contract  
+**Status:** Accepted v3.2.1 interoperability contract  
 **Snapshot:** 2026-08-11
 
 ## 1. Product portability
@@ -13,109 +13,98 @@ portable orchestration: Agent Skill format where supported
 host-specific layer: installation/configuration only
 ```
 
-Codex is the first release-blocking Qualified reference host, not the definition of Hero Passport behavior.
+Codex is the first release-blocking qualified reference host, not the definition of product behavior.
 
 ## 2. MCP protocol
 
-Preferred semantics:
+Preferred semantics: `2026-07-28`.
 
-```text
-2026-07-28
-```
+Application correctness is independent of protocol sessions/connections. Stateful work uses explicit ordinary data (`heroId`, `questId`, mutation request IDs).
 
-The application is stateless with respect to protocol sessions/connections. Stateful work uses explicit ordinary tool data (`questId`, mutation request IDs).
-
-Compatibility qualification also exercises `2025-11-25` through the official C# SDK’s supported compatibility behavior.
-
-Do not pin product meaning to a transport handshake or host-specific client metadata.
+Qualification also exercises `2025-11-25` compatibility through the official C# SDK path.
 
 ## 3. MCP tool contract
 
-The same eleven HP-MCP/2 tools, schemas, errors and game meanings apply across hosts.
+The current HP-MCP/2 v3.2.1 tool set/schemas/errors have identical meaning across hosts. The exact current inventory is normative in `WIRE-CONTRACT.md`; do not turn its present count into a permanent architecture rule.
 
-Hosts may differ in:
-
-```text
-how they launch stdio
-whether they display tool-call confirmations
-how they install/activate Skills
-how project cwd is provided
-how they render Markdown/text
-```
-
-Those differences do not change server invariants.
+Hosts may differ in stdio launch, tool-call UX, Skill install/activation, cwd/project binding and Markdown rendering. Those differences never alter Core invariants.
 
 ## 4. Agent Skill portability
 
-Primary portable format follows the open Agent Skills specification:
+Portable shape:
 
 ```text
 skills/hero-passport/SKILL.md
 skills/hero-passport/references/*
 ```
 
-Trigger description should be specific enough to activate for meaningful project work but not every programming conversation. Release AgentEvals measure both under-trigger and over-trigger behavior.
+Skill uses `hero.get_context` to hydrate persisted settings/recovery/version compatibility rather than relying on host-local remembered defaults.
 
-If a host does not implement the open Skill format, integration may map the same concise lifecycle guidance to the host’s supported instruction mechanism. Such mapping is documented and smoke-tested; it must not contain independent reward rules.
+Trigger description/evals should activate for meaningful project work without turning every programming conversation into a Quest.
+
+If a host lacks open Skill-format support, integration may map the same concise lifecycle guidance to that host’s current supported instruction mechanism. Mapping is release-time documented/smoke-tested and never contains independent reward rules.
 
 ## 5. Result portability
 
-Machine consumers use `structuredContent` fields. Human presentation is fallback/UX.
+Machine consumers use `structuredContent` as canonical result.
 
-Compatibility TextContent contains JSON semantically equal to structured content, so a host that only sees text can still receive the machine result without a separate contradictory status language.
+One deterministic serialized JSON TextContent remains semantically equal for backwards compatibility. Whitespace/minification is not business semantics.
 
 ## 6. Locale portability
 
-Canonical keys and numbers are host-neutral. `ru-RU` / `en-US` are presentation resources.
+Canonical keys/numbers are host-neutral. `ru-RU` / `en-US` are presentation resources.
 
-A host may converse in another language while Hero Passport still renders one supported locale; unsupported locale selection fails/falls back according to explicit configuration policy rather than inventing translated game keys.
+Persisted locale/presentation preferences are returned by get_context after restart.
 
 ## 7. Project interoperability
 
-Project identity is local server state, not sent from the model as a path.
+Project identity is local server state, not a model-supplied filesystem path.
 
-Integration should provide correct cwd or explicit `--project-root`. Linked worktrees/monorepos/submodules follow `PROJECT-IDENTITY.md` consistently regardless of host.
+Integration supplies correct cwd or explicit `--project-root`. Linked worktrees/monorepos/submodules follow `PROJECT-IDENTITY.md` consistently.
 
-## 8. Qualification states
+Linked worktrees share ProjectId, so same-Hero parallel independent open Quests in linked worktrees are explicitly unsupported in 0.1 across every host.
 
-Use three support labels:
+## 8. Multi-host active Hero semantics
+
+Global active Hero is a default preference only.
+
+Skill selects a Hero from context and sends explicit `heroId` on Start. If another host activates a different Hero concurrently, it cannot silently retarget that already formed request.
+
+Recovery context lists open Quests for the current Project across all Heroes.
+
+## 9. Qualification states
 
 ```text
-Qualified                  release-blocking E2E evidence on current version
-Documented compatible      setup documented; protocol expected; smoke evidence limited
-Unsupported / unknown      no current support claim
+Qualified             release-blocking E2E evidence on current version
+Documented compatible setup documented; protocol expected; limited smoke evidence
+Unsupported / unknown no current support claim
 ```
 
-A stale historical integration test does not justify a permanent Qualified label.
+A stale historical test never implies permanent qualification.
 
-## 9. Cross-host smoke
+## 10. Cross-host smoke
 
-For each claimed host version/integration path record:
+For each claimed host/version record:
 
 ```text
 install/connect method
 project binding behavior
-11-tool discovery
-first-run setup
-Skill lifecycle start/finish
+current tool discovery
+get_context pre/post setup
+bootstrap
+Skill Start/Finish lifecycle
+explicit Hero ownership
 structured result rendering
-restart/recovery
-host confirmation behavior
-destructive delete UX
+restart/all-Hero recovery
+HP135/HP136 handling where practical
+host tool-confirmation behavior
 known limitations
 ```
 
-## 10. No host identity coupling
+Permanent Hero delete is CLI-only and is not a host MCP UX qualification item in 0.1.
 
-Never use host/client name/version as:
+## 11. No host identity coupling
 
-```text
-Hero identity
-Quest owner
-authentication
-reward input
-project identity
-idempotency key
-```
+Never use host/client name/version as Hero identity, Quest owner, auth, reward input, Project identity or idempotency key.
 
-It is safe diagnostic/qualification metadata only.
+Host metadata is safe diagnostic/qualification context only.
