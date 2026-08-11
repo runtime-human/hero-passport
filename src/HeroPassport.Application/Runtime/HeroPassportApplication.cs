@@ -228,7 +228,7 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
         }
     }
 
-    private static IReadOnlyList<string> ValidateSkills(IReadOnlyList<string> skills)
+    private static string[] ValidateSkills(IReadOnlyList<string> skills)
     {
         if (skills.Count is < 1 or > 3)
         {
