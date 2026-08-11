@@ -6,6 +6,7 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
 {
     private static readonly string[] Locales = ["ru-RU", "en-US"];
     private static readonly string[] PresentationStyles = ["rpg_engineering", "classic_rpg", "minimal"];
+    private static readonly string[] QuestTypes = ["planning", "research", "coding", "review", "debugging", "documentation", "maintenance"];
 
     public Task<BootstrapResult> BootstrapAsync(BootstrapRequest request, CancellationToken cancellationToken = default)
     {
@@ -48,20 +49,8 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
 
     public Task<RuntimeContextResult> GetRuntimeContextAsync(
         ProjectBindingContext project,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(project);
-        var displayName = SafeTextV1.Normalize(project.DisplayName, 1, 120);
-        if (!IsLowerHex64(project.WorkspaceFingerprint) ||
-            !string.Equals(project.IdentityVersion, "project-identity/1", StringComparison.Ordinal))
-        {
-            throw new HeroPassportException("HP310", "Project binding is invalid.");
-        }
-
-        return store.GetRuntimeContextAsync(
-            project with { DisplayName = displayName },
-            cancellationToken);
-    }
+        CancellationToken cancellationToken = default) =>
+        store.GetRuntimeContextAsync(ValidateProject(project), cancellationToken);
 
     public Task<CreateHeroResult> CreateHeroAsync(CreateHeroRequest request, CancellationToken cancellationToken = default)
     {
@@ -80,6 +69,49 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
 
     public Task ActivateHeroAsync(HeroId heroId, CancellationToken cancellationToken = default) =>
         store.ActivateHeroAsync(heroId, timeProvider.GetUtcNow(), cancellationToken);
+
+    public Task<StartQuestResult> StartQuestAsync(
+        StartQuestRequest request,
+        ProjectBindingContext project,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var questType = RequireQuestType(request.QuestType);
+        var title = SafeTextV1.Normalize(request.Title, 1, 120);
+        var goal = SafeTextV1.Normalize(request.Goal, 1, 500);
+        return store.StartQuestAsync(
+            new StartQuestStoreCommand(request.StartRequestId, request.HeroId, questType, title, goal),
+            ValidateProject(project),
+            timeProvider.GetUtcNow(),
+            cancellationToken);
+    }
+
+    private static ProjectBindingContext ValidateProject(ProjectBindingContext project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        var displayName = SafeTextV1.Normalize(project.DisplayName, 1, 120);
+        if (!IsLowerHex64(project.WorkspaceFingerprint) ||
+            !string.Equals(project.IdentityVersion, "project-identity/1", StringComparison.Ordinal))
+        {
+            throw new HeroPassportException("HP310", "Project binding is invalid.");
+        }
+
+        return project with { DisplayName = displayName };
+    }
+
+    private static string RequireQuestType(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        foreach (var candidate in QuestTypes)
+        {
+            if (string.Equals(candidate, value, StringComparison.Ordinal))
+            {
+                return value;
+            }
+        }
+
+        throw new HeroPassportException("HP110", "Quest type is invalid.");
+    }
 
     private static string RequireClosedValue(string value, IReadOnlyList<string> allowed, string fieldName)
     {
