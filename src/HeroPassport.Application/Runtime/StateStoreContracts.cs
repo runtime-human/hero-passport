@@ -25,6 +25,16 @@ public sealed record StartQuestStoreCommand(
     string Title,
     string Goal);
 
+public sealed record FinishQuestStoreCommand(
+    MutationRequestId RequestId,
+    string ArgsEncodingVersion,
+    byte[] ArgsHash,
+    QuestId QuestId,
+    string Result,
+    string Summary,
+    FinishMetrics Metrics,
+    IReadOnlyList<string> SkillsUsed);
+
 public interface IHeroPassportStateStore
 {
     Task<BootstrapResult> BootstrapAsync(
@@ -53,6 +63,12 @@ public interface IHeroPassportStateStore
 
     Task<StartQuestResult> StartQuestAsync(
         StartQuestStoreCommand command,
+        ProjectBindingContext project,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
+
+    Task<FinishQuestResult> FinishQuestAsync(
+        FinishQuestStoreCommand command,
         ProjectBindingContext project,
         DateTimeOffset now,
         CancellationToken cancellationToken = default);
