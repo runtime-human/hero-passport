@@ -1,451 +1,302 @@
-# Hero Passport — references and research baseline
+# Hero Passport — Official Reference Baseline
 
-**Snapshot:** 2026-08-10  
-**Policy:** normative technical claims are checked against current primary/official sources. Open-source repositories are used to extract implementation patterns. License is intentionally excluded from architectural ranking for this research task.
+**Snapshot:** 2026-08-11
 
-## 1. Source priority
+This file records the external primary documentation used for architecture decisions. Implementation should recheck these sources when upgrading dependencies or changing protocol/deployment behavior.
 
-When documents disagree:
+## 1. MCP protocol
+
+### Final MCP 2026-07-28 release
+
+- https://blog.modelcontextprotocol.io/posts/2026-07-28/
+
+Architecture-relevant points:
 
 ```text
-1. current official protocol/specification/documentation
-2. current official SDK/package documentation/source
-3. current production open-source repository/source
-4. official reference/example repositories
-5. older Hero Passport report/docs
-6. secondary articles/blogs
+stateless protocol core
+initialize/initialized retired for 2026 wire era
+Mcp-Session-Id removed
+per-request protocol/client metadata
+explicit application state handles recommended
+cacheable/deterministic list results
+Tasks/extensions framework
+Roots/Sampling/Logging and legacy HTTP+SSE deprecation direction
 ```
 
-Secondary sources may point to a topic but do not override current primary documentation.
+### Stateless explicit handles
 
-Every architecture snapshot should store the date because MCP/Codex/.NET package behavior can change quickly.
+- https://modelcontextprotocol.io/seps/2567-sessionless-mcp
 
----
+Used for `questId` state-handle design.
 
-## 2. Model Context Protocol
+### List caching
 
-### MCP 2026-07-28 release
+- https://modelcontextprotocol.io/seps/2549-TTL-for-list-results
 
-https://blog.modelcontextprotocol.io/posts/2026-07-28/
+Used for explicit `ttlMs`/`cacheScope` policy. TTL remains implementation freshness policy rather than HP-MCP semantic contract.
 
-Used for:
+### Tools specification
 
-- current protocol revision direction;
-- stateless core;
-- explicit application handles rather than protocol-session state;
-- deterministic/cacheable list behavior;
-- extensions/auth/deprecation context.
+- https://modelcontextprotocol.io/specification/2026-07-28/server/tools
 
-### MCP Tools specification
+Used for deterministic tool list, JSON Schema/output schema/structured content and annotations guidance.
 
-https://modelcontextprotocol.io/specification/draft/server/tools
+### Transport/security
 
-Used for:
+- https://modelcontextprotocol.io/specification/2026-07-28/basic/transports
 
-- tool naming/schema semantics;
-- `inputSchema`/`outputSchema`;
-- structured content;
-- deterministic list requirements;
-- current tool result/error behavior.
+Used for stdio/Streamable HTTP and future Origin/security requirements.
 
-### MCP tool annotations guidance
+### Authorization
 
-https://blog.modelcontextprotocol.io/posts/2026-03-16-tool-annotations/
+- https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization
 
-Used for current annotation intent/defaults and the rule that annotations are hints, not authorization/security enforcement.
-
-### Official MCP C# SDK
-
-https://github.com/modelcontextprotocol/csharp-sdk
-
-https://csharp.sdk.modelcontextprotocol.io/
-
-Used for:
-
-- package choice;
-- stdio host/API model;
-- explicit tool registration APIs;
-- attributes/annotations;
-- SDK-aligned implementation patterns.
-
-### ModelContextProtocol 2.0.0 package
-
-https://www.nuget.org/packages/ModelContextProtocol/2.0.0
-
-Used to pin the stable SDK release baseline on the snapshot date.
-
-### MCP Inspector
-
-https://github.com/modelcontextprotocol/inspector
-
-Used/planned for protocol smoke testing. Automated use must pin a version rather than rely on `latest`.
-
-### Official MCP reference servers
-
-https://github.com/modelcontextprotocol/servers
-
-Used for protocol examples, not as a production architecture template. The repository itself positions these as reference/educational implementations.
+Used only for future HTTP deployment boundaries. Local stdio does not adopt HTTP OAuth semantics.
 
 ---
 
-## 3. OpenAI Codex — official docs only for normative integration
+## 2. Official MCP C# SDK
+
+### SDK v2 documentation
+
+- https://csharp.sdk.modelcontextprotocol.io/v2/
+
+### `McpServerOptions.ProtocolVersion`
+
+- https://csharp.sdk.modelcontextprotocol.io/api/ModelContextProtocol.Server.McpServerOptions.html
+
+Key verified behavior:
+
+```text
+supported values include 2024-11-05, 2025-03-26, 2025-06-18, 2025-11-25, 2026-07-28
+null supports negotiation across the SDK-supported eras
+pin 2026-07-28 rejects initialize handshakes
+pin older revision rejects 2026 per-request metadata
+```
+
+This is why Hero Passport does not hard-pin protocol version.
+
+### Stateless/stateful mode
+
+- https://csharp.sdk.modelcontextprotocol.io/v2/concepts/stateless/stateless.html
+
+Used for compatibility design and future HTTP transport configuration. Architecture carefully distinguishes session-independent application semantics from transport-specific `Stateless` options.
+
+### Transports
+
+- https://csharp.sdk.modelcontextprotocol.io/v2/concepts/transports/transports.html
+
+Used for future loopback/Host/Origin security guidance.
+
+---
+
+## 3. OpenAI / Codex
 
 ### Codex MCP
 
-https://developers.openai.com/codex/mcp/
+- https://developers.openai.com/codex/mcp/
 
-Used for:
+Verified:
 
-- current Codex MCP surfaces;
-- stdio/HTTP support;
-- `codex mcp add/list`;
-- server instructions;
-- recommendation that first 512 instruction characters be self-contained;
-- shared configuration model.
+```text
+local stdio support
+Streamable HTTP support
+server instructions
+first 512 instruction characters should be self-contained
+shared Codex host config across desktop/CLI/IDE extension
+ChatGPT web uses hosted/plugin MCP path rather than local Codex config
+```
 
 ### Codex configuration reference
 
-https://developers.openai.com/codex/config-reference/
+- https://developers.openai.com/codex/config-reference/
 
-Used for:
-
-- `mcp_servers.<id>.command`;
-- `args`;
-- `cwd`;
-- `enabled_tools`/`disabled_tools`;
-- startup/tool timeout fields;
-- approval-related MCP configuration;
-- project/global configuration behavior.
-
-Release docs must recheck these pages before shipping examples.
-
----
-
-## 4. .NET 10 / C# / hosting
-
-### .NET 10 overview
-
-https://learn.microsoft.com/en-us/dotnet/core/whats-new/dotnet-10/overview
-
-Used for .NET 10 baseline/context.
-
-### Generic Host
-
-https://learn.microsoft.com/en-us/dotnet/core/extensions/generic-host
-
-Used for process composition/DI/lifetime conventions.
-
-### TimeProvider
-
-https://learn.microsoft.com/en-us/dotnet/standard/datetime/timeprovider-overview
-
-Used instead of inventing an application-wide custom clock abstraction.
-
-### Environment.SpecialFolder
-
-https://learn.microsoft.com/en-us/dotnet/api/system.environment.specialfolder?view=net-10.0
-
-Important distinction:
+Verified `mcp_servers.<id>` options including:
 
 ```text
-ApplicationData = roaming user application data
-LocalApplicationData = non-roaming local user application data
+command
+args
+cwd
+enabled_tools/disabled_tools
+url
+HTTP auth/header settings
+startup/tool timeouts
 ```
 
-Hero Passport SQLite storage therefore uses LocalApplicationData on Windows.
+### Secure MCP Tunnel
+
+- https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
+
+Verified:
+
+```text
+private MCP reachable without inbound public listener
+tunnel-client can reach local MCP over stdio or HTTP
+supported OpenAI surfaces include ChatGPT/Codex/Responses paths documented there
+private tunnel is not public plugin submission
+```
 
 ---
 
-## 5. EF Core / SQLite — official Microsoft docs
+## 4. Other MCP hosts
 
-### EF Core SQLite limitations
+### VS Code
 
-https://learn.microsoft.com/en-us/ef/core/providers/sqlite/limitations
+- https://code.visualstudio.com/docs/agent-customization/mcp-servers
+- https://code.visualstudio.com/docs/agents/reference/mcp-configuration
 
-Used for:
+Verified:
 
-- provider type/schema limitations;
-- lack of database-generated concurrency token like SQL Server rowversion;
-- migration/rebuild limitations;
-- EF migration-lock behavior for SQLite (`__EFMigrationsLock`).
+```text
+workspace/user mcp.json
+"servers"
+stdio command/args/cwd/env
+workspace variables
+remote HTTP
+```
 
-### Applying EF Core migrations
+### JetBrains AI Assistant 2026.2
 
-https://learn.microsoft.com/en-us/ef/core/managing-schemas/migrations/applying
+- https://www.jetbrains.com/help/ai-assistant/mcp.html
 
-Used for:
+Verified:
 
-- migration application guidance;
-- EF9+ database-wide migration lock;
-- deployment caution;
-- `dotnet ef migrations has-pending-model-changes` CI strategy where applicable.
+```text
+STDIO
+Streamable HTTP
+legacy SSE compatibility
+mcpServers JSON
+Working directory
+project/global server level
+```
 
-### Microsoft.Data.Sqlite async limitations
+### Zed
 
-https://learn.microsoft.com/en-us/dotnet/standard/data/sqlite/async
+- https://zed.dev/docs/ai/mcp
 
-Critical implementation fact:
+Verified:
 
-SQLite does not support asynchronous I/O; Microsoft.Data.Sqlite async ADO.NET methods execute synchronously. Hero Passport therefore uses short synchronous DB segments instead of fake async wrappers.
+```text
+Tools/Prompts support
+local command/args/env
+remote URL/headers/OAuth
+context_servers configuration
+external-agent forwarding via ACP where applicable
+```
 
-### Microsoft.Data.Sqlite connection strings
+### Cursor
 
-https://learn.microsoft.com/en-us/dotnet/standard/data/sqlite/connection-strings
+- https://docs.cursor.com/context/model-context-protocol
 
-Used for:
+Official page documents stdio, Streamable HTTP and OAuth. Because the indexed page snapshot may lag current product details, release qualification must recheck current docs/product before claiming Qualified status.
 
-- connection builder/options;
-- default timeout;
-- pooling;
-- foreign-key option;
-- cache mode;
-- warning against shared cache with WAL.
+### Claude Code
 
-### Microsoft.Data.Sqlite database errors
+- https://docs.anthropic.com/en/docs/claude-code/mcp
 
-https://learn.microsoft.com/en-us/dotnet/standard/data/sqlite/database-errors
+Official documentation describes local stdio and remote HTTP/OAuth configuration. As with any fast-moving host, recheck current docs/product during RC smoke qualification.
 
-Used for busy/locked retry behavior and error translation design.
+### ACP distinction
 
-### Blazor + EF Core
-
-https://learn.microsoft.com/en-us/aspnet/core/blazor/blazor-ef-core?view=aspnetcore-10.0
-
-Used for future dashboard architecture: short-lived contexts/DbContextFactory rather than sharing scoped DbContext across a long-lived circuit.
-
-### EF Core SQLite package
-
-https://www.nuget.org/packages/Microsoft.EntityFrameworkCore.Sqlite/10.0.10
-
-Stable package baseline.
-
----
-
-## 6. SQLite — official upstream
-
-### WAL
-
-https://www.sqlite.org/wal.html
-
-Used for reader/writer behavior, checkpoint semantics and WAL operational considerations.
-
-### PRAGMA synchronous
-
-https://www.sqlite.org/pragma.html#pragma_synchronous
-
-Used for durability choice. Hero Passport chooses WAL + `synchronous=FULL` because progression writes are low frequency and power-loss durability is preferred over peak commit throughput.
-
-### SQLite changes/security baseline
-
-https://www.sqlite.org/changes.html
-
-Used when reviewing native SQLite upgrades/issues. Runtime acceptance still executes `SELECT sqlite_version()`.
+JetBrains/Zed documentation distinguishes ACP external agents from MCP tools. Hero Passport remains an MCP server, not an ACP agent.
 
 ---
 
-## 7. Native SQLite packaging
+## 5. .NET / SQLite
 
-### SQLitePCLRaw.bundle_e_sqlite3 3.0.5
+### .NET 10
 
-https://www.nuget.org/packages/SQLitePCLRaw.bundle_e_sqlite3/3.0.5
+- https://learn.microsoft.com/en-us/dotnet/core/whats-new/dotnet-10/overview
 
-Directly pinned so the native SQLite baseline is intentional and visible rather than only a broad transitive dependency.
+### System.CommandLine
 
-Implementation/release tests verify the actual native version loaded.
-
----
-
-## 8. CLI/testing packages
-
-### System.CommandLine 2.0.10
-
-https://www.nuget.org/packages/System.CommandLine/2.0.10
-
-Stable 2.x baseline. 3.x preview is not used for MVP.
-
-### xunit.v3 3.2.2
-
-https://www.nuget.org/packages/xunit.v3/3.2.2
-
-Stable v3 baseline. Pre-release major versions are not pulled into MVP without need.
-
-### xUnit v3/Microsoft Testing Platform docs
-
-https://xunit.net/docs/getting-started/v3/microsoft-testing-platform
-
-Used to define the exact test-runner/project setup during foundation implementation.
-
----
-
-## 9. Package management/security
+- https://learn.microsoft.com/en-us/dotnet/standard/commandline/
 
 ### NuGet Central Package Management
 
-https://learn.microsoft.com/en-us/nuget/consume-packages/central-package-management
+- https://learn.microsoft.com/en-us/nuget/consume-packages/central-package-management
 
-Used for `Directory.Packages.props`.
+### EF Core SQLite limitations/migrations
 
-### NuGet package lock files / locked restore
+- https://learn.microsoft.com/en-us/ef/core/providers/sqlite/limitations
 
-https://learn.microsoft.com/en-us/nuget/consume-packages/package-references-in-project-files#locking-dependencies
+Used for SQLite provider limitations and EF migration-lock behavior.
 
-Used for reproducibility.
+### Microsoft.Data.Sqlite async limitation
 
-### NuGet audit
+- https://learn.microsoft.com/en-us/dotnet/standard/data/sqlite/async
 
-https://learn.microsoft.com/en-us/nuget/concepts/auditing-packages
+Used for intentional short synchronous SQLite DB segments.
 
-Used for direct/transitive vulnerability policy. Exact SDK warning/property behavior must be verified with pinned SDK during Task 1.
+### Microsoft.Data.Sqlite errors/timeout
 
----
+- https://learn.microsoft.com/en-us/dotnet/standard/data/sqlite/database-errors
 
-## 10. Cross-platform filesystem conventions
+Used for busy/locked timeout behavior.
 
-### XDG Base Directory Specification
+### SQLite WAL / PRAGMA
 
-https://specifications.freedesktop.org/basedir/latest/
+- https://www.sqlite.org/wal.html
+- https://www.sqlite.org/pragma.html
 
-Used for Linux data/config/state locations and directory-permission guidance.
+Used for WAL/durability policy.
 
-### Apple Application Support
+### Platform paths
 
-https://developer.apple.com/documentation/foundation/url/applicationsupportdirectory
-
-Used for macOS persistent app support data.
-
-### .NET SpecialFolder
-
-See section 4 for Windows LocalApplicationData.
+- https://learn.microsoft.com/en-us/dotnet/api/system.environment.specialfolder
+- https://specifications.freedesktop.org/basedir/latest/
 
 ---
 
-# Production open-source MCP/app architecture benchmark
+## 6. Testing
 
-These repositories are analyzed for patterns, not treated as normative protocol documentation.
+### xUnit.net v3
 
-## 11. GitHub MCP Server
+- https://xunit.net/docs/getting-started/v3/getting-started
+- https://xunit.net/docs/getting-started/v3/microsoft-testing-platform
 
-https://github.com/github/github-mcp-server
+### MCP Inspector
 
-Patterns adopted:
+- https://github.com/modelcontextprotocol/inspector
 
-- minimize enabled tool inventory;
-- strict/fail-closed tool configuration;
-- compatibility aliases when tools are renamed;
-- security modes override convenience selection;
-- dynamic discovery is a scale solution, not a default.
-
-Pattern rejected for Hero Passport now:
-
-- toolsets/dynamic discovery; unnecessary for four tools.
-
-## 12. Sentry MCP
-
-https://github.com/getsentry/sentry-mcp
-
-Patterns adopted:
-
-- optimize for human-in-loop coding agents rather than API completeness;
-- separate unit tests from agent evaluations/manual testing;
-- tool/workflow UX requires behavioral evals.
-
-Rejected:
-
-- embedded/meta LLM agent for our four deterministic operations.
-
-## 13. DBHub
-
-https://github.com/bytebase/dbhub
-
-Patterns adopted:
-
-- very small token-efficient tool surface;
-- progressive disclosure instead of dumping large context;
-- local-first development orientation;
-- guardrails close to capability boundary.
-
-Applied to Hero Passport:
-
-- no full history MCP tool in MVP;
-- future history starts paged/summary-first if exposed to agents.
-
-## 14. Context7
-
-https://github.com/upstash/context7
-
-Pattern adopted:
-
-- MCP and CLI/Skills can coexist; not every capability deserves an always-advertised tool.
-
-Applied:
-
-- MCP owns quest lifecycle;
-- CLI owns doctor/export/data maintenance.
-
-## 15. Playwright MCP / Playwright CLI
-
-https://github.com/microsoft/playwright-mcp
-
-Pattern adopted:
-
-- large MCP schema/results consume coding-agent context; CLI+Skills may be superior for operator-like actions.
-
-This is used as a guardrail against MCP API sprawl, not as a reason to remove Hero Passport's small stateful MCP workflow.
-
-## 16. ToolHive
-
-https://github.com/stacklok/toolhive
-
-Patterns adopted:
-
-- versioned configuration;
-- explicit security/runtime boundaries;
-- architecture docs as maintained product artifacts;
-- validation over silent best-effort behavior.
-
-Rejected for current scale:
-
-- gateway/proxy runtime;
-- registry/operator/container orchestration;
-- OAuth/platform topology;
-- semantic tool discovery;
-- default OTel/exporter architecture.
+Used as protocol/manual release smoke evidence, not as the only automated contract test.
 
 ---
 
-## 17. Historical Hero Passport input report
+## 7. MCP Registry
 
-The project began from the technical report supplied on 2026-08-10. It remains useful for initial product positioning, rules and stack hypotheses, but this documentation set supersedes it wherever current official docs/repository analysis produced a stronger decision.
+- https://modelcontextprotocol.io/registry/about
+- https://modelcontextprotocol.io/registry/package-types
 
-Key supersessions include:
+Registry is preview at this snapshot. It supports NuGet package metadata/ownership verification. Hero Passport does not depend on Registry at runtime.
+
+---
+
+## 8. Source hierarchy
+
+For protocol/library behavior:
 
 ```text
-interim SQLitePCLRaw 2.1.12 -> stable 3.0.5 baseline
-roaming Windows APPDATA path -> LocalApplicationData
-per-call MCP locale/outputMode/schemaVersion -> local config/contract
-Domain/Application display text -> App presentation boundary
-async-looking SQLite calls -> explicit synchronous DB segments
-custom migration locking idea -> EF built-in migration lock
-assembly scanning convenience -> explicit four-tool registration
-unit/integration only -> add agent evaluations
+final official specification
+> official SDK documentation/source
+> official host documentation
+> repository implementation evidence
+> third-party analysis
 ```
 
----
+When official docs disagree or are temporarily stale across a release transition, do not silently choose whichever text is convenient. Record the ambiguity, write an interoperability test and prefer behavior proven by the stable released SDK/spec combination.
 
-## 18. Review cadence
+## 9. Revalidation triggers
 
-Before each RC and any major architecture change, revalidate:
+Recheck primary sources before:
 
 ```text
-MCP current revision/SDK
-Codex MCP/config docs
-.NET servicing SDK/runtime
-EF Core servicing release
-SQLitePCLRaw/native SQLite
-System.CommandLine stable line
-xUnit stable line
-NuGet vulnerabilities
-production MCP repo patterns if tool surface/remote needs changed
+MCP SDK upgrade
+new MCP spec revision
+new HTTP deployment
+new auth mode
+new Registry publication
+host moved to Qualified tier
+EF/SQLite upgrade
+packaging/native SQLite strategy change
 ```
-
-A dated architecture without a revalidation trigger becomes stale by design; this document makes revalidation explicit.

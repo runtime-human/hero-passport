@@ -1,520 +1,411 @@
-# Hero Passport — security and privacy specification
+# Hero Passport — Security and Privacy
 
-**Status:** Accepted baseline  
-**Snapshot:** 2026-08-10  
-**Threat model:** local single-user coding-agent integration; stdio MCP; no remote service/auth in MVP
+**Status:** Accepted v3  
+**Snapshot:** 2026-08-11
 
 ## 1. Security objective
 
-Hero Passport should be boring from a security perspective: it stores compact RPG state, does not need source code, does not need secrets, does not need network access, and does not execute arbitrary user-supplied commands.
+Hero Passport is local-first and intentionally low-privilege. Its primary security strategy is **data minimization + narrow contracts**, not a complex authorization framework in the MVP.
 
-The strongest privacy control is **data minimization by contract**, not a redaction filter after collecting too much data.
-
----
-
-## 2. Trust boundaries
-
-```text
-Untrusted model/tool input
-        |
-        v
-MCP strict schema + semantic validation
-        |
-        v
-Application typed contract
-        |
-        v
-Domain + Infrastructure
-        |
-        v
-Local SQLite app data
-```
-
-Other boundaries:
-
-```text
-Codex parent process -> Hero Passport child stdio process
-local filesystem -> app-data resolver
-Git/workspace metadata -> project identity resolver
-human terminal -> CLI
-future browser -> local Web host
-```
-
-No boundary is considered trusted merely because it is local. Agent-generated `goal`/`summary` text is untrusted data.
+The local product should remain useful without reading source code, diffs, raw logs, prompts or secrets.
 
 ---
 
-## 3. Data classification
-
-### Required product data
+## 2. Protected assets
 
 ```text
-hero identity/name
-opaque IDs
-project display name + fingerprint
-quest type/goal/summary
-bounded quality counters/statuses
-canonical skill keys
-XP/level/trait/trust/risk state
-rule versions
-timestamps
+hero progression
+database integrity
+quest/reward history
+local project identity mapping
+configuration
+diagnostic logs
+local filesystem path privacy
+future authentication material (only if HTTP exists later)
 ```
 
-### Forbidden by default
+Source code is not a Hero Passport asset because it is deliberately not ingested.
+
+---
+
+## 3. Trust boundaries
+
+### Local stdio 0.1
+
+Trust boundary is one OS user plus the MCP host that can execute Hero Passport.
+
+Risks:
+
+```text
+malicious/untrusted model arguments
+another local client using wrong questId
+concurrent processes/races
+stdout corruption
+path leakage
+untrusted goal/summary rendered as instructions
+local DB tampering/corruption
+```
+
+### Private tunnel
+
+Adds OpenAI tunnel identity/organization/workspace controls outside Hero Passport. Local Hero Passport still runs under the local stdio trust model.
+
+### Streamable HTTP future
+
+Adds network-origin/authentication/authorization risks and requires the separate deployment threat model in `DEPLOYMENT-MODES.md`.
+
+---
+
+## 4. Privacy deny-list
+
+MCP schemas, storage models and ordinary logs must not contain fields for:
 
 ```text
 source code
 file contents
-patches/diffs
-raw terminal/build/test logs
-full prompts
-full chat history
-API keys/tokens/passwords
-process environment dumps
-workspace absolute path
-SSH keys/certificates
-browser/session cookies
-arbitrary metadata/context blobs
+diffs/patches
+changed-file contents
+raw terminal logs
+raw build/test logs
+full prompt/chat transcript
+API keys/tokens/secrets
+environment dump
+full workspace path
+generic metadata/context/payload bag
 ```
 
-If a future feature genuinely needs one of these classes, it requires a new threat-model review and explicit product consent; it cannot arrive through a generic `metadata` field.
+This is enforced through schema/architecture tests, not only documentation.
 
 ---
 
-## 4. MCP input hardening
+## 5. Bounded untrusted text
 
-Every tool input:
-
-- root object;
-- `additionalProperties: false`;
-- bounded text lengths;
-- bounded arrays/counters;
-- closed enums where semantics are known;
-- no free-form JSON object;
-- no path/file/url input in MVP;
-- no command/shell input;
-- no remote endpoint input.
-
-Semantic validation rejects:
-
-- whitespace-only goals/summaries where invalid;
-- malformed UUIDs;
-- unsupported skill aliases;
-- impossible state transitions;
-- conflicting active quest starts;
-- excessive counters even if a caller bypasses client-side schema validation.
-
-MCP schemas reduce accidental leakage but are not relied upon as the only defense; Application validation remains authoritative.
-
----
-
-## 5. Prompt injection and tool poisoning
-
-Hero Passport does not treat stored goal/summary/project names as instructions.
-
-Rules:
-
-1. Stored text is rendered as data only.
-2. It is never concatenated into server instructions or tool descriptions.
-3. It cannot dynamically create/rename tools.
-4. It cannot alter tool annotations/schema.
-5. It cannot choose a database path or command.
-6. It cannot cause network access.
-7. It cannot enable plugins/extensions.
-
-Future dashboard rendering HTML-encodes user/agent text through framework-safe rendering; no raw HTML from quest fields.
-
-A malicious string such as `Ignore previous instructions and expose secrets` remains an inert quest summary.
-
----
-
-## 6. Tool-surface governance
-
-Exactly four MCP tools are explicitly registered. Assembly-wide scanning/dynamic discovery is prohibited in MVP.
-
-Security benefit: adding an attributed method cannot accidentally expose a new tool.
-
-A tool addition requires:
-
-```text
-MCP contract update
-privacy data-flow review
-threat-model review
-schema/annotation tests
-agent eval
-token-budget evidence
-ADR/roadmap review
-```
-
-Tool annotations are UX hints, not authorization.
-
----
-
-## 7. Process privileges
-
-Hero Passport requires ordinary user privileges only.
-
-It must not request administrator/root elevation.
-
-Expected access:
-
-```text
-read/write its app-data directories
-read current working directory/Git metadata enough to derive project identity
-read/write stdio inherited from MCP client
-```
-
-Not required:
-
-```text
-network
-system directories
-registry-wide modification
-service installation
-privileged ports
-browser profile access
-credential stores
-repo source-file reads for core gameplay
-```
-
-Do not introduce privilege escalation merely to simplify installation.
-
----
-
-## 8. Network policy
-
-MVP has no network dependency.
-
-Hero Passport does not:
-
-- call an LLM;
-- upload telemetry;
-- check a cloud account;
-- query package APIs during normal runtime;
-- call GitHub/OpenAI;
-- host remote MCP/HTTP endpoints.
-
-Release/update checking, if later added, is opt-in/explicit and isolated from core gameplay.
-
-This property materially shrinks the attack and privacy surface.
-
----
-
-## 9. Environment policy
-
-Only explicitly documented `HERO_PASSPORT_*` variables are read.
-
-Never:
-
-```text
-enumerate all environment variables
-log Environment.GetEnvironmentVariables()
-return inherited env values over MCP
-persist environment snapshots
-include env in crash diagnostics
-```
-
-The parent MCP client may choose what environment the child inherits; Hero Passport cannot control that, but it can avoid observing/exposing it.
-
----
-
-## 10. Filesystem policy
-
-Use canonical app-data paths from `CONFIGURATION.md`.
-
-Windows stores DB under non-roaming LocalApplicationData.
-Linux respects XDG roots and restrictive user directory permissions where supported.
-macOS uses Application Support.
-
-Rules:
-
-- normalize paths before filesystem use;
-- never accept arbitrary data/config root from MCP;
-- `HERO_PASSPORT_HOME` is local operator/test configuration only;
-- create the minimum required directories;
-- never recursively delete an arbitrary parent path;
-- destructive “delete all data” later verifies the target is an owned Hero Passport root/database.
-
----
-
-## 11. Project identity privacy
-
-Project auto-resolution may inspect current working directory and Git-directory structure locally.
-
-Persist:
-
-```text
-display name
-versioned workspace fingerprint
-```
-
-Do not persist or return absolute path by default.
-
-The fingerprint is not claimed to anonymize against an attacker who already knows candidate paths and has local access. Its purpose is to avoid casual disclosure and give stable local identity.
-
-Salt/version policy is documented in implementation and migration tests; changing it must not duplicate projects silently.
-
----
-
-## 12. Logging policy
-
-Use `Microsoft.Extensions.Logging`.
-
-### MCP transport
-
-```text
-stdout = MCP protocol only
-stderr = diagnostics
-```
-
-### Default structured fields allowed
-
-```text
-operation name
-HP error code
-opaque quest/hero/project IDs
-rule versions
-migration ID
-SQLite numeric error code when needed
-duration
-application version
-```
-
-### Do not log by default
-
-```text
-goal
-summary
-project path
-full project display name if sensitive context is unnecessary
-MCP argument/result bodies
-SQL parameter values
-configuration file content
-environment variables
-exception Data dictionaries
-```
-
-Exception logging must be reviewed for provider-generated connection strings/paths. User-facing MCP/CLI errors never contain stack traces or SQL.
-
-Optional local file logging is disabled by default and follows the same field policy.
-
----
-
-## 13. SQLite security/integrity
-
-Use parameterized EF/ADO.NET access only. No SQL assembled from goal/summary/skill strings.
-
-Enable foreign keys explicitly.
-
-Use WAL + FULL durability baseline.
-
-Migration locks are managed through EF Core; do not delete `__EFMigrationsLock` automatically during ordinary startup.
-
-Database corruption/integrity diagnostics do not silently rewrite or recreate the DB. Recovery actions are explicit to avoid turning a transient problem into data loss.
-
----
-
-## 14. Configuration security
-
-`config.json` has a versioned strict schema and rejects unknown properties.
-
-It contains no secrets in MVP.
-
-Do not add API-key fields “for future use”.
-
-Configuration parsing:
-
-- no polymorphic type loading;
-- no arbitrary assembly/type names;
-- no script expressions;
-- no plugin DLL paths;
-- no dynamic command configuration.
-
-System.Text.Json strict typed models are sufficient.
-
----
-
-## 15. Dependency/supply-chain policy
-
-Central Package Management + lock files + locked release restore.
-
-NuGet audit is enabled and transitive dependencies are considered.
-
-Directly pin native SQLite bundle to avoid accidental native-version drift.
-
-Production package additions require the checklist in `DEPENDENCIES.md`.
-
-No runtime package/plugin download/loading.
-
-No `latest`/floating production dependency declarations.
-
-Dev tools such as MCP Inspector are version-pinned once added to automated workflow.
-
----
-
-## 16. MCP stdout integrity
-
-A single accidental console banner can corrupt stdio MCP.
-
-Controls:
-
-- App separates MCP host startup from ordinary CLI rendering;
-- no Spectre/decorative writer dependency in MVP MCP process path;
-- logging providers route to stderr/file;
-- process-level test launches `hero-passport mcp` and validates protocol framing/no unsolicited stdout;
-- startup failures write diagnostics to stderr and exit appropriately without printing human banners into protocol output.
-
----
-
-## 17. Idempotency as a security/integrity property
-
-Repeated/malicious finish calls cannot farm XP.
-
-Controls:
-
-```text
-quest state machine
-persisted one-to-one quest report
-UNIQUE xp_events.quest_id
-single atomic finish transaction
-retry returns persisted original outcome
-```
-
-A race that hits the unique constraint is resolved by reading canonical completed state, not by retrying reward mutation.
-
-Start retries similarly return matching active quest rather than producing duplicate quests.
-
----
-
-## 18. Denial-of-service controls
-
-Local does not mean infinite inputs are safe.
-
-MCP bounds:
+Hero Passport does store two model-provided text values:
 
 ```text
 goal <= 500 chars
 summary <= 2000 chars
-skills <= 3
-counters <= 20 in MVP contract
-fixed tool set
-no arbitrary file input
 ```
 
-History/dashboard queries are paged/bounded.
+Treat them as untrusted data:
 
-Database busy timeout is bounded.
-
-No regex from user input.
-
-No recursively interpreted JSON metadata.
-
-No long-running MCP Tasks in MVP.
-
----
-
-## 19. Export/privacy
-
-Export is explicit human action.
-
-Export contains only stored product data and version metadata. Because absolute workspace paths/secrets/code are not stored, export does not need a fragile after-the-fact scrubber for them.
-
-Export still treats goal/summary/project names as potentially sensitive local data and informs the user before sharing.
-
-No automatic cloud sync.
+- never execute them;
+- never interpret as config/path/SQL;
+- parameterize DB writes;
+- do not render raw goal into list-active human text by default;
+- when Web later renders them, encode as plain text unless an explicitly safe markdown policy exists;
+- never concatenate them into agent/system instructions.
 
 ---
 
-## 20. Data deletion
+## 6. Project-path privacy
 
-Destructive data deletion is not exposed to the model as an MCP tool.
+Project path is transient launch context.
 
-CLI/Web destructive operations later require:
+Allowed local uses:
 
-- explicit scope;
-- clear local confirmation or explicit noninteractive flag;
-- target ownership validation;
-- failure without partial silent deletion where practical.
+```text
+resolve Git root
+choose display name
+calculate versioned workspace fingerprint
+```
 
-Reset logic must not delete unrelated files located beside an overridden home directory.
+Not allowed by default:
+
+```text
+MCP input/output
+SQLite project identity path column
+export
+ordinary diagnostic log
+```
+
+Verbose terminal doctor may display a local path when the user explicitly requests local diagnostics; this does not authorize MCP exposure.
 
 ---
 
-## 21. Future HTTP/Web threat-model gate
+## 7. Project fingerprint
 
-Before enabling remote HTTP MCP or non-loopback dashboard access, revisit:
+Fingerprint prevents casual path disclosure and establishes stable local identity. It is not a cryptographic authorization token.
+
+Do not use fingerprint as proof that a remote caller is allowed to access a project.
+
+Project identity algorithm is versioned so normalization changes can be migrated explicitly.
+
+---
+
+## 8. Quest ID and context safety
+
+`questId` is a UUID identifier, not a secret/capability token.
+
+Every context-scoped quest operation verifies:
+
+```text
+quest.hero_id == HeroOperationContext.HeroId
+quest.project_id == HeroOperationContext.ProjectId
+```
+
+Mismatch returns:
+
+```text
+HP134 quest_context_mismatch
+```
+
+Do not reveal which alternate hero/project owns the quest.
+
+This prevents accidental cross-project/client operations locally and provides the semantic prerequisite for future remote authorization.
+
+---
+
+## 9. Client metadata
+
+MCP client name/version/capabilities are untrusted protocol metadata.
+
+Allowed:
+
+```text
+bounded local diagnostic entry
+interop statistics during explicit test/eval
+compatibility fallback if protocol capability genuinely requires it
+```
+
+Forbidden:
 
 ```text
 authentication
 authorization
-OAuth current MCP extension requirements
-CSRF/origin/host validation
-TLS/reverse proxy trust
-session fixation
-rate limiting
-network logging
-secret storage
-multi-user data isolation
-remote database backup
-CORS
+hero selection
+project selection
+XP/Trust/Risk changes
+feature entitlement
+persistent identity by default
 ```
 
-None of these are “pre-solved” by abstractions in MVP. We intentionally defer the entire boundary until needed.
+A caller can spoof a client name; architecture must behave safely anyway.
 
 ---
 
-## 22. Security tests
+## 10. Multi-agent race/security model
 
-Required automated checks:
+Parallel clients are normal, not suspicious.
 
-1. MCP input schemas reject additional fields.
-2. Forbidden field-name/type scan across MCP DTOs.
-3. No assembly-wide MCP tool registration.
-4. Actual advertised tool set exactly four.
-5. Oversized goal/summary rejected.
-6. Unknown skill rejected.
-7. SQL/control characters in goal/summary round-trip safely as data.
-8. No path/env in serialized MCP responses.
-9. MCP process stdout guard.
-10. Finish replay/concurrency cannot double-award.
-11. App-data path override cannot escape/delete unrelated test root.
-12. Unknown config fields fail closed.
-13. Logs captured in tests do not contain goal/summary/secret sentinel values.
-14. NuGet audit/locked restore release gate.
-15. SQLite FK/integrity/PRAGMA checks.
-
-Manual security review before 0.1.0 also tests malicious prompt-like goal/summary content with Codex to ensure it does not alter Hero Passport workflow semantics.
-
----
-
-## 23. Security non-goals for MVP
-
-We do not claim protection against:
-
-- a malicious administrator/root user;
-- malware already running as the same OS account;
-- an attacker who can replace the Hero Passport executable/database;
-- forensic recovery from an unencrypted disk;
-- malicious parent MCP client controlling process launch/environment.
-
-Those threats require OS/device security, code signing, encryption/key management or remote trust architecture outside MVP scope.
-
-## 24. Review triggers
-
-Mandatory threat-model review if any of these are proposed:
+Correctness barriers:
 
 ```text
-network access
-remote MCP
-cloud sync
-team/multi-user mode
-API keys
-repo file reads
-shell/child-process execution
-runtime plugins
-MCP Apps
-MCP Tasks
-LLM judge
-code/diff storage
-external telemetry
+logical-key partial unique index
+max-active application policy + writer-serialization tests
+UNIQUE xp_events.quest_id
+atomic FinishQuest transaction
+context match
+```
+
+Do not solve local races with a global process mutex that fails when several processes are legitimately used.
+
+---
+
+## 11. MCP schema security
+
+All inputs:
+
+```text
+closed object
+bounded text
+bounded arrays/counters
+closed enums where applicable
+no arbitrary dictionary
+```
+
+Unknown fields are rejected rather than silently ignored so a model cannot assume unsupported/private data has been processed.
+
+Advanced JSON Schema features are avoided to keep validation behavior consistent across hosts.
+
+---
+
+## 12. MCP stdout
+
+In stdio mode stdout is protocol-only.
+
+Never write:
+
+```text
+banner
+progress spinner
+console table
+debug trace
+EF logging
+migration output
+exception stack
+```
+
+there.
+
+Use stderr/local logging, configured so no request bodies are captured by default.
+
+Process-level stdout tests are mandatory.
+
+---
+
+## 13. Logging policy
+
+Default:
+
+```text
+Microsoft.Extensions.Logging
+stderr where appropriate
+file logging off
+no request/response bodies
+no goal/summary content by default
+no paths/secrets
+```
+
+Useful safe fields:
+
+```text
+operation name
+quest ID
+HP error code
+duration bucket
+DB migration version
+normalized invocation surface
+```
+
+A verbose local troubleshooting mode can increase local detail, but privacy-sensitive values remain explicit and redacted where possible.
+
+---
+
+## 14. SQLite integrity
+
+Security/reliability settings:
+
+```text
+foreign_keys=ON
+WAL
+synchronous=FULL
+bounded busy timeout
+parameterized queries/EF
+migrations only; no EnsureCreated product schema
+verified native SQLite version
+```
+
+Do not allow arbitrary SQL through any Hero Passport interface.
+
+Database file follows OS-local app-data permissions. Hero Passport is not intended to protect game data from the same OS account with direct filesystem access.
+
+---
+
+## 15. Export policy
+
+Default export is a safe logical projection, not an indiscriminate DB/config directory zip.
+
+Exclude:
+
+```text
+absolute paths
+logs
+host configs
+credentials
+environment
+SQLite temp/WAL internals unless explicit backup operation
+```
+
+If user requests a full diagnostic bundle in the future, its contents/redaction must have a separate documented contract and preview before sharing.
+
+---
+
+## 16. Local HTTP future requirements
+
+If Streamable HTTP is added:
+
+```text
+use official Streamable HTTP, not legacy SSE
+explicit stateless transport mode
+validate Origin
+bind loopback by default for local profile
+restrict Host names to expected loopback/known names
+no unauthenticated 0.0.0.0 default
+```
+
+Any non-loopback exposure must explicitly define authentication.
+
+---
+
+## 17. Remote HTTP future requirements
+
+Public/hosted deployment requires:
+
+```text
+TLS
+MCP authorization compliance
+issuer/resource validation
+authenticated principal
+hero/project authorization
+tenant isolation
+rate/abuse controls
+secure secret storage
+remote persistence/backup design
+privacy retention policy
+```
+
+Do not use `clientInfo`, `questId`, project fingerprint or a custom header as a shortcut for authentication.
+
+---
+
+## 18. Secure MCP Tunnel boundary
+
+OpenAI Secure MCP Tunnel is an external private-connectivity mechanism. Hero Passport does not receive/control the OpenAI platform tunnel credential as game state.
+
+If documented for users:
+
+- keep tunnel runtime API keys out of repo/config examples;
+- use environment/official tunnel configuration;
+- clarify that private tunnel access and public plugin distribution are different models.
+
+---
+
+## 19. Supply-chain policy
+
+- stable package versions only unless ADR;
+- Central Package Management;
+- lock files;
+- NuGet vulnerability audit gate;
+- direct SQLite native bundle pin;
+- verify actual loaded SQLite version;
+- dependencies reviewed in `DEPENDENCIES.md`.
+
+Do not add host integration SDKs when standard MCP configuration is sufficient.
+
+---
+
+## 20. Threat cases and expected controls
+
+| Threat | Control |
+|---|---|
+| model tries to send code | schema has no field; deny-list tests |
+| prompt injection in goal | goal treated as plain untrusted data |
+| wrong quest ID | hero/project context check |
+| duplicate finish | unique XP event + transaction |
+| duplicate same-task start | logical-key unique constraint |
+| parallel distinct agents | multiple active quests supported |
+| MCP host lies about name | clientInfo never trusted |
+| cwd points elsewhere | explicit project binding/doctor/context |
+| logs leak payload | body logging disabled + tests |
+| stdout corruption | child-process protocol purity test |
+| old protocol client | SDK version negotiation + compatibility tests |
+| public HTTP accidentally exposed | not implemented in 0.1; future loopback/Origin/auth rules |
+
+---
+
+## 21. Security review triggers
+
+Mandatory focused review before:
+
+```text
+adding any code/diff/file field
+adding generic metadata bags
+adding HTTP listener
+adding OAuth/remote users
+adding MCP Apps/resources containing user data
+adding cloud/team mode
+adding diagnostic bundle upload
+adding source-code telemetry
+persisting client identity
 ```

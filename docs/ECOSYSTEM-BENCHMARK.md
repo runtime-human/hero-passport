@@ -1,409 +1,351 @@
-# Hero Passport — MCP ecosystem benchmark
+# Hero Passport — Ecosystem Benchmark
 
-**Status:** Accepted research baseline  
-**Snapshot date:** 2026-08-10  
-**Purpose:** derive production patterns for Hero Passport from mature open MCP servers, coding-agent integrations, local-first applications and the official MCP SDK/specification.  
-**License policy for this analysis:** licensing is intentionally not used as an architectural ranking criterion.
+**Status:** Architecture research baseline v3  
+**Snapshot:** 2026-08-11  
+**Purpose:** record which MCP/ecosystem patterns were adopted, rejected or deferred
 
-## 1. Why this document exists
+## 1. Method
 
-Hero Passport should not copy a single MCP project. The useful patterns are distributed across projects with very different workloads:
+Three-pass review:
 
-- GitHub MCP has a very large tool inventory and strong configuration/backward-compatibility practices;
-- Sentry MCP is optimized for human-in-the-loop coding agents and has explicit agent evaluations;
-- DBHub demonstrates a deliberately tiny, token-efficient MCP surface with progressive disclosure;
-- Context7 and Playwright show when CLI + Skills is superior to MCP for coding agents;
-- ToolHive demonstrates production governance/configuration patterns, but also shows how quickly a server can become a platform;
-- the official MCP C# SDK and protocol specification define the compatibility boundary we must not improvise around.
+1. inspect mature/open MCP servers/clients and current host products;
+2. separate domain-relevant engineering practices from scale/platform machinery;
+3. verify adopted protocol/library assumptions against current official specifications/SDK docs.
 
-The goal is therefore **pattern extraction followed by rejection/adoption**, not imitation.
+License compatibility was intentionally excluded from architectural ranking for this research phase, per project instruction. This does not waive license obligations for any future code reuse.
 
-## 2. Method: three passes
+---
 
-### Pass A — architecture extraction
+## 2. GitHub MCP Server
 
-For every project, identify:
-
-1. tool-surface size and discovery strategy;
-2. state model;
-3. transport model;
-4. configuration and security boundaries;
-5. testing/evaluation approach;
-6. CLI/UI relationship;
-7. backward compatibility;
-8. token/context strategy.
-
-### Pass B — Hero Passport fitness test
-
-Every extracted pattern is tested against Hero Passport constraints:
+Useful patterns:
 
 ```text
-local-first
-4-tool MVP
-Codex-first
-stdio-first
-no secrets required by server
-no source/diff/raw-log ingestion
-short requests
-persistent domain state in SQLite
-very low token overhead
-deterministic RPG rules
-single-user local product
+tool-surface governance
+allow/deny/toolset concepts for large inventories
+fail-closed configuration
+compatibility awareness for published tool names
+production-level security boundaries
 ```
 
-Patterns are rejected if they solve a scale/security/distribution problem that Hero Passport does not yet have.
-
-### Pass C — specification/library verification
-
-Surviving patterns are checked against current primary documentation as of 2026-08-10:
-
-- MCP 2026-07-28;
-- official MCP C# SDK 2.0.0;
-- current Codex MCP/config documentation;
-- .NET 10 / EF Core 10 / Microsoft.Data.Sqlite documentation;
-- SQLite WAL/durability documentation;
-- current stable NuGet releases.
-
-Only after this pass does a pattern become an architecture decision.
-
----
-
-## 3. GitHub MCP Server
-
-Repository: `github/github-mcp-server`.
-
-### What it does well
-
-GitHub MCP has a huge potential operation set, so it exposes toolsets and individual-tool allow-lists. Its documentation explicitly explains that reducing enabled tools helps tool choice and context size. Invalid individual tool names fail local-server startup. Read-only mode takes precedence over requested write tools. Renamed tools preserve old names as compatibility aliases.
-
-These are production-grade lessons:
-
-- the advertised inventory is part of the product contract;
-- configuration errors should fail early rather than silently widen behavior;
-- tool names become compatibility surface;
-- a server should expose the smallest useful inventory;
-- security filters must override convenience configuration.
-
-### What Hero Passport adopts
-
-1. **Exact static tool allow-list.** The expected tool set is a constant and is verified at startup/tests.
-2. **Fail-closed registration.** Startup/tests fail if the set differs from the canonical four tools.
-3. **Tool-name compatibility policy.** After 0.1.0, a rename requires a compatibility alias for at least one minor release unless an explicit breaking version is declared.
-4. **Inventory size as a quality metric.** Adding a fifth tool requires an architecture decision, token-budget measurement and agent-eval evidence.
-
-### What Hero Passport rejects
-
-- toolsets;
-- dynamic tool discovery;
-- runtime enable/disable tool configuration;
-- dozens of capability groups.
-
-Those mechanisms exist because GitHub MCP has a large surface. With four tools, they would make Hero Passport harder to reason about while providing no real context saving.
-
-### Additional caution learned from GitHub MCP
-
-Large configuration surfaces create their own correctness bugs. GitHub MCP has had issues where documented filtering semantics diverged between execution modes. Hero Passport avoids this entire class by making the MVP inventory fixed and compile-time registered.
-
----
-
-## 4. Sentry MCP
-
-Repository: `getsentry/sentry-mcp`.
-
-### What it does well
-
-Sentry explicitly optimizes its MCP server for **human-in-the-loop coding agents**, not generic API coverage. Its repository distinguishes three verification layers:
+Adopt:
 
 ```text
-unit tests
-evaluations
-manual/agent testing
+explicit tool inventory
+contract drift tests
+support/compatibility discipline
+fail closed on invalid configuration/binding
 ```
 
-This distinction is important. Protocol/unit tests can prove that a tool works, but cannot prove that a model chooses the intended tool at the intended time.
-
-### What Hero Passport adopts
-
-A dedicated **agent-evaluation layer** in addition to deterministic tests.
-
-Representative scenarios:
+Reject for Hero Passport 0.1:
 
 ```text
-meaningful coding task
-  -> start once
-  -> finish once
-
-simple factual/read-only question
-  -> no quest by default
-
-finish retry
-  -> same persisted outcome
-  -> no second XP event
-
-existing open quest
-  -> current/start behavior is predictable
-
-malicious/oversized context
-  -> never send/store forbidden fields
+dynamic toolsets
+large discovery/search layer
+gateway-like governance machinery
 ```
 
-Agent evals are not release correctness substitutes. They detect workflow/tool-description regressions and are initially manual/nightly because model behavior can vary.
-
-### What Hero Passport rejects
-
-- an embedded LLM agent inside the MCP server;
-- a meta-tool that hides the whole tool surface behind one agent tool;
-- remote-service middleware architecture.
-
-Hero Passport has only four operations and a deterministic engine. Adding another model inside the server would make rewards non-deterministic, add cost and expand the privacy boundary.
+Reason: Hero Passport has four tools. Dynamic selection infrastructure would add complexity and prompt variability without reducing an already-small surface.
 
 ---
 
-## 5. DBHub
+## 3. Sentry MCP
 
-Repository: `bytebase/dbhub`.
-
-### What it does well
-
-DBHub describes itself as local-development-first and token-efficient, with only two primary MCP tools. Database exploration uses progressive disclosure rather than flooding the model with schema context. It also puts guardrails such as query timeout and read-only behavior close to the capability boundary.
-
-### What Hero Passport adopts
-
-1. **Tiny tool surface is a feature, not a limitation.**
-2. **Progressive disclosure for future history.** If quest history is ever exposed through MCP, return summary pages/handles first rather than full history.
-3. **CLI/dashboard can be richer than MCP.** MCP is not required to expose every local product capability.
-4. **Guardrails belong at the boundary.** Strict schema limits and storage/privacy constraints are enforced in code, not only written in AGENTS.md.
-
-### What Hero Passport rejects
-
-- custom MCP tools from user configuration;
-- arbitrary query execution;
-- dynamic capability creation.
-
-Hero Passport rules must remain canonical and deterministic.
-
----
-
-## 6. Context7
-
-Repository: `upstash/context7`.
-
-### What it does well
-
-Context7 supports both MCP and CLI + Skills. Its skill-based mode explicitly guides coding agents through concise CLI commands rather than requiring every capability to live permanently in MCP context.
-
-### What Hero Passport adopts
-
-**MCP and CLI are equal product adapters over the same Application core.**
-
-Use MCP where the agent benefits from a typed stateful workflow:
+Useful patterns:
 
 ```text
-start quest -> questId -> finish quest
+separate deterministic tests from model/agent evaluations
+careful tool metadata/workflow design
+production MCP behavior tested as an agent interaction problem
 ```
 
-Use CLI for:
-
-- administration;
-- diagnostics;
-- export;
-- data-path inspection;
-- configuration inspection;
-- human history views;
-- future maintenance operations.
-
-This prevents the MCP surface from becoming a mirror of the entire CLI.
-
-### What Hero Passport rejects
-
-No feature should be duplicated as an MCP tool merely because a CLI command exists.
-
----
-
-## 7. Playwright MCP and Playwright CLI
-
-Repository: `microsoft/playwright-mcp` plus the companion Playwright CLI.
-
-### What it does well
-
-The project documentation explicitly notes that modern coding agents can benefit from CLI + Skills because large MCP schemas and verbose tool results consume context. This is a useful counterexample to the assumption that “more MCP” is automatically more agent-native.
-
-### Hero Passport conclusion
-
-Hero Passport **is still a good MCP fit**, but only because its MCP surface is intentionally tiny and its persistent quest handle is useful to the model.
-
-The lesson is a permanent architecture guardrail:
-
-> If a future feature can be invoked naturally through shell/CLI and does not need to be part of the model's normal reasoning loop, prefer CLI/dashboard over another always-advertised MCP tool.
-
-Examples that stay outside MCP by default:
+Adopt:
 
 ```text
-doctor
-export
-reset/delete
-database maintenance
-configuration editing
-full history browsing
-dashboard launch
+HeroPassport.AgentEvals
+host-neutral scenario definitions
+model call-sequence assertions
+privacy/tool-selection evals
 ```
+
+This is one of the most important adopted practices because a perfect server can still provide bad UX if the model invokes it incorrectly.
 
 ---
 
-## 8. ToolHive
+## 4. DBHub
 
-Repository: `stacklok/toolhive`.
-
-### What it does well
-
-ToolHive has a versioned configuration contract, explicit runtime/security boundaries, a strong architecture documentation set and separation among gateway, registry, runtime and UI concerns.
-
-### What Hero Passport adopts
-
-1. **Configuration is a versioned contract.** `configVersion` starts at 1.
-2. **Import/export/config changes are validated, never “best effort”.** Unknown/invalid values fail with actionable diagnostics.
-3. **Architecture docs change with architecture.** New concepts require matching docs/ADR updates.
-4. **Security boundaries are explicit.** Permissions and data-flow assumptions are documented rather than inferred from implementation.
-
-### What Hero Passport rejects
-
-Almost all of ToolHive's runtime topology:
+Useful patterns:
 
 ```text
-gateway
-proxy/middleware chain
-registry
-Kubernetes operator
-container runtime abstraction
-OIDC/OAuth
-remote aggregation
-semantic tool search
-OpenTelemetry exporter baseline
+small token-efficient tool surface
+progressive disclosure
+separation of product capability from model-facing capability
 ```
 
-Hero Passport is a local application, not an MCP management platform.
+Adopt:
+
+- four tools only;
+- no history/export/doctor/admin MCP mirror;
+- bounded recovery result;
+- tools focus on workflow state, not analytics dump.
 
 ---
 
-## 9. Official MCP reference servers
+## 5. Context7
 
-Repository: `modelcontextprotocol/servers`.
+Useful pattern: MCP and CLI/skill-style paths can coexist for different consumers.
 
-The official project describes reference implementations as examples/educational material rather than production templates. They are useful for protocol idioms and annotations, but Hero Passport should not treat their project layout, operational behavior or old feature usage as canonical production architecture.
-
-Important consequence: protocol correctness comes from the current specification and official C# SDK first, then production repositories, then reference examples.
-
----
-
-## 10. Official MCP C# SDK
-
-Repository: `modelcontextprotocol/csharp-sdk`.
-
-### Adopted package boundary
-
-For the local stdio MVP:
+Adopt:
 
 ```text
-ModelContextProtocol
+MCP = model reasoning loop
+CLI = operator/admin/script boundary
 ```
 
-is the correct package. It includes hosting/DI and references the low-level Core package. `ModelContextProtocol.AspNetCore` is deferred until a real HTTP MCP requirement exists.
-
-### Registration strategy
-
-Hero Passport uses **explicit generic/type registration** for the four tool adapter types and avoids assembly-wide tool scanning.
-
-Reasons:
-
-- exact inventory is visible in composition root;
-- accidental `[McpServerTool]` methods cannot silently become public tools;
-- deterministic order is easier to guarantee/test;
-- fewer reflection/dynamic-discovery assumptions;
-- future trimming/AOT experiments remain easier even though NativeAOT is not an MVP requirement.
+Do not force CLI commands into MCP tools.
 
 ---
 
-## 11. Cross-project pattern matrix
+## 6. Playwright MCP / CLI
 
-| Pattern | GitHub MCP | Sentry | DBHub | Context7 | Playwright | ToolHive | Hero Passport |
-|---|---|---|---|---|---|---|---|
-| minimize tool inventory | strong | workflow-focused | very strong | strong | strongly motivated | dynamic at scale | **adopt fixed 4** |
-| dynamic discovery | useful at scale | optional/meta | no | no | no | platform feature | **reject** |
-| CLI beside MCP | yes | dev CLI | app/CLI | strong | strong | strong | **adopt** |
-| agent evals | some integration tests | **strong** | limited | workflow tests | practical agent tests | platform tests | **adopt** |
-| backward tool aliases | **strong** | evolving | limited | evolving | evolving | platform contracts | **adopt after 0.1** |
-| remote HTTP/OAuth | yes | core | optional | remote | common | core | **defer** |
-| progressive disclosure | toolsets | workflow | **strong** | two-stage | accessibility state | semantic discovery | **future history only** |
-| versioned config | yes | env/config | TOML | setup config | config | **strong** | **adopt** |
-| embedded/meta agent | no | yes | no | skills | skills | workflows | **reject** |
-| rich gateway/runtime | no | middleware | gateway-lite | no | no | **core** | **reject** |
+Useful lesson: large tool schemas/results consume agent context; CLI/skills may be more efficient for tasks that do not need model-visible structured tools.
+
+Adopt:
+
+- tiny HP-MCP surface;
+- concise tool descriptions/instructions;
+- no step logging;
+- keep maintenance/admin in CLI.
+
+Hero Passport still benefits from MCP because explicit `questId` state is naturally threaded through the agent workflow and the surface is tiny.
 
 ---
 
-## 12. Final adopted MCP principles
+## 7. ToolHive
 
-The benchmark resolves to these Hero Passport rules:
+Useful patterns:
 
-1. **Four tools, fixed and explicit.**
-2. **MCP is a narrow agent workflow adapter, not the product's full API.**
-3. **CLI owns administration and maintenance.**
-4. **Application/domain own behavior; transport adapters stay thin.**
-5. **Tool schemas/descriptions/names/annotations are compatibility artifacts.**
-6. **Use explicit state handles (`questId`), never hidden protocol session state.**
-7. **Strict JSON schemas; no arbitrary metadata bags.**
-8. **Typed structured results and output schemas.**
-9. **Server instructions guide workflow but never enforce security.**
-10. **Agent evaluations complement deterministic tests.**
-11. **Tool additions require evidence, not enthusiasm.**
-12. **No remote/platform architecture before a real requirement exists.**
+```text
+versioned config
+deployment/security boundaries
+explicit validation
+management-plane discipline
+```
+
+Adopt concepts, reject platform machinery:
+
+```text
+NO gateway
+NO registry runtime
+NO Kubernetes/operator
+NO container orchestration layer
+NO generic OAuth proxy in local MVP
+```
+
+ToolHive is a good reference for what becomes necessary at platform scale and therefore what Hero Passport should not prebuild.
 
 ---
 
-## 13. Rejected “modernity theater”
+## 8. Official C# MCP SDK/reference architecture
 
-The following are deliberately *not* added to make the project look modern:
+Adopt directly:
 
-- runtime plugin loading;
-- dynamic MCP tool discovery;
-- semantic tool router;
-- gateway/middleware framework;
-- MCP Tasks;
-- MCP Apps;
-- HTTP MCP;
-- OAuth/OIDC;
-- event bus;
-- message broker;
-- OpenTelemetry exporter;
-- embedded LLM judge;
-- generic repository;
-- CQRS framework;
-- internal mediator library;
-- separate microservices.
+```text
+stable official SDK 2.0
+protocol version negotiation rather than hand-roll
+explicit state handles compatible with 2026 stateless model
+structured output/output schemas
+cache metadata
+future official ASP.NET transport only when HTTP exists
+```
 
-Modern architecture here means **using current protocol semantics and precise boundaries with the smallest sufficient mechanism**.
+Important v3 correction:
 
-## 14. Review trigger
+```text
+Do not pin ProtocolVersion=2026-07-28 for the ordinary portable server.
+```
 
-Re-run this benchmark before any of these changes:
+The stable SDK supports multiple revisions when unpinned, so strict pinning would reduce compatibility for no Hero Passport requirement.
 
-- MCP tool count grows beyond 6;
-- HTTP/remote server becomes a real requirement;
-- team/multi-user mode is introduced;
-- a second database backend is proposed;
-- external plugins are proposed;
-- Hero Passport starts consuming remote APIs;
-- MCP Apps or Tasks are considered;
-- an agent/client other than coding agents becomes a primary target.
+---
 
-## 15. Primary sources
+## 9. Host product comparison
 
-- MCP 2026-07-28 release: https://blog.modelcontextprotocol.io/posts/2026-07-28/
-- MCP tool specification: https://modelcontextprotocol.io/specification/draft/server/tools
-- MCP C# SDK: https://github.com/modelcontextprotocol/csharp-sdk
-- GitHub MCP: https://github.com/github/github-mcp-server
-- Sentry MCP: https://github.com/getsentry/sentry-mcp
-- DBHub: https://github.com/bytebase/dbhub
-- Context7: https://github.com/upstash/context7
-- Playwright MCP: https://github.com/microsoft/playwright-mcp
-- ToolHive: https://github.com/stacklok/toolhive
-- MCP reference servers: https://github.com/modelcontextprotocol/servers
+### Codex
+
+Strengths relevant to Hero Passport:
+
+```text
+stdio + Streamable HTTP
+project-scoped config
+stdio cwd
+server instructions
+fine-grained tool allow-list
+shared config across local Codex host surfaces
+```
+
+Use as reference automated qualification host.
+
+### VS Code
+
+Relevant:
+
+```text
+workspace/user mcp.json
+stdio cwd
+workspace variables
+remote HTTP
+sandboxing on supported OSes
+```
+
+Strong project-bound local fit.
+
+### JetBrains AI Assistant / Junie
+
+Relevant:
+
+```text
+stdio + Streamable HTTP
+Working directory
+project/global MCP level
+MCP tools passed to Junie
+```
+
+Strong project-bound local fit.
+
+### Zed
+
+Relevant:
+
+```text
+local command/args/env
+remote URL/OAuth
+Tools/Prompts support
+MCP forwarding to external ACP agents
+```
+
+Because custom local config does not present the same cwd field as some other hosts, `--project-root` is an important portable fallback.
+
+### Cursor
+
+Official docs expose stdio and Streamable HTTP plus legacy SSE/OAuth. Use protocol-compatible documentation but recheck current product behavior during release smoke because host docs/products evolve quickly.
+
+### Claude Code
+
+Official docs expose local stdio and remote HTTP/OAuth. Project/user/local scopes differ from other hosts, reinforcing that configuration is not the portable API.
+
+---
+
+## 10. Multi-client contradiction discovered
+
+Architecture v2 constrained one open quest per hero/project:
+
+```text
+hero + project -> single current quest
+```
+
+This is incompatible with realistic parallel-agent workflows:
+
+```text
+Codex coding task
++ JetBrains/Junie review task
++ terminal Claude docs task
+```
+
+Adopt v3:
+
+```text
+multiple distinct open logical quests
+same logical work converges
+list_active_quests recovery tool
+```
+
+This is a product/domain improvement caused by integration analysis, not a transport hack.
+
+---
+
+## 11. Workspace/project-binding contradiction discovered
+
+A stdio host may provide cwd/project-level launch, but configuration mechanisms differ and MCP Roots are deprecated in the 2026 line.
+
+Adopt:
+
+```text
+project-bound process profile
+host cwd when available
+--project-root portable startup fallback
+no workspacePath in MCP payload
+```
+
+Reject:
+
+```text
+client-name-specific project inference
+goal-text path inference
+dependence on Roots
+a global multi-project stdio process without an explicit binding channel
+```
+
+---
+
+## 12. HTTP contradiction discovered
+
+“Support Streamable HTTP” is not enough to make a remote service correct. HTTP loses the natural per-process project cwd and introduces network trust/auth.
+
+Adopt deployment profiles:
+
+```text
+local stdio
+private OpenAI tunnel to local stdio
+future project-scoped HTTP
+future public multi-tenant HTTP as separate architecture
+```
+
+Reject “same local server, just add URL” thinking.
+
+---
+
+## 13. Adopt/reject matrix
+
+| Pattern | Decision | Reason |
+|---|---|---|
+| explicit four tools | Adopt | smallest portable surface |
+| deterministic order | Adopt | caching/prompt stability |
+| structured output | Adopt | typed machine contract |
+| conservative schema subset | Adopt | cross-host robustness |
+| explicit application handle | Adopt | stateless/reconnect-safe |
+| multi-active workstreams | Adopt | real multi-agent workflows |
+| logical same-task dedupe | Adopt | retry/handoff + no duplicate XP |
+| protocol hard pin | Reject | needlessly drops SDK-compatible clients |
+| host-specific runtime adapters | Reject | MCP already standardizes runtime |
+| Roots for project binding | Reject | deprecated/inconsistent |
+| dynamic toolsets | Reject | four-tool product |
+| Resources/Prompts required | Reject | reduces common baseline |
+| Tasks | Reject | operations are short |
+| MCP Apps core dependency | Defer | presentation enhancement only |
+| Streamable HTTP 0.1 | Reject/defer | no current need; new security boundary |
+| legacy SSE | Reject | deprecated direction |
+| public REST API | Reject | duplicate external API without consumer |
+| MCP Registry runtime dependency | Reject | distribution only, Registry preview |
+| Registry publication | Defer | re-evaluate package identity/maturity |
+| AgentEvals | Adopt | tests model behavior, not only server code |
+
+---
+
+## 14. Review triggers
+
+Repeat ecosystem/official-doc review before:
+
+```text
+MCP spec/SDK major revision
+fifth tool
+HTTP/OAuth
+public hosted deployment
+MCP Apps/Resources/Prompts reliance
+registry publication
+major host moved to Qualified tier
+separate public API
+plugin/runtime extension architecture
+```
+
+The goal is not continuous trend-chasing. Review when an external change crosses a Hero Passport boundary.

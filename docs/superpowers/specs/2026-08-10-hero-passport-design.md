@@ -1,401 +1,854 @@
-# Hero Passport Architecture v2 — consolidated design
+# Hero Passport v3 Integration/API Architecture Design
 
-**Status:** Accepted design for implementation  
-**Date:** 2026-08-10  
-**Target:** Hero Passport 0.1.0
+> **Status:** Accepted for architecture PR after official-doc contradiction review on 2026-08-11.
 
-## 1. Goal
+## Goal
 
-Build a cross-platform local-first RPG passport for AI coding agents that integrates first with Codex through a tiny stdio MCP surface, stores durable progression in SQLite, calculates all game progress deterministically, and never needs source code/cloud telemetry for the core loop.
+Define one implementation-ready Hero Passport architecture that:
 
-## 2. Research basis
+- remains a small local-first RPG product;
+- works naturally with Codex first but is not Codex-specific;
+- exposes one portable four-tool HP-MCP/2 contract;
+- supports multiple parallel agents/workstreams safely;
+- separates semantic Application contracts from MCP/CLI/Web adapters;
+- preserves privacy and deterministic progression;
+- keeps HTTP/hosted complexity outside 0.1 while leaving a clean future seam;
+- prevents coding-time ambiguity through explicit versioning, binding, concurrency, error and compatibility rules.
 
-The design was produced through three passes:
-
-1. extract architecture practices from mature open MCP servers/apps;
-2. reject patterns that solve a scale/distribution problem Hero Passport does not have;
-3. verify surviving choices against current official MCP/Codex/.NET/EF/SQLite/package documentation on 2026-08-10.
-
-Key repositories studied are documented in `docs/ECOSYSTEM-BENCHMARK.md`: GitHub MCP Server, Sentry MCP, DBHub, Context7, Playwright MCP/CLI, ToolHive and official MCP SDK/reference repositories.
-
-The resulting design intentionally combines practices rather than cloning one project.
-
-## 3. Product loop
+## Architecture
 
 ```text
-Codex decides the task is meaningful
- -> hero.start_quest(questType, goal)
- -> questId
- -> Codex works normally
- -> hero.finish_quest(questId, result, compact summary/metrics/skills)
- -> deterministic reward persisted once
- -> structured result + compact displayText
+MCP hosts
+  Codex / VS Code / JetBrains / Zed / Cursor / Claude / ...
+                         |
+                    stdio 0.1
+                         |
+                 HeroPassport.App
+             MCP + CLI + Presentation
+                         |
+               HeroPassport.Application
+           semantic commands/queries/ports
+                 /                \
+                /                  \
+       HeroPassport.Domain     Infrastructure
+       deterministic policy     EF/SQLite/config/fs
+                                      |
+                                   SQLite
+
+0.2: Web -> Application -> Infrastructure
+future: Streamable HTTP adapter -> same Application
 ```
 
-`hero.current_quest` restores workflow context; `hero.get_card` reads hero progress.
+MCP is an adapter, not the product's internal API.
 
-No other MCP tool in 0.1.0.
+---
 
-## 4. Why MCP is appropriate here
+## 1. Product contract
 
-Playwright/Context7 show that CLI + Skills is often better than large MCP inventories. Hero Passport remains a good MCP fit because:
-
-- only four tools are advertised;
-- an explicit durable `questId` is useful to agent reasoning;
-- start/finish are semantically typed operations rather than generic shell commands;
-- output is tiny.
-
-Administration/diagnostics/export/full history stay CLI/dashboard.
-
-## 5. Architecture
+Hero Passport turns meaningful AI-agent work into persistent RPG progression:
 
 ```text
-HeroPassport.Domain
-        ^
-        |
-HeroPassport.Application
-        ^
-        |
-HeroPassport.Infrastructure
-        ^
-        |
-HeroPassport.App
-
-HeroPassport.Web (0.2) -> Application
+start logical quest
+-> work normally
+-> finish explicit quest
+-> deterministic reward
+-> local durable progression
+-> compact status
 ```
+
+Product values:
+
+```text
+entertainment/companion first
+local-first
+privacy by data minimization
+deterministic rules
+small model-context footprint
+portable MCP semantics
+multi-agent safe
+```
+
+0.1.0 is the **Portable Local MCP Core**.
+
+Codex is the first Qualified reference host, not a special code path.
+
+---
+
+## 2. Layer boundaries
 
 ### Domain
 
-Pure deterministic game rules/state transitions. No EF/MCP/JSON/filesystem/localization.
+Owns:
+
+```text
+Hero/Project/Quest typed vocabulary
+state transitions
+LogicalQuestKey canonical policy/value
+XP/levels
+skills
+quality flags
+Trust/Risk
+traits
+rule versions
+```
+
+Must not reference:
+
+```text
+MCP
+EF/SQLite
+CLI/HTTP
+filesystem/config
+localization
+client metadata
+```
 
 ### Application
 
-Typed use cases and ports; resolves/coordinates state and returns typed result data. Uses `TimeProvider`. No MCP SDK and no human rendering.
+Owns:
+
+```text
+HeroOperationContext
+StartQuestHandler
+FinishQuestHandler
+ListActiveQuestsHandler
+GetHeroCardHandler
+initialization/diagnostics/export use cases
+ports
+semantic Result/Error types
+read models
+```
+
+Application is the canonical semantic API.
+
+It must not expose MCP SDK types, HTTP objects, CLI parser types, EF entities or localized text.
 
 ### Infrastructure
 
-EF Core/SQLite, migrations, stores, config/path resolution, project fingerprint, export, diagnostics.
+Owns:
+
+```text
+DbContext/migrations
+stores/read queries
+SQLite transaction/concurrency behavior
+project binding/fingerprinting
+platform paths
+file config
+safe export
+local diagnostics adapters
+```
 
 ### App
 
-Composition root, System.CommandLine, official MCP stdio adapters and presentation/localization.
+Owns:
 
-### Web later
+```text
+Generic Host/DI
+MCP stdio
+System.CommandLine
+operation-context resolver
+presentation/localization
+stdout/stderr policy
+```
 
-Blazor read-focused host over Application read models, using Infrastructure only in composition root.
+### Web — 0.2
 
-## 6. MCP design
+Consumes Application/read models. Components never use DbContext directly.
 
-Canonical stable order:
+---
+
+## 3. Why no universal external DTO
+
+MCP, CLI and Web have different consumers.
+
+MCP needs bounded/token-small model-facing contracts.
+
+CLI may expose operator details in `--json`.
+
+Web needs rich typed projections.
+
+Therefore:
+
+```text
+Application command/result != MCP request/result != CLI JSON != Web view model
+```
+
+Mappings are explicit at adapters.
+
+No standalone `HeroPassport.Contracts` assembly until a real independently versioned .NET consumer exists.
+
+---
+
+## 4. HeroOperationContext
+
+Scoped operations receive:
+
+```text
+HeroId
+ProjectId
+InvocationOrigin
+```
+
+InvocationOrigin may contain:
+
+```text
+surface = mcp_stdio | cli | web | future mcp_http
+optional bounded client name/version for diagnostics
+```
+
+Rules:
+
+```text
+client info is untrusted
+client != hero
+client != principal/auth identity
+client != project
+client metadata never changes reward
+raw client metadata not persisted by default
+```
+
+Do not name the type `ExecutionContext` because of the .NET BCL type.
+
+---
+
+## 5. Project binding
+
+Project is a trusted local adapter context, not model input.
+
+0.1 local stdio resolution:
+
+```text
+explicit --project-root, if provided
+else process working directory
+then normalize/discover Git root
+else use starting directory
+-> ProjectIdentityV1
+```
+
+Persist:
+
+```text
+ProjectId
+DisplayName
+WorkspaceFingerprint
+ProjectIdentityVersion
+```
+
+Do not persist or return full path by default.
+
+Hosts use their native cwd/project-level mechanism where available. `--project-root` is the portable fallback.
+
+Do not use MCP Roots: deprecated in 2026 and not uniformly implemented.
+
+A globally shared process without a reliable project binding is outside the project-aware 0.1 profile; do not infer workspace from tool text/client brand.
+
+---
+
+## 6. Hero binding
+
+Default/active hero is local product state.
+
+Optional adapter binding:
+
+```text
+hero-passport mcp --hero <selector>
+```
+
+No per-tool heroId.
+
+One hero can be used by many clients. One client can run different server entries bound to different heroes.
+
+---
+
+## 7. HP-MCP/2
+
+Exact stable inventory:
 
 ```text
 hero.start_quest
 hero.finish_quest
-hero.current_quest
+hero.list_active_quests
 hero.get_card
 ```
 
-Register four adapter types explicitly. No assembly-wide scanning.
+Registered explicitly in this order.
 
-Input design:
+No assembly scanning/dynamic inventory.
+
+### Input policy
 
 ```text
-start: questType, goal
-finish: questId, result, summary, metrics, skillsUsed
-current: empty strict object
-card: empty strict object
+closed object roots
+additionalProperties:false
+bounded strings/integers/arrays
+closed enums
+shallow schema
+no metadata/context/payload bag
 ```
 
-Stable local state is not model input:
+No fields for source/diff/raw logs/prompt/secrets/environment/workspace path.
+
+### Output policy
+
+Canonical machine result: `structuredContent` + output schema.
+
+Human/legacy result: one concise text representation; never duplicate the entire JSON as text.
+
+### Tool annotations
 
 ```text
-active hero
-project identity
-locale
-presentation mode
-data/config paths
-rule versions
+start   readOnly=false destructive=false idempotent=true*  openWorld=false
+finish  readOnly=false destructive=false idempotent=true   openWorld=false
+list    readOnly=true  destructive=false idempotent=true   openWorld=false
+card    readOnly=true  destructive=false idempotent=true   openWorld=false
 ```
 
-All input schemas use JSON Schema 2020-12-style strict object semantics with `additionalProperties:false`, closed enums and bounded text/counters.
+`start` idempotency is logical-work idempotency.
 
-All outputs are typed through `outputSchema`/structured content and include one compact `displayText`, not duplicate status fields.
+---
 
-Annotations accurately express read-only/idempotent/open-world semantics; Tasks are forbidden.
+## 8. MCP protocol versioning
 
-## 7. MCP workflow guidance
-
-Static server instructions carry cross-tool guidance. For Codex, first 512 characters are self-contained.
-
-Semantic instruction:
+Preferred semantic baseline:
 
 ```text
-Use Hero Passport for meaningful coding/debugging/review/planning/research/docs tasks. Start one quest, keep questId, finish it once. Never send code, diffs, raw logs, prompts, secrets, environment or workspace paths. Show compact displayText in final output.
+2026-07-28
 ```
 
-AGENTS.md may repeat this briefly for project context; per-response `agentHint` is removed.
-
-## 8. Compatibility
-
-MCP 2026-07-28 is the protocol baseline. Application correctness does not rely on protocol session state.
-
-After 0.1.0:
-
-- tool names/schemas/descriptions are compatibility artifacts;
-- rename uses temporary deprecated alias if unavoidable;
-- breaking semantic changes require explicit contract evolution;
-- adding a fifth/sixth tool requires review/eval; >6 triggers a dedicated tool-surface architecture review.
-
-## 9. RPG engine
-
-Rule identifiers:
+But server option:
 
 ```text
-reward/1.0.0
-trust-risk/1.0.0
-traits/1.0.0
+McpServerOptions.ProtocolVersion = null/unset
 ```
 
-Clean coding golden = 95 XP.
+Official C# SDK v2 then supports its documented set of initialize-era revisions plus 2026 behavior.
 
-Everything uses deterministic integer arithmetic. Historical completion stores its original breakdown/rule versions; retry never reruns newer rules.
-
-Skill XP allocation always sums exactly to quest XP.
-
-Only three fully specified traits in MVP.
-
-No achievements/items/streak engine/LLM judge.
-
-## 10. Presentation
-
-Typed engine/use-case result and human output are separate.
+Tests require:
 
 ```text
-Domain/Application -> numeric/canonical keys
-App HeroTextRenderer -> RU/EN compact/normal text
+2026-07-28
+2025-11-25
 ```
 
-This avoids coupling reward tests to punctuation and lets Web use typed data directly.
+Application correctness never depends on MCP session identity.
 
-RU canonical presentation includes:
+Do not describe stdio implementation as requiring a generic `Stateless=true` option. For future Streamable HTTP adapter, configure SDK HTTP transport explicitly in stateless mode.
+
+---
+
+## 9. MCP feature profile
+
+Required:
 
 ```text
-scope_control = Контроль
-clean scope bonus = Бонус за контроль
-scope violation = Выход за задачу
+Tools
 ```
 
-## 11. Persistence
-
-SQLite + EF Core.
-
-Operational baseline:
+Not required for core:
 
 ```text
-IDbContextFactory<HeroPassportDbContext>
-one short-lived context/unit of work
-synchronous DB operations
-Mode=ReadWriteCreate
-Cache=Default
-Foreign Keys=True
-Pooling=True
-Default Timeout=5 (validate before release)
+Resources
+Prompts
+Roots
+Sampling
+MCP Logging
+MRTR
+Tasks
+Apps
+```
+
+Roots, Sampling and MCP Logging are deprecated in the 2026 line. Tasks are wrong for millisecond local operations.
+
+Optional future Prompts/Apps must not become prerequisites for the quest lifecycle.
+
+---
+
+## 10. `tools/list` cache policy
+
+Inventory is compile-time static and same for all local users.
+
+2026 list metadata:
+
+```text
+cacheScope = public
+initial ttlMs = 300000
+```
+
+The 5-minute TTL is an implementation freshness default, not HP-MCP semantics. It may be tuned after host evidence without HP-MCP epoch change.
+
+No `listChanged` notification while inventory remains static.
+
+---
+
+## 11. Multi-active quest model
+
+Architecture v2's single-current-quest model is removed before public release.
+
+A hero/project may hold up to 16 distinct open quests.
+
+Example:
+
+```text
+Nova + Project X
+  q1 coding
+  q2 review
+  q3 documentation
+```
+
+This supports parallel agent/client work.
+
+---
+
+## 12. LogicalQuestKeyV1
+
+Same logical work should converge even if two clients start it.
+
+Canonical key input:
+
+```text
+canonical questType
++ "\n"
++ normalized goal
+```
+
+Goal normalization for key only:
+
+```text
+Unicode NFC
+trim
+collapse Unicode whitespace runs to single ASCII space
+invariant case normalization
+```
+
+Hash:
+
+```text
+SHA-256 UTF-8 bytes
+```
+
+Persist hash + version.
+
+Original validated goal remains available as bounded history text.
+
+Database partial uniqueness:
+
+```text
+(hero_id, project_id, logical_key_version, logical_key)
+WHERE status='open'
+```
+
+Same-key concurrent start -> one quest, other caller reloads winner.
+
+Distinct keys -> coexist.
+
+If user wants two deliberate identical-wording experiments, v1 requires distinct goal wording. Do not add attempt/idempotency fields until real demand.
+
+---
+
+## 13. Active cap
+
+```text
+MaxOpenQuestsPerHeroProject = 16
+```
+
+Application policy, not DB schema truth.
+
+Real SQLite race test from count 15 with two distinct starts must prove <=16 after both calls.
+
+SQLite serializes writers; choose a write transaction mode that actually preserves the cap. If ordinary EF transaction behavior is insufficient, localize SQLite-specific immediate transaction SQL in Infrastructure.
+
+No distributed/global mutex.
+
+---
+
+## 14. StartQuest
+
+MCP input:
+
+```json
+{"questType":"coding","goal":"Implement XpCalculator"}
+```
+
+Semantic algorithm:
+
+```text
+resolve HeroOperationContext
+validate
+compute logical key
+find matching open quest
+  found -> return same ID, alreadyOpen=true
+count active
+  >=16 -> HP133
+insert
+commit
+```
+
+Concurrent unique-key race is translated into success-reload, not leaked constraint error.
+
+---
+
+## 15. ListActiveQuests
+
+MCP input:
+
+```json
+{}
+```
+
+Returns only bound hero/project active quests.
+
+```text
+max 16
+startedAtUtc DESC, then questId ASC
+empty -> successful []
+```
+
+It supersedes `current_quest` before 0.1 release.
+
+Human display does not echo arbitrary goal text by default. Structured data includes bounded goal for recovery.
+
+---
+
+## 16. FinishQuest
+
+MCP input contains only:
+
+```text
+questId
+result
+summary
+bounded metrics
+1..3 skills
+```
+
+Before mutation:
+
+```text
+quest exists else HP130
+quest hero/project matches HeroOperationContext else HP134
+if finished -> return original stored result
+```
+
+Atomic transaction:
+
+```text
+report
+skill allocation snapshot
+UNIQUE xp_event
+hero aggregate
+skills
+traits
+project stats
+quest status
+```
+
+Repeated/concurrent finish produces one reward.
+
+---
+
+## 17. GetHeroCard
+
+Read-only typed hero/project progress; no large history.
+
+Presentation text is App-level.
+
+---
+
+## 18. Errors
+
+Semantic error type contains:
+
+```text
+Code
+Category
+Retryability
+MessageKey
+SafeDetails
+```
+
+Core codes:
+
+```text
+HP100 invalid_request
+HP120 project_not_resolved
+HP130 quest_not_found
+HP133 active_quest_limit
+HP134 quest_context_mismatch
+HP140 unsupported_quest_type
+HP141 unsupported_result
+HP200 storage_unavailable
+HP201 migration_failed
+HP202 database_busy
+HP210 app_data_unavailable
+HP300 invalid_configuration
+HP310 invalid_project_binding
+HP900 internal_error
+```
+
+Old HP131/HP132 normal paths are retired before public release.
+
+MCP semantic failure -> tool error. CLI -> stderr/nonzero/stable JSON error where applicable. Protocol framing remains SDK error.
+
+No stack/SQL/path leakage.
+
+---
+
+## 19. SQLite
+
+EF Core 10.0.10 + pinned SQLitePCLRaw 3.0.5.
+
+```text
+IDbContextFactory
+short synchronous DB calls
 WAL
 synchronous=FULL
+foreign_keys=ON
+Cache=Default
+Pooling=True
+Default Timeout=5
 ```
 
-Do not use `Task.Run` around DB calls or long-lived ambient DbContext.
+Tests query actual `sqlite_version()`.
 
-## 12. Storage model
+Migrations from 0001. EF owns migration lock; no custom mutex.
 
-Core tables:
+---
+
+## 20. Presentation
+
+Domain/Application never render status strings.
+
+App `HeroTextRenderer` owns RU/EN compact/normal output.
+
+Russian canonical labels:
 
 ```text
-heroes
-projects
-hero_project_stats
-quest_sessions
-quest_reports
-quest_report_skills
-skills
-hero_skills
-traits
-hero_traits
-xp_events
-app_settings
+scope_control -> Контроль
+Clean scope bonus -> Бонус за контроль
+Scope violation -> Выход за задачу
 ```
 
-Critical integrity:
+---
+
+## 21. Integration model
+
+No runtime `CodexAdapter`, `CursorAdapter`, etc.
+
+One runtime:
 
 ```text
-quest report one-to-one with quest
-xp_events.quest_id UNIQUE
-at most one active quest per hero/project slot
-finish transaction atomic
+hero-passport mcp
 ```
 
-No full workspace path/code/diff/raw log/prompt/env metadata columns.
-
-## 13. Migrations
-
-EF migrations from first schema. Never `EnsureCreated` in product path.
-
-Use EF Core built-in database-wide migration locking; SQLite uses `__EFMigrationsLock`.
-
-No custom migration mutex/file lock.
-
-`doctor` diagnoses suspicious abandoned migration lock; normal startup does not blindly delete it.
-
-CI checks pending model changes and upgrade/fresh DB fixtures.
-
-## 14. App data/config
-
-Windows:
+Host docs/config differ:
 
 ```text
-%LOCALAPPDATA%\HeroPassport
+Codex TOML/cwd
+VS Code servers/cwd/workspace variable
+JetBrains mcpServers + Working directory
+Zed context_servers + args fallback
+Cursor mcpServers + binding fallback
+Claude Code native MCP config + binding fallback
 ```
 
-not roaming `%APPDATA%`.
-
-macOS:
+Support tiers:
 
 ```text
-~/Library/Application Support/HeroPassport
+Qualified
+Documented/protocol-compatible
+Unsupported
 ```
 
-Linux respects XDG data/config/state roots.
+Codex is first Qualified release host. Others require RC smoke evidence.
 
-Tests/dev use `HERO_PASSPORT_HOME`.
+---
 
-`config.json` v1 is small/strict and contains only local presentation/diagnostics policy. Active hero is product state in SQLite.
+## 22. Deployment profiles
 
-## 15. Privacy/security
+### A — local stdio 0.1
 
-Contract-first minimization:
+No network/auth. Project-bound local process + SQLite.
+
+### B — OpenAI Secure MCP Tunnel
+
+External tunnel can reach local stdio; no Hero Passport HTTP required.
+
+### C — project-scoped Streamable HTTP future
+
+Only on concrete URL/deployment need. Add `ModelContextProtocol.AspNetCore`, bind project explicitly, set HTTP stateless mode, validate Origin/Host and design auth for non-loopback.
+
+### D — public/multi-tenant
+
+Separate architecture: TLS/OAuth/principal authorization/tenant isolation/remote DB/backups/rate limits.
+
+No new legacy SSE.
+
+---
+
+## 23. No second public API by default
 
 ```text
-no source code
-no diffs
-no raw logs
-no prompts/chat history
-no secrets/API keys
-no env dump
-no workspace path
-no arbitrary metadata JSON
+AI integrations -> MCP
+shell/CI -> CLI/--json
+Hero Passport Web -> Application in-process
 ```
 
-Goal/summary are bounded untrusted data and never become server instructions/tool definitions.
+No REST/GraphQL/gRPC until a concrete non-MCP remote consumer exists and gets its own ADR/security/version model.
 
-MVP requires no network and no elevation.
+---
 
-MCP stdout is protocol only; logs go stderr/local file under safe-field policy.
+## 24. Distribution
 
-## 16. Libraries
+0.1 primary package: .NET tool `hero-passport`.
 
-Accept stable minimal stack:
+Later self-contained binaries only after native SQLite packaging tests.
+
+MCP Registry is preview and distribution-only; no runtime dependency. If publication happens, choose stable package/server identity and follow NuGet `mcp-name` ownership requirements.
+
+No per-host binary.
+
+---
+
+## 25. Contract snapshots
+
+Once MCP implementation exists, generate actual SDK manifest/schema snapshots:
+
+```text
+contracts/mcp/hp-mcp-2/
+```
+
+Snapshots cover exact tool list/input/output schemas. They are generated, not hand-maintained.
+
+Any diff receives compatibility/privacy/token/eval review.
+
+---
+
+## 26. Testing
+
+Deterministic:
+
+```text
+Domain goldens
+Application semantic tests
+real SQLite migration/race tests
+architecture tests
+contract snapshots
+process stdout tests
+protocol 2026 + 2025-11-25
+MCP Inspector
+Codex E2E
+```
+
+Model behavior:
+
+```text
+host-neutral AgentEval scenarios
+Codex runner first
+same task reuse
+parallel tasks
+lost ID list recovery
+privacy
+finish retry
+small-question no-op
+```
+
+RC host smoke:
+
+```text
+VS Code
+JetBrains
+Zed
+Cursor
+Claude Code
+```
+
+A failing unqualified host smoke can remain documented rather than block core release, but must not be marketed Qualified.
+
+---
+
+## 27. Version axes
+
+```text
+Product                 0.1.0
+MCP protocol            negotiated; 2026 semantics preferred
+HP-MCP                  2
+config                   1
+EF schema                migrations
+RewardRules              1.0.0
+TrustRiskRules           1.0.0
+TraitRules               1.0.0
+LogicalQuestKey          1
+ProjectIdentity          1
+```
+
+Do not add generic per-call schemaVersion.
+
+---
+
+## 28. Dependency decisions
+
+Accepted:
 
 ```text
 ModelContextProtocol 2.0.0
-EF Core SQLite 10.0.10
-EF Core Design 10.0.10 dev/private
+EF Core SQLite/Design 10.0.10
 SQLitePCLRaw.bundle_e_sqlite3 3.0.5
 System.CommandLine 2.0.10
-xunit.v3 3.2.2
-built-in Host/DI/Logging/Options/TimeProvider/System.Text.Json/UUIDv7
+xUnit v3 3.2.2
+built-in Host/DI/Logging/Options/TimeProvider/System.Text.Json/UUIDv7/SHA256
 ```
 
-Reject/defer without demonstrated need:
+Deferred/rejected baseline:
 
 ```text
+ModelContextProtocol.AspNetCore until HTTP
 MediatR
 FluentValidation
 AutoMapper
 Dapper
 Polly
 Serilog/NLog
-Spectre.Console baseline
-OpenTelemetry exporters
-Testcontainers
+Spectre.Console
+OTel exporters
+Testcontainers for SQLite
+host-specific SDKs
+REST/OpenAPI framework
+runtime plugin framework
+```
+
+---
+
+## 29. Documentation precedence
+
+```text
+PRODUCT-SPEC
+ARCHITECTURE
+API-CONTRACTS
+MCP-CONTRACT
+DATA/CONFIG/SECURITY specs
+DECISION-LOG
+ROADMAP/implementation plan
+```
+
+Implementation plan cannot override a normative contract.
+
+---
+
+## 30. Architecture review triggers
+
+Mandatory focused review before:
+
+```text
+fifth MCP tool
+new code/diff/log data ingestion
+HTTP/OAuth
+public hosting
+Resources/Prompts/Apps as required core
+MCP Registry publication
+separate public API
+new persistence backend
 runtime plugins
-generic repository/CQRS framework
+team/multi-tenant mode
 ```
 
-See `DEPENDENCIES.md` for rationale and re-evaluation conditions.
-
-## 17. Codex integration
-
-Codex owns its configuration.
-
-Preferred:
-
-```bash
-codex mcp add hero-passport -- hero-passport mcp
-codex mcp list
-```
-
-Project config may set `mcp_servers.hero-passport.cwd` and host-side `enabled_tools` based on current official Codex docs.
-
-Hero Passport does not edit Codex TOML in MVP.
-
-## 18. Quality strategy
-
-Three layers:
-
-```text
-deterministic tests -> rules/storage correctness
-protocol/process tests -> actual MCP/CLI contract
-agent evals -> Codex chooses lifecycle/tools correctly
-```
-
-Storage tests use real file-backed SQLite/WAL.
-
-MCP tests inspect real advertised catalog, schemas, annotations, output conformance and stdout.
-
-Codex E2E is required for 0.1.0.
-
-Agent eval corpus includes meaningful vs trivial tasks, recovery, conflict, retries and privacy-adversarial scenarios.
-
-## 19. Delivery
-
-```text
-0.0.1 foundation
-0.0.2 domain rules
-0.0.3 application lifecycle
-0.0.4 config/paths/presentation
-0.0.5 SQLite/migrations
-0.0.6 transaction/idempotency
-0.0.7 CLI/doctor
-0.0.8 MCP
-0.0.9 Codex E2E/evals
-0.1.0-rc.1 hardening
-0.1.0 MVP
-0.2.0 Blazor dashboard
-```
-
-No dashboard before MCP/core quality gates.
-
-## 20. Implementation success condition
-
-The architecture is successful if a coding agent can implement one feature by loading only the relevant feature folder/spec plus a small set of contracts/tests, rather than understanding a generic framework/platform.
-
-That means choosing the simplest explicit implementation at every layer and adding abstraction only where this design identifies a real boundary.
-
-## 21. Normative detail
-
-This consolidated design is an index/summary. If implementation detail is needed, the specialized documents are normative:
-
-```text
-ARCHITECTURE.md
-MCP-CONTRACT.md
-ENGINE-SPEC.md
-DATA-MODEL.md
-CONFIGURATION.md
-SECURITY-PRIVACY.md
-TESTING-QUALITY.md
-DEPENDENCIES.md
-integrations/CODEX.md
-DECISION-LOG.md
-```
-
-If the summary ever conflicts with a detailed spec, fix the summary before coding against it.
+This design intentionally leaves extension points at semantic boundaries rather than prebuilding frameworks.

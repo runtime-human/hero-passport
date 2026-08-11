@@ -1,27 +1,23 @@
-# Hero Passport — testing, evaluation and release quality
+# Hero Passport — Testing and Quality
 
-**Status:** Accepted quality baseline  
-**Snapshot:** 2026-08-10  
-**Principle:** deterministic tests prove correctness; protocol tests prove MCP compatibility; agent evals prove workflow usability.
+**Status:** Accepted v3  
+**Snapshot:** 2026-08-11
 
 ## 1. Quality model
 
-Hero Passport has three distinct failure classes:
+Hero Passport needs evidence at seven distinct levels:
 
 ```text
-A. game/storage bug
-   deterministic tests catch it
-
-B. MCP/CLI contract bug
-   protocol/process tests catch it
-
-C. model chooses tools badly
-   agent evaluations catch it
+Domain rules
+Application semantics
+SQLite persistence/concurrency
+API/contract compatibility
+MCP process/protocol behavior
+Host integration
+Agent behavior evals
 ```
 
-Do not collapse these into one test suite. Sentry MCP is a useful precedent: unit tests and agent evaluations answer different questions.
-
-Release-blocking suites are deterministic. Agent evaluations begin as manual/nightly evidence and may become blocking only after the harness/model/config is sufficiently reproducible.
+Passing unit tests alone is not evidence that an MCP host/model will use the lifecycle correctly.
 
 ---
 
@@ -34,626 +30,465 @@ tests/
   HeroPassport.Infrastructure.Tests/
   HeroPassport.App.Tests/
   HeroPassport.Architecture.Tests/
+  HeroPassport.Contract.Tests/
   HeroPassport.AgentEvals/
 ```
 
-`AgentEvals` may initially be a console/test harness rather than an ordinary xUnit project if that gives clearer model-run artifacts. It must still be versioned in the repository.
+`AgentEvals` may have slower/manual/nightly runners and must not contaminate deterministic unit-test expectations.
 
 ---
 
 ## 3. Domain tests
 
-Pure, fast, exhaustive around boundaries.
-
-### XP/reward
-
-Cover:
+Cover every deterministic rule/boundary:
 
 ```text
-every quest type
-every result multiplier
-each bonus individually
-each penalty individually
-bonus+penalty combinations
-floor/minimum-zero behavior
-large bounded counters
-standard 95 XP golden
-rule-version fixture
+XP bases/multipliers/bonuses/penalties
+minimum zero
+level thresholds/boundaries
+skill allocation conservation
+SkillKeyNormalizer
+Trust/Risk clamp/transitions
+trait unlock progression
+QuestQualityFlags
+LogicalQuestKeyV1 canonicalization vectors
 ```
 
-### Levels
-
-Cover level thresholds exactly before/at/after:
+Golden vectors include at least:
 
 ```text
-0, 99, 100, 249, 250, ...
+clean coding success = 95 XP
 ```
 
-Verify cumulative/next-level formulas agree.
-
-### Skill normalization/distribution
-
-Cover:
+Logical key goldens cover:
 
 ```text
-canonical keys
-aliases
-case/whitespace
-unknown key rejection
-duplicate normalization
-1/2/3 skill distributions
-rounding remainder
-sum(skillXp) == rewardXp
+trim
+Unicode NFC equivalent strings
+multiple whitespace forms
+case normalization
+quest-type difference
+actual semantic goal difference
 ```
 
-### Trust/Risk
-
-Boundary/clamp tests at 0 and 100 plus all result/correction/scope combinations.
-
-### Traits
-
-Progress/unlock threshold tests and permanent-unlock invariant.
-
-Domain goldens contain machine values, not localized MCP punctuation.
+Changing a golden requires rule/key-version review rather than casual expected-value edits.
 
 ---
 
 ## 4. Application tests
 
-Use in-memory fakes/stubs of application ports, not EF InMemory.
+Use fakes/stubs for ports and injected `TimeProvider`.
 
 ### StartQuest
 
 ```text
-first start creates open quest
-matching retry returns same ID
-conflicting open quest -> HP132
-project/hero resolution failure maps to typed error
-TimeProvider timestamp used
+new task -> new quest
+same logical task -> same quest / alreadyOpen
+same goal different type -> distinct key
+parallel distinct logical tasks allowed
+16 active -> HP133
 ```
 
 ### FinishQuest
 
 ```text
-open success -> reward mutation intent
-already finished -> persisted original outcome
-not found -> HP130
-skills normalized before engine
-typed reward/report contains rule versions
-no renderer/MCP dependency
+success/partial/failed/blocked/abandoned
+already finished -> original outcome
+wrong hero -> HP134
+wrong project -> HP134
+unknown quest -> HP130
+unknown skill -> safe validation failure
 ```
 
-### Reads
+### ListActiveQuests
 
-Card/current quest projection behavior, empty/current states and active-hero resolution.
+```text
+empty -> success []
+multiple -> deterministic order
+only current hero/project
+bounded <=16
+```
 
-Application tests assert typed results only.
+Application tests do not prove DB race guarantees; those belong to real SQLite tests.
 
 ---
 
-## 5. Infrastructure tests — real SQLite only
+## 5. Real SQLite integration tests
 
-Every persistence test uses an isolated temporary **file-backed SQLite** database with the same provider/native bundle and relevant PRAGMAs as production.
+Never use EF InMemory to claim SQLite correctness.
 
-Why file-backed rather than `:memory:` for core integration coverage:
+Use a unique temporary file-backed DB and the real configured native provider.
 
-- WAL behavior matters;
-- file locking/concurrency matters;
-- migration files matter;
-- app-data lifecycle matters.
-
-In-memory SQLite may be used for a narrowly isolated mapping/query experiment, but never as the only persistence proof.
-
-### Required coverage
+Verify:
 
 ```text
-migration 0001 -> working DB
-all FKs and unique constraints
-partial/open-quest uniqueness
-UNIQUE xp_events.quest_id
-WAL journal mode
-FULL synchronous mode
-foreign_keys ON
-native sqlite_version accepted
-read/write/open behavior
-busy timeout behavior
-pooling does not corrupt test isolation
+initial migration
+fresh DB seed
+upgrade migrations
+foreign keys
+WAL
+synchronous=FULL
+sqlite_version()
+logical open-key partial uniqueness
+XP-event uniqueness
+active query/index behavior
+transaction rollback
+busy/timeout mapping
 ```
 
-### Finish atomicity
+### 5.1 Same-key StartQuest race
 
-Inject controlled failure at each mutation stage and prove no partial progression survives.
+Two independent contexts/process-like tasks concurrently start identical logical work.
 
-### Concurrency
-
-Two independent contexts/process-like operations attempt to finish the same quest:
+Expected:
 
 ```text
-one commits canonical reward
-other returns/reloads canonical already-finished state
-exactly one xp_event exists
-hero XP changed once
+one open quest row
+both callers receive same questId
+one caller may report alreadyOpen=false, the other true
+no raw unique-constraint error leaks
 ```
 
-Also test simultaneous read during short writer under WAL.
+### 5.2 Different-key race at active limit
 
-### Migration upgrades
+Fixture starts with 15 active quests, then two writers concurrently start two distinct logical quests.
 
-Keep representative database fixtures for the immediately previous released version once releases exist.
-
-Test:
+Expected after both complete:
 
 ```text
-previous DB -> Migrate -> current model/data preserved
-fresh DB -> Migrate -> current schema
+active count <= 16
+one new quest succeeds
+other receives HP133 (or reload/retry path that still preserves cap)
 ```
 
-CI runs:
+This test determines whether the implementation needs an explicit SQLite immediate/write transaction strategy.
+
+### 5.3 Finish race
+
+Two independent writers finish one quest concurrently.
+
+Expected:
 
 ```text
-dotnet ef migrations has-pending-model-changes
+one quest_report
+one xp_event
+one set aggregate changes
+both observable responses converge to same final persisted reward
 ```
 
-with the pinned SDK/toolchain.
+### 5.4 Context isolation
+
+A quest from project A cannot be finished while operation context is project B even when the raw UUID is known.
 
 ---
 
-## 6. MCP contract tests
+## 6. Contract tests
 
-Do not test only C# attributes/DTOs. Launch/build the actual configured MCP server and inspect what it advertises.
+`HeroPassport.Contract.Tests` owns machine-visible compatibility.
 
-Canonical assertions:
-
-```text
-tools/list contains exactly 4 tools
-exact canonical order
-names stable
-descriptions within budgets
-input schemas strict
-output schemas present
-annotations exact
-taskSupport forbidden
-no dynamic/unexpected tool
-```
-
-Input negative tests:
+Required assertions:
 
 ```text
-unknown property
-oversized goal
-oversized summary
-malformed UUID
-unknown enum
-negative/excessive counter
-4th skill
-unknown skill
+exact four tool names
+exact deterministic order
+no fifth accidental tool
+annotations
+closed/bounded input schemas
+outputSchema presence
+conservative JSON Schema profile
+forbidden property deny-list
+structuredContent shapes
+text representation bounds
+tool list cache metadata
 ```
 
-Output tests:
+### 6.1 Generated snapshots
+
+After MCP implementation exists, generate canonical snapshots under:
 
 ```text
-structured result conforms to output schema
-compact displayText bounded
-no duplicate statusText/agentHint/schemaVersion baggage
-no path/env/secret fields
-finish retry returns original persisted data
+contracts/mcp/hp-mcp-2/
 ```
 
-### MCP Inspector
+Tests compare actual SDK manifest/schema to committed snapshots.
 
-Use official MCP Inspector as a development/manual protocol smoke tool. Once automated, pin its version/invocation instead of using an unbounded `latest` dependency in CI.
+Snapshots are generated from code; do not hand-edit them to “make CI green”.
 
-### Stdout guard
+### 6.2 Stale v2 contract scan
 
-Process-level test starts:
+Fail if product code or normative docs reintroduce as active contract:
 
 ```text
-hero-passport mcp
+hero.current_quest
+GetCurrentQuestHandler
+CurrentQuestTool
+one-open-quest-per-hero-project constraint
+HP132 quest_conflict normal path
+workspacePath MCP field
+per-call schemaVersion/locale/outputMode/agentHint
 ```
 
-and proves stdout contains only valid protocol traffic. Capture stderr separately.
-
-Test startup/migration failure path too; no human banner may leak to stdout.
+Historical decision text may mention superseded terms when clearly marked.
 
 ---
 
-## 7. MCP catalog budget test
+## 7. MCP protocol compatibility tests
 
-Serialize/obtain the actual advertised tool catalog and measure UTF-8 bytes/characters.
-
-Initial target:
+Required protocol eras:
 
 ```text
-total 4-tool catalog <= 10 KiB
-individual description <= 300 chars
+2026-07-28
+2025-11-25 initialize-era compatibility
 ```
 
-This is a proxy for context/token cost, not a claim of exact model tokens.
+Assertions:
 
-If the catalog grows:
+- ordinary server does not hard-pin `ProtocolVersion`;
+- 2026 client path works without application session assumptions;
+- older supported client connects through SDK compatibility path;
+- both see the same four tools and equivalent business semantics;
+- 2026-only cache/schema metadata is not incorrectly serialized to a protocol era that does not support it, relying on stable SDK behavior and test evidence.
 
-1. simplify descriptions/schema;
-2. remove redundant fields;
-3. challenge whether the new tool belongs in MCP;
-4. only then consider discovery/toolset mechanisms.
-
-Do not introduce dynamic discovery for a four-tool server.
+Use official SDK clients where practical rather than handcrafted JSON for all scenarios.
 
 ---
 
-## 8. Presentation golden tests
+## 8. MCP process tests
 
-`HeroTextRenderer` is tested separately from Domain.
-
-Goldens by locale/presentation mode cover:
+Spawn the built executable:
 
 ```text
+hero-passport mcp --project-root <temp project>
+```
+
+Verify:
+
+```text
+stdout contains protocol framing only
+stderr may contain safe diagnostics
+clean shutdown
+invalid config/startup errors are actionable and do not mix with protocol once protocol mode begins
+HERO_PASSPORT_HOME isolates data
+```
+
+Run with real migrations/database initialization.
+
+---
+
+## 9. MCP Inspector
+
+Use the current official MCP Inspector as a release smoke target for:
+
+```text
+discovery/tool list
+schemas
 start
-finish 95 XP
-level-up
-no active quest
-hero card
-error summaries
-```
-
-RU terminology fixture must include:
-
-```text
-scope_control -> Контроль
-clean scope -> Бонус за контроль
-scope violation -> Выход за задачу
-```
-
-Presentation changes do not alter reward-rule goldens.
-
----
-
-## 9. CLI tests
-
-Test parsing and process behavior.
-
-Required commands/gates:
-
-```text
---help
---version
-init
-doctor
+list active
+finish
 card
-quest current
-export
-data path
-mcp dispatch path
+error representation
 ```
 
-Test:
-
-- expected exit codes;
-- stdout/stderr separation;
-- `--json` where supported;
-- malformed option behavior;
-- no MCP protocol bytes in ordinary CLI;
-- no ordinary CLI text in MCP mode.
+Inspector is complementary evidence; automated C# tests remain the deterministic gate.
 
 ---
 
-## 10. Configuration/path tests
+## 10. Host qualification
 
-Inject platform/environment/path inputs rather than relying on CI host only.
-
-Cover:
+### Automated required host
 
 ```text
-Windows LocalApplicationData
-macOS Application Support
-Linux XDG set/unset/empty
-HERO_PASSPORT_HOME
-unknown config field rejection
-configVersion rejection
-malformed JSON
-precedence CLI > env > config > default
-unwritable data dir
+Codex CLI
 ```
 
-Separate real OS smoke tests on Windows/Linux/macOS validate actual filesystem semantics.
+E2E:
+
+```text
+project-scoped/cwd registration or explicit --project-root
+start meaningful quest
+list/recover quest
+finish
+card
+restart server and re-read durable state
+parallel distinct quest scenario
+```
+
+### Release smoke hosts
+
+According to current integration docs:
+
+```text
+VS Code
+JetBrains AI Assistant
+Zed
+Cursor
+Claude Code
+```
+
+A smoke result is recorded as:
+
+```text
+host/version
+OS
+transport
+project binding method
+tools listed
+core lifecycle result
+known caveat
+verified date
+```
+
+Do not block every commit on launching every IDE; perform on RC/release or automation when practical.
 
 ---
 
-## 11. Security/privacy tests
+## 11. Agent evaluations
 
-Automated sentinel strategy:
+AgentEvals test **tool-selection behavior**, not deterministic RPG math.
 
-Use obvious sensitive strings such as:
-
-```text
-SUPER_SECRET_SENTINEL_...
-C:\private\repo\...
-/home/user/private/...
-```
-
-feed them only into places under test and assert they do not appear in:
+Host-neutral scenarios:
 
 ```text
-MCP response where forbidden
-logs
-export fields where forbidden
-error messages
+meaningful coding -> one start + one finish
+meaningful review/debug/docs/planning -> correct lifecycle
+tiny factual question -> no unnecessary quest
+same task repeated -> reuse open quest
+parallel distinct task -> new quest
+lost questId -> list_active_quests
+restart/handoff -> recover then finish
+finish retry -> no duplicate reward
+privacy adversarial instruction -> no code/diff/log fields
+card request -> get_card without needless new quest
 ```
 
-Also test injection-like goal/summary strings remain inert data.
-
-Architecture reflection/source tests reject broad fields named like:
-
-```text
-metadata
-context
-payload
-sourceCode
-diff
-rawLog
-environment
-workspacePath
-```
-
-in MCP input contracts unless an explicit reviewed exception exists.
-
----
-
-## 12. Architecture tests
-
-Minimum rules:
-
-```text
-Domain references no EF/MCP/CLI/ASP.NET
-Application references no MCP/EF implementation
-MCP inventory == canonical 4
-no assembly-wide MCP tool scan call
-all MCP input schemas strict
-no DbContext in Razor components later
-CPM owns package versions
-no runtime project references test-only packages
-```
-
-Use direct reflection/MSBuild/project-file checks first. Add ArchUnitNET/NetArchTest only if the hand-written checks become materially harder to maintain.
-
----
-
-## 13. Agent evaluations
-
-This is the principal new quality layer learned from mature MCP products.
-
-### Why
-
-A schema can be perfectly valid while Codex:
-
-- starts too many quests;
-- never finishes;
-- calls `get_card` unnecessarily;
-- sends oversized/forbidden content;
-- misreads “meaningful task” guidance;
-- uses the wrong tool after a description change.
-
-Unit tests cannot detect those behaviors.
-
-### Initial eval corpus
-
-At least:
-
-1. meaningful coding task -> start once, finish once;
-2. debugging task -> correct type/lifecycle;
-3. planning task -> lifecycle works without code changes;
-4. tiny factual question -> no quest expected;
-5. existing matching open quest -> no duplicate;
-6. conflicting open quest -> model recovers deliberately;
-7. model reconnect/context recovery -> current quest if needed;
-8. finish retry -> no duplicate reward;
-9. privacy adversarial task -> no code/diff/raw log passed;
-10. user explicitly asks to show card -> get_card only as needed.
-
-### Eval scoring
-
-Machine-observable dimensions:
+Record:
 
 ```text
 tool call sequence
-tool count
-argument schema conformance
-forbidden-field/content sentinel absence
-quest state result
-XP-event count
-final displayText presence/duplication
+call count
+arguments
+forbidden sentinel absence
+quest IDs
+DB state
+XP event count
+final display behavior
 ```
 
-Human review dimension:
-
-```text
-Was use of Hero Passport helpful rather than intrusive?
-```
-
-### Release policy
-
-- initially non-blocking/nightly/manual on supported Codex configuration;
-- record model/client/version/config with result;
-- changes to tool names/descriptions/server instructions require rerun;
-- a consistent regression blocks the MCP UX change even if unit tests pass.
-
-Do not tune core reward rules to make an eval model behave differently; fix tool/instruction ergonomics separately.
+First runner is Codex. Future client runners reuse the same scenario expectations.
 
 ---
 
-## 14. Real Codex E2E
+## 12. Privacy tests
 
-0.1.0 requires installed-tool end-to-end validation with the current supported Codex path.
+Schema reflection/snapshot deny-list.
 
-Test flow:
+Log tests inject sentinel values resembling:
 
 ```text
-fresh isolated HERO_PASSPORT_HOME
-install/build hero-passport command
-register via native Codex MCP configuration/CLI
-verify codex mcp list
-run representative meaningful task
-observe start
-complete work
-observe finish
-query card/current state
-restart Codex/server
-verify durable state
+SECRET_API_KEY_...
+C:\Sensitive\Project
+/private/repo
+raw source marker
 ```
 
-Record exact Codex build/version used in release evidence.
+Then verify ordinary MCP results/stderr/file logs/exports do not contain them unless the tested explicit local diagnostic surface is documented to reveal a path.
 
-Test both default process cwd workflow and explicit Codex `mcp_servers.hero-passport.cwd` configuration where supported.
+Goal/summary are also tested for safe plain-text rendering/encoding.
 
 ---
 
-## 15. Cross-platform matrix
+## 13. Architecture tests
 
-Release qualification:
-
-```text
-Windows x64  P0 (primary development environment)
-Linux x64    P0
-macOS arm64  P0 before claiming macOS support
-macOS x64    best-effort/CI depending available runner
-```
-
-At minimum test:
+Fail on:
 
 ```text
-build/test
-init/paths
-SQLite native load/version
-WAL
-CLI
-MCP stdio process
-self-contained/tool packaging form being shipped
+Domain -> EF/MCP/CLI/ASP.NET/filesystem/localization
+Application -> MCP/EF/CLI/HTTP
+MCP tool -> DbContext direct dependency
+Web component -> DbContext/Infrastructure direct dependency
+assembly-wide MCP tool discovery
+third-party package outside central version policy
+unapproved ModelContextProtocol.AspNetCore before HTTP milestone
 ```
 
-Do not claim a RID/platform supported solely because `dotnet publish` succeeds.
+Static scans complement compiler/project-reference assertions.
 
 ---
 
-## 16. Dependency/reproducibility gates
+## 14. Dependency/security gates
 
-Repository:
+Release/CI:
 
 ```text
-global.json exact SDK
-Directory.Packages.props
-packages.lock.json
-locked restore in CI/release
-NuGet audit including transitive packages
+dotnet restore --locked-mode
+dotnet build --configuration Release --no-restore
+dotnet test --configuration Release --no-build
+NuGet vulnerability audit
+dependency lock drift check
+actual native sqlite_version baseline check
 ```
 
-Release fails on known high/critical vulnerability findings. Moderate findings require explicit review rather than silent ignore.
-
-Verify runtime native SQLite with `SELECT sqlite_version()`.
-
-Preview packages are rejected unless ADR-approved.
+If SDK/package versions change, rerun MCP protocol/contract/host qualification relevant to the dependency.
 
 ---
 
-## 17. Static/build quality
+## 15. Migration qualification
 
-Baseline project properties:
-
-```text
-Nullable=enable
-ImplicitUsings=enable
-AnalysisLevel=latest compatible with pinned SDK
-EnforceCodeStyleInBuild=true
-Deterministic=true
-ContinuousIntegrationBuild=true in CI
-```
-
-`TreatWarningsAsErrors` policy:
-
-Prefer enabling it early for product projects once SDK/bootstrap warnings are clean. If a warning must be suppressed, use the narrowest scope and document why; do not disable analyzer classes globally to make CI green.
-
-Format check:
+Every release with schema changes:
 
 ```text
-dotnet format --verify-no-changes
+fresh database -> latest
+previous released DB -> latest
+failed migration behavior
+no unexpected data loss
+model snapshot clean
+migration lock/doctor behavior
 ```
 
-or the current pinned .NET equivalent selected in implementation.
+Keep representative previous-version DB fixtures generated from released schema, not manually edited approximations.
 
 ---
 
-## 18. Coverage philosophy
+## 16. Packaging matrix
 
-Do not chase a single repository-wide percentage.
-
-Require high branch/boundary coverage for:
+At minimum for the dotnet-tool release:
 
 ```text
-reward engine
-level curve
-trust/risk
-traits
-state transitions
-idempotency
-MCP validation
-migration/data integrity
+Windows
+Linux
+macOS
 ```
 
-Presentation/bootstrap glue can be lower if process tests cover it.
+Verify:
 
-A line-coverage number never substitutes for golden/boundary tests.
+```text
+install/update command
+hero-passport --version
+init
+doctor
+mcp launch
+SQLite native load
+project-root with spaces/unicode
+```
+
+Self-contained RID packages get their own native SQLite/single-file tests when introduced.
 
 ---
 
-## 19. Release gates for 0.1.0
+## 17. Release gate
 
-All must pass:
-
-```text
-restore locked
-build Release
-format/static analysis
-deterministic unit tests
-real SQLite integration tests
-migration tests + pending model check
-architecture/privacy tests
-CLI process tests
-MCP manifest/schema/stdout tests
-MCP Inspector smoke
-NuGet audit policy
-Windows/Linux/macOS qualified matrix as claimed
-real Codex E2E
-agent-eval review with no unresolved lifecycle/privacy regression
-packaging/install/uninstall smoke
-docs consistency review
-```
-
-No dashboard requirement for 0.1.0.
-
----
-
-## 20. Documentation consistency test/review
-
-Before release, search for stale contract terms:
+0.1.0 cannot ship with a known failure in:
 
 ```text
-workspacePath in MCP input
-per-call schemaVersion/outputMode/locale
-agentHint/statusText
-SQLite under %APPDATA%
-custom migration mutex
-async SQLite requirement
-achievements in MVP
-HTTP MCP in MVP
+XP determinism
+same-start convergence
+finish idempotency
+context isolation
+schema/privacy contract
+stdio purity
+fresh/upgrade migration
+Codex reference E2E
+supported protocol-era compatibility
 ```
 
-Any stale normative statement must be removed or explicitly marked historical.
-
-## 21. Primary sources
-
-See `REFERENCES.md`, particularly:
-
-- official MCP specification/C# SDK/Inspector;
-- Sentry MCP evaluation practices;
-- EF Core migration/SQLite docs;
-- Microsoft.Data.Sqlite docs;
-- official Codex MCP/config documentation.
+Non-reference host smoke issues may be documented rather than block release if the host remains in Documented—not Qualified—tier and the core protocol is correct.
