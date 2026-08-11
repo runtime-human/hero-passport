@@ -167,8 +167,8 @@ public sealed class BootstrapAndContextTests
 
             var results = await Task.WhenAll(firstTask, secondTask);
 
-            Assert.Single(results.Where(static result => result.Result is not null));
-            var error = Assert.Single(results.Where(static result => result.Error is not null)).Error;
+            Assert.Single(results, static result => result.Result is not null);
+            var error = Assert.Single(results, static result => result.Error is not null).Error;
             Assert.Equal("HP002", Assert.IsType<HeroPassportException>(error).Code);
             Assert.Equal(1L, await CountRowsAsync(path, "heroes", cancellationToken));
         }
