@@ -5,172 +5,131 @@
 **Target:** 0.1.0 local-first MVP  
 **Supersedes:** v3/v3.1 quest lifecycle, deduplication, Hero binding, Trust/Risk, MCP inventory, and orchestration decisions
 
+This document is the consolidated semantic baseline. Exact MCP fields are normative in `WIRE-CONTRACT.md`; exact game math in `ENGINE-SPEC.md`; SQLite behavior in `PERSISTENCE-RELIABILITY.md`; project identity in `PROJECT-IDENTITY.md`; agent orchestration in `AGENT-SKILL.md`.
+
 ## 1. Product thesis
 
-Hero Passport is a local-first RPG companion for people working with AI coding agents. It turns meaningful agent-assisted work into durable progression without becoming employee monitoring, source-code telemetry, an agent scheduler, or an LLM evaluator.
+Hero Passport is a local-first RPG companion for people working with AI coding agents. It converts meaningful agent-assisted work into durable progression without becoming employee monitoring, source-code telemetry, an agent scheduler, or an LLM evaluator.
 
 Primary experience:
 
 ```text
-user asks agent to do meaningful work
+meaningful user goal
         ↓
-Hero Passport Agent Skill recognizes a quest boundary
+Hero Passport Agent Skill recognizes a Quest boundary
         ↓
 hero.start_quest
         ↓
 normal agent work
         ↓
-Skill recognizes completion and collects bounded facts
+Skill recognizes completion and reports bounded facts
         ↓
 hero.finish_quest
         ↓
 deterministic local game engine
         ↓
-XP / skills / level / rank / Trust / Strain / unlocks
+XP / Skills / Levels / Rank / Trust / Strain / unlocks
         ↓
 compact RPG result
 ```
 
-The intended UX is ambient: users normally do not manually start or finish quests. Manual start/finish/abandon controls remain explicit overrides and recovery tools.
+The intended UX is ambient. Users normally do not manually start or finish Quests. Manual start/finish/abandon remain explicit overrides and recovery tools.
 
-## 2. Product boundary
-
-### 2.1 MVP components
+## 2. MVP product boundary
 
 0.1 ships three first-class components:
 
-1. **Hero Passport MCP Core** — authoritative state, invariants, deterministic game rules and local persistence.
-2. **Hero Passport Agent Skill** — lifecycle orchestration, bounded fact reporting and presentation policy.
-3. **CLI** — onboarding, diagnostics, administration, recovery and scriptable local operations.
+1. **Hero Passport MCP Core** — authoritative state, validation, deterministic rules and local persistence.
+2. **Hero Passport Agent Skill** — lifecycle orchestration, bounded fact reporting and presentation.
+3. **CLI** — onboarding, diagnostics, administration, recovery and local scripting.
 
-A local Web UI is deferred to 0.2.
+Local Web UI is deferred to 0.2.
 
-### 2.2 Skill/Core responsibility split
+The Skill may decide when meaningful work begins/ends, generate start metadata, carry `questId`, recover an open Quest, report bounded facts and render canonical results. It must never choose XP, Trust/Strain deltas, Levels, Ranks, Traits or Titles. The Core owns all game truth.
 
-The Skill may:
+## 3. Quest semantics
 
-- decide whether meaningful work is beginning;
-- generate `startRequestId`, `title` and `goal`;
-- call MCP tools;
-- carry `questId` between calls;
-- recover an open quest;
-- recognize goal changes and completion;
-- report bounded facts it observed;
-- lightly adapt curated flavor text;
-- render the canonical result attractively.
+One **meaningful goal** is one Quest. A chat may contain zero, one or several Quests. MCP connection/session lifetime is never Quest identity.
 
-The Skill must not:
+Typical Quest work includes implementation, debugging, testing, refactoring, review, documentation, project-specific research and architecture/design that produces a concrete result.
 
-- choose XP amounts;
-- choose Trust/Strain deltas;
-- invent level/rank/skill progress;
-- unlock Traits/Titles on its own;
-- rewrite a persisted outcome.
+Casual conversation, a short factual explanation, a one-line syntax question or clarification before work begins normally does not create a Quest.
 
-The Core owns all game truth.
+### 3.1 Conservative automatic start
 
-## 3. Quest model
+The Skill starts only when it is confident meaningful project work is beginning. If uncertain, it does not ask “start a quest?”; it waits until work becomes clear. The user may explicitly request a start at any time.
 
-### 3.1 Unit of play
-
-One **meaningful goal** is one Quest. A chat session may contain zero, one, or several quests. An MCP connection/session is never a Quest boundary.
-
-Examples that usually start a Quest:
-
-- implementing a feature;
-- fixing a bug;
-- refactoring;
-- debugging/testing;
-- architecture/design work that produces a concrete project result;
-- code review;
-- documentation work;
-- project-specific research required to make a decision or implementation.
-
-Examples that normally do not:
-
-- casual conversation;
-- a short factual explanation;
-- a one-line syntax question;
-- clarifying discussion before meaningful work begins.
-
-### 3.2 Conservative automatic start
-
-The Skill starts automatically only when it is confident meaningful project work is beginning. If uncertain, it does not interrupt the user with “start a quest?”; it waits until the interaction clearly transitions to work. A user can explicitly request a start at any time.
-
-Start presentation is intentionally tiny, for example:
+Default start presentation is one compact title line, for example:
 
 ```text
-⚔ Исправить повторный запуск Quest
+⚔ Добавить first-run onboarding
 ```
 
-The title is generated for the current task; it is not a fixed phrase.
+### 3.2 Conservative automatic finish
 
-### 3.3 Conservative automatic finish
+The Skill finishes only when the current goal is genuinely complete and it is ready to present the final work result. Waiting for user input, verification still in progress, or known remaining work keeps the Quest open.
 
-The Skill finishes automatically only when it is confident the current goal is done and it is about to present the final result. Asking the user for a project decision, waiting for input, or saying more work remains keeps the Quest open.
+Open Quests do not expire because of inactivity, process restart or agent restart.
 
-Open quests do not expire from inactivity or agent restart.
+### 3.3 Goal switch
 
-### 3.4 Goal switch
-
-If the current goal is completed and the user clearly moves to another independent goal:
-
-1. finish the completed Quest;
-2. start the new Quest automatically.
+If a completed goal is followed by a new independent goal, finish the old Quest and start the new one automatically.
 
 If the user explicitly switches away before completion:
 
-- useful completed subset exists -> finish old Quest as `partial`;
-- no useful result exists -> `abandoned`;
-- then start the new Quest.
+```text
+useful completed subset exists -> partial
+no useful completed result     -> abandoned
+then start the new Quest
+```
 
 If intent is ambiguous, do not silently close anything.
 
-### 3.5 Recovery
+### 3.4 Recovery and handoff
 
 Exactly one open Quest may exist for a `(HeroId, ProjectId)` pair.
 
 After restart/handoff:
 
-- if new work clearly matches the open Quest, resume it automatically and carry the same `questId`;
-- otherwise expose continue / finish / abandon instead of guessing.
+- clearly matching work resumes the same `questId`;
+- a different or ambiguous goal surfaces recovery choices instead of guessing.
 
-A Quest belongs to the Hero and project/work, not to an AI-agent identity. Different agents may continue the same Quest.
+A Quest belongs to Hero + Project/work, not to an AI agent identity. Different agents may continue the same Quest.
 
 ## 4. Start identity and idempotency
 
 `QuestDedupKeyV1` and goal-derived open deduplication are retired.
 
-Start uses two separate identities:
+Start has two separate identities:
 
 ```text
-startRequestId = caller-generated UUIDv7 identifying one start intent/request
-questId        = server-generated UUIDv7 identifying the durable Quest
+startRequestId = caller-generated UUIDv7 for one start intent/retry sequence
+questId        = server-generated UUIDv7 for the durable Quest
 ```
 
 Required behavior:
 
 ```text
-same startRequestId + same canonical start arguments
-  -> return same persisted start outcome / same questId
+same startRequestId + same canonical args
+  -> same persisted start outcome / same questId
 
-same startRequestId + different canonical arguments
+same startRequestId + different canonical args
   -> HP135 idempotency_conflict
 
-new startRequestId while an open Quest already exists for Hero+Project
+new startRequestId + already-open Quest for Hero+Project
   -> HP133 active_quest_exists
 
-new startRequestId after previous Quest finished
-  -> may create a new Quest even with identical title/goal
+new startRequestId after completion
+  -> may create a new Quest even with identical title/goal text
 ```
 
-Persist the request identity beyond Quest completion. Recording request identity and creating the Quest occur in one atomic write transaction.
+Request identity and Quest creation are persisted atomically. Natural-language similarity is never retry identity.
 
-This separates retry identity from work identity and makes `hero.start_quest` genuinely idempotent for repeated identical arguments.
+Create Hero and permanent Delete Hero use the same architectural pattern with their own caller request IDs and minimal durable mutation receipts.
 
 ## 5. Quest start data
 
-Required model-facing start data:
+Model-facing start data:
 
 ```text
 startRequestId
@@ -179,20 +138,15 @@ title
 goal
 ```
 
-`title` is concise human-readable task naming. `goal` is the precise technical goal. Both use SafeText normalization with separate bounds.
+`title` is short human-readable task naming. `goal` is the precise technical goal. Both are SafeText-normalized.
 
-Recommended bounds:
+Exact bounds are in `WIRE-CONTRACT.md`; current values are title `1..120` and goal `1..500` Unicode scalars.
 
-```text
-title  1..120 Unicode scalars
-goal   1..500 Unicode scalars
-```
-
-Quest effective locale is snapped at start for deterministic presentation of that Quest; game state itself stores semantic keys/data rather than translated text.
+The Quest snapshots its effective locale at start so presentation remains stable even if global preferences change later.
 
 ## 6. Finish report and provenance
 
-The agent sends bounded facts, never a quality score or XP.
+The agent reports bounded facts, never a quality score or XP:
 
 ```text
 result
@@ -207,7 +161,7 @@ metrics.testsStatus
 metrics.testsEvidence
 ```
 
-Outcome enum:
+Outcome:
 
 ```text
 success
@@ -217,7 +171,7 @@ failed
 abandoned
 ```
 
-Status enum:
+Execution status:
 
 ```text
 not_run
@@ -226,25 +180,23 @@ failed
 unknown
 ```
 
-Evidence enum:
+Evidence:
 
 ```text
 observed   # agent directly ran/saw the result
 reported   # user or another source stated it
-none       # no evidence / not applicable
+none       # no supporting observation/report
 ```
 
-Cross-field validation is explicit. For example `testsStatus=passed|failed` cannot have `testsEvidence=none`; a testing reward that claims execution requires `observed` evidence.
+Cross-field validation is explicit. Only directly observed passed tests qualify for the testing XP bonus.
 
-The product does not ingest raw test/build logs to prove these claims.
+Hero Passport does not ingest source code, diffs or raw test/build logs to independently prove these facts.
 
 ## 7. Reward engine
 
 Game calculation is deterministic, versioned and integer-only.
 
-### 7.1 Base XP
-
-Canonical quest-type base XP remains:
+Quest-type base XP:
 
 | Type | Base XP |
 |---|---:|
@@ -256,9 +208,7 @@ Canonical quest-type base XP remains:
 | documentation | 40 |
 | maintenance | 40 |
 
-### 7.2 Bonuses and penalties
-
-`reward/2.0.0` initial policy:
+`reward/2.0.0` bonuses/penalties:
 
 ```text
 observed tests passed       +10
@@ -269,15 +219,7 @@ scope violation              -5 each, cap -15
 user correction              -5 each, cap -15
 ```
 
-The canonical clean coding golden remains 95 XP before the success multiplier:
-
-```text
-60 base + 10 tests + 10 clean scope + 10 summary + 5 no corrections = 95
-```
-
-### 7.3 Outcome multiplier
-
-Applied after bonuses/penalties:
+Outcome multiplier:
 
 ```text
 success    ×1.00
@@ -290,15 +232,23 @@ abandoned  ×0.00
 Formula:
 
 ```text
-rawXp = max(0, baseXp + bonuses - penalties)
+rawXp   = max(0, baseXp + bonuses - penalties)
 questXp = floor(rawXp * outcomePermille / 1000)
+```
+
+Canonical clean coding golden remains:
+
+```text
+60 + 10 + 10 + 10 + 5 = 95 XP
 ```
 
 No elapsed-time, token, line-count, diff-size or agent-reported complexity multiplier exists.
 
-### 7.4 Skill XP
+Exact goldens and rule versions are normative in `ENGINE-SPEC.md`.
 
-The agent selects 1–3 actually used canonical skills in primary/secondary/tertiary order. The server distributes the final Quest XP deterministically:
+## 8. Skill progression
+
+The agent selects 1–3 actually used canonical Skills in primary/secondary/tertiary order. Hero Passport distributes final Quest XP deterministically:
 
 ```text
 1 skill  -> 100%
@@ -306,29 +256,30 @@ The agent selects 1–3 actually used canonical skills in primary/secondary/tert
 3 skills -> 50/30/20
 ```
 
-Use cumulative-floor allocation so allocations always sum exactly to `questXp`.
+Cumulative-floor allocation must conserve XP exactly. Calling Hero Passport itself never qualifies as `tool_use` XP.
 
-Using Hero Passport itself never qualifies as `tool_use` XP.
+Each Skill has independent XP and level progression, separate from Hero Level.
 
-## 8. Hero progression
+## 9. Hero Level and Rank
 
-Hero XP and each Skill XP have separate soft-increasing progression tables. Tables are versioned data, not hidden adaptive formulas. Exact thresholds are game content and golden-tested.
+Hero XP and each Skill XP use separate soft-increasing, versioned threshold tables. They are static game content, not hidden adaptive formulas.
 
-Ranks are large cosmetic milestones and never gate features or multiply XP. Initial editorial direction:
+Rank is a large cosmetic milestone derived from Hero Level and never gates features or multiplies XP.
+
+Initial rank keys/English labels:
 
 ```text
 Code Squire
+Code Knight
 Senior Warrior
 Staff Paladin
 Principal Warlord
 Legendary Architect
 ```
 
-Exact level thresholds are versioned content.
+Milestone flavor is curated RPG/engineering writing. Humor is reserved for meaningful Level/Rank/Title/Trait/Streak events rather than every Quest.
 
-Rank/level/title/trait milestones may include short curated RPG/engineering flavor lines. Humor is reserved for meaningful milestones rather than every Quest.
-
-## 9. Trust and Strain
+## 10. Trust and Strain
 
 `Risk` is retired and replaced by `Strain`.
 
@@ -337,49 +288,45 @@ Trust  0..100  # demonstrated reliability
 Strain 0..100  # accumulated technical friction/turbulence
 ```
 
-They change only from game events; no time-based regeneration exists.
+They change only from Quest/game events; no time-based regeneration exists. They never directly multiply XP or lock product functionality in 0.1.
 
-`trust-strain/1.0.0` is a deterministic event table. Initial policy direction:
+Exact `trust-strain/1.0.0` composition is normative in `ENGINE-SPEC.md`. Current exact outcome components are:
 
 ```text
-clean successful Quest      Trust +2, Strain -2
-success with minor issues   Trust +1, Strain -1
-partial                     Trust +0, Strain +1
-blocked                     Trust +0, Strain +0/+1
-failed                      Trust +0, Strain +2
-scope violation             Trust -1, Strain +1 each
-user correction             Trust -1, Strain +1 each
-observed tests passed       may add Trust +1 within capped per-quest policy
-abandoned                   Trust +0, Strain +0
+success    Trust +1, Strain -1
+partial    Trust +0, Strain +1
+blocked    Trust +0, Strain +0
+failed     Trust +0, Strain +2
+abandoned  Trust +0, Strain +0
 ```
 
-The exact non-overlapping composition table must be fixed by golden fixtures before implementation. Trust/Strain do not directly multiply XP or lock features in 0.1.
+Additional deterministic quality components include clean successful completion, observed passed tests, scope violations and user corrections, with per-Quest caps specified in the engine contract.
 
-## 10. Streak, Traits and Titles
+## 11. Streak, Traits and Titles
 
 Success Streak:
 
 - increments only on `success`;
-- breaks on `partial`, `blocked`, `failed`, `abandoned`;
+- resets on `partial`, `blocked`, `failed`, `abandoned`;
 - grants no XP multiplier;
 - may unlock cosmetic milestones.
 
-Traits are permanent collected characteristics/badges. Titles are cosmetic labels; exactly one active Title is selected automatically by deterministic priority. Manual title equipment is deferred.
+Traits are permanent collected cosmetic characteristics/badges. Titles are cosmetic labels; one active Title is selected automatically by deterministic priority. Manual title equipment is deferred.
 
-Unlock sources are deliberately hybrid:
+Unlock sources are hybrid:
 
 - Hero-level milestones;
 - Skill-level milestones;
-- success streak/milestones;
+- Success Streak milestones;
 - rare behavioral conditions.
 
-No Trait/Title provides mechanical advantage in 0.1.
+No Trait/Title provides a mechanical advantage in 0.1.
 
-## 11. Hero model
+## 12. Hero model
 
-One Hero can progress globally across many projects, while each project keeps its own compact statistics/history projection.
+A Hero progresses globally across projects. Each project keeps a separate compact statistics/history projection for that Hero.
 
-Multiple Heroes are supported locally:
+Multiple local Heroes are supported:
 
 ```text
 create
@@ -390,46 +337,48 @@ restore
 permanent delete
 ```
 
-There is one globally active Hero used as the default for **new** quests. A Quest captures its `heroId` at start and never changes owner if the active Hero changes later.
+One globally active Hero is the default owner of **new** Quests. A Quest captures its `heroId` at start and never changes owner if the active Hero later changes.
 
-Archived Heroes are hidden from ordinary selection but recoverable. Permanent deletion is explicit and irreversible. A Hero with any open Quest cannot be archived or permanently deleted until that Quest is finished or abandoned.
+Archive is reversible. Permanent delete is explicit and irreversible. A Hero with any open Quest cannot be archived or deleted. The globally active Hero must first be replaced by another active Hero before archive/delete.
 
-## 12. Project model
+Permanent delete removes the Hero’s local game/history data but keeps the minimal non-content mutation receipt needed to make a late delete retry safe.
+
+## 13. Project model
 
 Hero progression is global. Per `(Hero, Project)` projections include at minimum:
 
 ```text
 quests started/finished/succeeded
 XP earned in project
-success rate (derived)
-last quest
+success rate
+last Quest
 recent history
-skill contribution statistics
+Skill contribution statistics
 ```
 
-Project identity remains `project-identity/1`: Git common-dir based for repositories, linked worktrees share identity, submodules/nested repositories remain separate by default, and no remote URL/full workspace path is persisted.
+`PROJECT-IDENTITY.md` remains normative: Git common-dir based identity, linked worktrees share identity, deliberate monorepo scopes are explicit, submodules/nested repositories are separate by default, and no full workspace path or Git remote URL is persisted.
 
-## 13. First-run onboarding and localization
+## 14. First-run onboarding and localization
 
-First-run setup is explicit persisted application state.
+First-run setup is persisted application state.
 
-Default short wizard:
+Short onboarding:
 
 1. language;
 2. initial Hero name;
 3. presentation style (`rpg_engineering` default);
-4. automatic start/finish preferences;
-5. confirm and create.
+4. automatic start preference;
+5. automatic finish preference and confirmation.
 
 CLI uses `hero-passport init` interactively.
 
-MCP stdio never prints wizard prompts into stdout. If setup is incomplete, gameplay mutations fail with `HP001 setup_required`; the Agent Skill conducts conversational onboarding and calls `hero.configure` with validated setup values.
+MCP stdio never prints wizard prompts into protocol stdout. Until setup is complete, `hero.configure` is allowed and gameplay/Hero tools return `HP001 setup_required`; the Agent Skill may conduct onboarding conversationally and submit the completed settings.
 
-0.1 ships `ru-RU` and `en-US`. Domain/Application return semantic keys and values; localization/presentation lives in App/Skill adapters. Missing localization keys fail tests rather than silently changing game semantics.
+0.1 ships `ru-RU` and `en-US`. Domain/Application expose semantic keys and values; App/Skill render localized text. Missing resource keys are test failures.
 
-## 14. MCP surface — HP-MCP/2 v3.2
+## 15. HP-MCP/2 v3.2 surface
 
-Static deterministic tool order:
+Static deterministic order:
 
 ```text
 hero.configure
@@ -447,87 +396,74 @@ hero.get_card
 
 No host-specific aliases and no assembly-wide scanning.
 
-High-level annotation intent:
+Annotations are hints, never security controls. Exact annotation/schema/result/error contracts are normative in `WIRE-CONTRACT.md`.
 
-```text
-configure      mutation, non-destructive, idempotent for same complete settings
-create         additive mutation, idempotent only when caller request identity is provided; otherwise false
-list           read-only
-activate       mutation, idempotent
-archive        mutation, non-destructive, idempotent
-restore        mutation, non-destructive, idempotent
-delete         destructive, idempotent only after canonical target semantics are fixed
-start_quest    additive mutation, idempotent via required startRequestId
-finish_quest   mutation, idempotent via questId persisted outcome
-list_active    read-only
-get_card       read-only
-```
+Permanent delete is explicitly destructive and requires target confirmation in the server contract even if a host also has its own confirmation UI.
 
-Exact annotation matrix belongs in `WIRE-CONTRACT.md`; annotations are hints, never security controls.
-
-For destructive permanent delete, the tool contract must require an explicit confirmation token/string derived from the target identity (for example `confirmHeroName`) so accidental model invocation is rejected server-side. Host confirmation UX may still exist independently.
-
-## 15. MCP protocol policy
+## 16. MCP protocol policy
 
 Baseline SDK: official C# `ModelContextProtocol 2.1.0`.
 
-Preferred semantics: MCP `2026-07-28`, with qualification for `2025-11-25` compatibility handled by the official SDK. Application correctness never depends on protocol sessions/connections.
+Preferred semantics: MCP `2026-07-28`, with release qualification against `2025-11-25` compatibility behavior supported by the official SDK.
 
-`questId` is the explicit state handle carried across calls. MCP tool result structured data is authoritative; when `structuredContent` is returned, one JSON TextContent compatibility representation remains semantically equal to it.
+Application correctness never depends on MCP sessions/connections. `questId` is an explicit durable application handle carried between calls.
 
-MCP Tasks are not used for Hero Quest lifecycle because the actual work occurs outside the Hero Passport tool call and Hero Passport mutations are short local operations.
+Canonical `structuredContent` is authoritative. The result also carries exactly one minified JSON TextContent semantically equal to structured content for compatibility.
 
-## 16. Local persistence and concurrency
+MCP Tasks are not used for Hero Quest lifecycle: actual coding-agent work occurs outside Hero Passport calls, while Core operations are short local reads/mutations.
 
-SQLite remains authoritative local state using EF Core and Microsoft.Data.Sqlite.
+## 17. Local persistence and concurrency
 
-Write policy:
+SQLite remains authoritative local state through EF Core/Microsoft.Data.Sqlite.
+
+Supported profile:
 
 ```text
 same-host local filesystem
+SQLite runtime >= 3.53.4
 WAL
 synchronous=FULL
 foreign_keys=ON
 Cache=Default
 Default Timeout=5
-short-lived DbContext from IDbContextFactory
+IDbContextFactory
 short non-deferred Serializable writer transactions
 ```
 
-Start transaction:
+Every read-modify-write mutation acquires writer intent before invariant reads.
+
+Start atomically checks request replay/mismatch, checks one-open Hero+Project invariant, inserts Quest + mutation receipt and updates projections.
+
+Finish atomically commits report, XP ledger, Hero/Skill/Trust/Strain/Streak/Trait/Title/project updates and finished state.
+
+Durable backstops include:
 
 ```text
-validate canonical request outside DB
-BEGIN writer intent before invariant reads
-lookup persisted startRequestId
-  same args -> return persisted start outcome
-  different args -> HP135
-check open Hero+Project Quest
-  exists -> HP133 active_quest_exists
-insert start request + Quest + projection updates
-COMMIT
+UNIQUE mutation receipt operation+request ID
+partial UNIQUE open Quest per hero_id+project_id
+UNIQUE quest_reports.quest_id
+UNIQUE xp_events.quest_id
 ```
 
-Finish transaction atomically commits report, XP ledger, Hero/Skill/Trust/Strain/Trait/Title/Streak/project updates and finished Quest state. `UNIQUE quest_reports.quest_id` and `UNIQUE xp_events.quest_id` are durable backstops.
+Correct claim: **at-most-once committed progression per Quest**, not “handler executes exactly once”.
 
-Concurrency semantics are **at-most-once committed progression per Quest**, not “handler executes exactly once”.
+No custom writer mutex, separate Polly retry layer, lease, heartbeat or agent-owner lock is introduced.
 
-No custom writer mutex, Polly retry layer, lease, heartbeat or agent-owner lock is introduced.
+## 18. Multi-agent behavior
 
-## 17. Local-first, sync-ready
+Different agents may resume/finish the same Quest when the work matches. Hero Passport does not coordinate their code edits and does not elect an owner/leader.
 
-0.1 has no account/cloud/sync dependency. The data model is prepared for later optional sync by using:
+Two simultaneous Hero Passport mutations are resolved by SQLite/application invariants. A concurrent Finish can produce only one durable progression outcome; later retries return the persisted original result.
 
-- UUIDv7 entity identities;
-- immutable completion/XP facts;
-- explicit timestamps and rule/schema versions;
-- public identity independent of SQLite rowid;
-- explicit archive/delete semantics;
-- deterministic conflict-sensitive operations.
+## 19. Local-first, sync-ready
 
-No CRDT/event-sourcing framework is added preemptively. A future sync product requires its own conflict and deletion architecture.
+0.1 has no account, cloud backend or sync dependency.
 
-## 18. Privacy and evidence boundary
+The data model keeps a future optional sync seam through UUIDv7 identities, immutable completion facts, explicit timestamps/rule versions and deliberate archive/delete semantics.
+
+No CRDT/event-sourcing framework is added preemptively. Future sync requires a separate conflict/deletion/security design.
+
+## 20. Privacy and evidence boundary
 
 Hero Passport intentionally does not request/persist routine:
 
@@ -540,18 +476,19 @@ secrets/tokens/API keys
 environment dumps
 full workspace paths
 Git remote URLs
-arbitrary metadata/context payload bags
+continuous editor/activity telemetry
+arbitrary metadata/context bags
 ```
 
-The system stores compact Quest title/goal/summary, bounded status/evidence facts, game results and progression deltas.
+Stored Quest history is compact: title/goal/summary, bounded statuses/evidence, immutable reward breakdown and progression deltas.
 
-This is a companion, not an independent auditor. A future verifier that reads code/logs would require a separate explicit privacy design and is not part of 0.1.
+Hero Passport is a companion, not an independent auditor. A future verifier that reads code/logs requires a separate explicit privacy design.
 
-## 19. Presentation
+## 21. Presentation
 
-Core result data includes semantic reward/progression components. The Skill renders them; the MCP result also carries compact fallback `displayText`.
+Core result data is semantic and deterministic. The Skill renders it and may lightly contextualize curated milestone flavor without changing any numeric/game fact.
 
-Typical finish presentation:
+Typical finish shape:
 
 ```text
 +60 XP  Базовая награда
@@ -560,9 +497,9 @@ Typical finish presentation:
 +10 XP  Итоговый отчёт
  +5 XP  Без исправлений
 
-↑ Coding             +48 XP
+↑ Coding             +47 XP
 ↑ Testing Awareness  +29 XP
-↑ Scope Control      +18 XP
+↑ Scope Control      +19 XP
 ★ Level 7 → 8
 
 XP       +95
@@ -572,9 +509,9 @@ Strain  18 → 16
 Streak       6 🔥
 ```
 
-Milestone flavor may follow, for example a rank-up quip. The Skill may contextualize curated flavor but must not alter numeric facts.
+The exact 95-XP three-Skill cumulative-floor distribution is `47/29/19`.
 
-## 20. Non-goals through 0.1
+## 22. Non-goals through 0.1
 
 Do not add:
 
@@ -597,7 +534,7 @@ mechanical title/trait/rank bonuses
 manual title equipment
 ```
 
-## 21. Required implementation evidence
+## 23. Required implementation evidence
 
 Before 0.1 release prove at minimum:
 
@@ -606,15 +543,15 @@ SafeText and localization vectors
 UUIDv7/timestamp/JSON-safe integer vectors
 startRequestId retry + mismatch behavior
 concurrent two-start race -> exactly one open Hero+Project Quest
-concurrent finish -> one committed progression event
+concurrent Finish -> one committed progression event
 crash before/after commit recovery
 Hero switch ownership invariants
 archive/delete open-Quest guards
-outcome/XP golden vectors
-skill XP conservation
-Trust/Strain table vectors
-level/skill/rank threshold vectors
-streak/unlock vectors
+outcome/XP goldens
+Skill XP conservation
+Trust/Strain vectors
+Hero/Skill/Rank threshold vectors
+Streak/unlock vectors
 bounded evidence consistency
 MCP schema/order/annotation snapshots
 structuredContent == parsed compatibility TextContent
@@ -626,16 +563,16 @@ SQLite version/WAL/backup/migration qualification
 Codex reference E2E and cross-host smoke
 ```
 
-## 22. Normative precedence
+## 24. Normative precedence
 
-After v3.2 consolidation, active normative order is:
+For implementation details use:
 
-1. this consolidated design for product semantics;
+1. this consolidated design for cross-subsystem product semantics;
 2. `WIRE-CONTRACT.md` for exact MCP wire behavior;
 3. `PERSISTENCE-RELIABILITY.md` for SQLite/write/crash/backup behavior;
 4. `PROJECT-IDENTITY.md` for project identity;
-5. `ENGINE-SPEC.md` for exact deterministic game rules;
-6. `AGENT-SKILL.md` for agent orchestration behavior;
-7. compact overview docs for summaries only.
+5. `ENGINE-SPEC.md` for exact deterministic game math/content tables;
+6. `AGENT-SKILL.md` for agent orchestration;
+7. overview/roadmap/reference docs only as summaries.
 
-Any v3.1 statement about `QuestDedupKeyV1`, 16 concurrent open quests, `Risk`, four-only MCP tools, or session-shaped Quest identity is superseded and must not survive as an active requirement.
+Any v3.1 statement about `QuestDedupKeyV1`, 16 concurrent open Quests, `Risk`, four-only MCP tools, MCP SDK 2.0.0, or session-shaped Quest identity is superseded and must not survive as an active requirement.
