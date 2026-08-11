@@ -2,7 +2,7 @@ using HeroPassport.Domain.Primitives;
 
 namespace HeroPassport.Application.Runtime;
 
-public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeProvider timeProvider)
+public sealed partial class HeroPassportApplication(IHeroPassportStateStore store, TimeProvider timeProvider)
 {
     private static readonly string[] Locales = ["ru-RU", "en-US"];
     private static readonly string[] PresentationStyles = ["rpg_engineering", "classic_rpg", "minimal"];

@@ -56,7 +56,19 @@ public interface IHeroPassportStateStore
         DateTimeOffset now,
         CancellationToken cancellationToken = default);
 
+    Task<ListHeroesResult> ListHeroesAsync(CancellationToken cancellationToken = default);
+
     Task ActivateHeroAsync(
+        HeroId heroId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
+
+    Task<HeroLifecycleResult> ArchiveHeroAsync(
+        HeroId heroId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
+
+    Task<HeroLifecycleResult> RestoreHeroAsync(
         HeroId heroId,
         DateTimeOffset now,
         CancellationToken cancellationToken = default);
@@ -71,5 +83,10 @@ public interface IHeroPassportStateStore
         FinishQuestStoreCommand command,
         ProjectBindingContext project,
         DateTimeOffset now,
+        CancellationToken cancellationToken = default);
+
+    Task<HeroCardResult> GetHeroCardAsync(
+        HeroId heroId,
+        ProjectBindingContext project,
         CancellationToken cancellationToken = default);
 }
