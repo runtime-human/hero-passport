@@ -18,6 +18,13 @@ public sealed record CreateHeroStoreCommand(
     byte[] ArgsHash,
     string Name);
 
+public sealed record StartQuestStoreCommand(
+    MutationRequestId RequestId,
+    HeroId HeroId,
+    string QuestType,
+    string Title,
+    string Goal);
+
 public interface IHeroPassportStateStore
 {
     Task<BootstrapResult> BootstrapAsync(
@@ -41,6 +48,12 @@ public interface IHeroPassportStateStore
 
     Task ActivateHeroAsync(
         HeroId heroId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
+
+    Task<StartQuestResult> StartQuestAsync(
+        StartQuestStoreCommand command,
+        ProjectBindingContext project,
         DateTimeOffset now,
         CancellationToken cancellationToken = default);
 }
