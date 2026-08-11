@@ -44,6 +44,24 @@ public sealed record CreateHeroRequest(MutationRequestId CreateRequestId, string
 
 public sealed record CreateHeroResult(HeroSummary Hero, bool Replayed);
 
+public sealed record StartQuestRequest(
+    MutationRequestId StartRequestId,
+    HeroId HeroId,
+    string QuestType,
+    string Title,
+    string Goal);
+
+public sealed record QuestSummary(
+    QuestId QuestId,
+    HeroId HeroId,
+    string QuestType,
+    string Title,
+    string Goal,
+    DateTimeOffset StartedAtUtc,
+    string Locale);
+
+public sealed record StartQuestResult(QuestSummary Quest, HeroSummary Hero, bool Replayed);
+
 public sealed record ProjectBindingContext(
     string DisplayName,
     string WorkspaceFingerprint,
