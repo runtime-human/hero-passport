@@ -1,5 +1,5 @@
-using System.Globalization;
 using HeroPassport.Domain.Primitives;
+using System.Text;
 using Xunit;
 
 namespace HeroPassport.Domain.Tests;
@@ -26,7 +26,7 @@ public sealed class SafePrimitivesTests
     [Fact]
     public void SafeTextRejectsUnpairedSurrogate()
     {
-        var value = string.Create(CultureInfo.InvariantCulture, $"bad{(char)0xD800}text");
+        var value = new string(['b', 'a', 'd', '\uD800', 't', 'e', 'x', 't']);
         Assert.Throws<ArgumentException>(() => SafeTextV1.Normalize(value, 1, 100));
     }
 
