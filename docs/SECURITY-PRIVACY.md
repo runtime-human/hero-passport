@@ -1,6 +1,6 @@
 # Hero Passport — Security and Privacy
 
-**Status:** Accepted v3.2  
+**Status:** Accepted v3.2.1  
 **Snapshot:** 2026-08-11
 
 ## 1. Security posture
@@ -9,13 +9,15 @@ Hero Passport is a local companion, not an agent permission gateway, anti-cheat 
 
 0.1 threat focus:
 
-- accidental/destructive tool invocation;
-- model-supplied malformed/untrusted input;
-- sensitive data leakage through logs/errors/storage;
+- accidental/destructive invocation;
+- malformed/untrusted model input;
+- sensitive leakage through logs/errors/storage;
 - unsafe retries/double progression;
 - project identity/path disclosure;
 - database corruption/unsupported storage;
-- protocol stdout contamination.
+- migration crash recovery;
+- protocol stdout contamination;
+- Skill/Core version skew.
 
 ## 2. Privacy minimum
 
@@ -33,153 +35,169 @@ Git remote URLs
 arbitrary free-form metadata/context payloads
 ```
 
-Allowed Quest content is intentionally bounded:
+Allowed bounded Quest content:
 
 ```text
 title
 goal
 summary
 canonical skills
-small result/quality counters
+small result/attestation counters
 build/test semantic status + provenance
 game progression
 ```
 
-## 3. Provenance without surveillance
+## 3. Quest metadata may still be sensitive
 
-`observed | reported | none` records how a build/test fact was known. It does not store evidence artifacts.
+No-source telemetry does not mean zero sensitive metadata.
 
-Hero Passport trusts bounded agent self-report after validation. It does not independently read source/repo/logs to prove quality in 0.1.
+Quest `title`, `goal` and `summary` may contain confidential project/client/release information supplied by user/agent.
 
-## 4. Safe text
+SafeText protects Unicode/control hygiene, not semantic secrets/redaction.
 
-All persisted/model-returned user/model strings pass SafeTextV1 before use.
+Users should assume bounded Quest metadata is stored locally in Hero Passport history.
 
-Reject dangerous controls/bidi formatting and malformed Unicode; normalize NFC/whitespace and bound by scalar count.
+## 4. Attestations without surveillance
 
-This is data-hygiene/input-hardening, not a claim that natural language is “safe to execute”. No input string becomes shell/SQL/code without a dedicated non-existent feature.
+Use the terms **bounded agent attestations** / **reported signals**.
 
-## 5. SQL
+`observed` means the agent asserts it directly ran/saw the referenced result. It is not independently verified by Hero Passport.
 
-EF/parameterized commands only for data. Never interpolate model text into SQL identifiers or SQL strings.
+Hero Passport does not read source/diffs/raw logs to prove these claims.
 
-Migration SQL is developer-authored static schema code, never model runtime input.
+Trust/Strain are RPG stats derived from these bounded signals, not objective productivity/reliability telemetry.
 
-## 6. Destructive Hero delete
+## 5. Safe text
 
-`hero.delete` is explicitly destructive and requires:
+Persisted/model-returned user/model strings pass SafeTextV1.
 
-```text
-deleteRequestId
-heroId
-confirmHeroName exactly matching current normalized name
-```
+Reject dangerous controls/bidi formatting/malformed Unicode; normalize NFC/whitespace and bound scalar count.
 
-Server rejects deleting:
+No natural-language input becomes executable shell/SQL/code.
 
-- current active Hero;
-- Hero with any open Quest;
-- confirmation mismatch.
+## 6. SQL/schema
 
-The request ID makes transport retry non-duplicating. Host UI confirmations are additional and not relied on as server enforcement.
+EF/parameterized commands only for data. Never interpolate model text into SQL identifiers/strings.
 
-## 7. Archive vs delete
+Migration SQL is developer-authored static schema code.
 
-Ordinary user removal should prefer reversible archive. Permanent delete is separate and irreversible.
+Initial schema uses CHECK/FK/index constraints so malformed state is rejected even if Application validation regresses.
 
-Deleted Hero game/history data is removed locally. Only the minimal idempotency receipt required for safe retry remains, containing no Quest/history content.
+`trusted_schema=OFF` is applied on product connections after compatibility qualification.
 
-## 8. Idempotency/security
+## 7. Permanent Hero deletion is CLI-only
 
-Never infer a retry from natural-language equality. Caller request IDs plus canonical argument hash prevent a reused token with changed intent from silently mutating the wrong resource.
-
-Request IDs are not authentication credentials and are safe to log only under normal safe diagnostic policy.
-
-## 9. MCP annotations
-
-Tool annotations are UX/model hints, not security controls.
-
-Server-side validation/invariants enforce:
+MCP exposes reversible:
 
 ```text
-setup gate
-safe IDs/text/enums
-active/open Quest guards
-Hero lifecycle guards
-project context
-idempotency mismatch
-permanent delete confirmation
+hero.archive
+hero.restore
 ```
 
-## 10. MCP stdio
+0.1 does **not** expose permanent delete as a model-controlled tool.
 
-stdout is protocol-only. Diagnostics go to stderr and are privacy-scrubbed.
+Reason: a model can read a Hero name, so “confirmHeroName” is not proof of human destructive intent. Requiring MRTR just for rare administration would also expand host-qualification scope.
 
-Never log full request bodies by default. In particular do not log `goal`, `summary`, environment variables or config secrets merely because Trace logging is enabled.
+Future model-controlled permanent delete requires a separately reviewed human-confirmation design and contract revision.
 
-## 11. Project privacy
+## 8. Logical delete vs forensic erasure
 
-Project persistence stores salted `workspace_fingerprint` and display name, not full path/remote.
+Normative claim:
 
-Routine MCP outputs omit ProjectId/fingerprint/path.
+> Permanent Hero delete irreversibly removes the Hero from the active Hero Passport logical database state. Hero Passport does not claim forensic secure erasure from storage media, filesystem snapshots, backups or previously exported copies.
 
-Git is invoked read-only for identity and with redirection environment variables scrubbed as specified in `PROJECT-IDENTITY.md`. Hero Passport does not weaken Git `safe.directory` protections.
+No 0.1 guarantee that deleted bytes are unrecoverable from SQLite free pages/media forensics.
 
-## 12. SQLite storage
+Do not imply `secure_delete`, VACUUM, device storage or backup deletion semantics that the product does not enforce.
 
-No built-in encryption-at-rest claim in 0.1. Hero Passport relies on OS/account/filesystem/device encryption. If application-level DB encryption becomes a product requirement, choose and threat-model it explicitly rather than implying SQLitePCLRaw encrypts data.
+## 9. Retry identity/security
 
-App-data file permissions should use normal per-user defaults and avoid deliberately broadening access.
+Never infer retry from natural-language equality.
 
-## 13. Network boundary
+Request IDs + versioned canonical hash prevent one request token with changed context/intent from silently applying a different mutation.
 
-0.1 stdio/local mode has no Hero Passport cloud endpoint, own OAuth flow or telemetry upload.
+Receipts persist only minimal IDs/hash/version/context/status and may outlive a deleted target as `target_deleted` to prevent accidental resurrection.
 
-Future sync/HTTP requires a separate threat model covering authentication, authorization, encryption, deletion/tombstones, multi-device conflicts and privacy policy.
+Request IDs are not auth secrets.
 
-## 14. Logs/diagnostics
+## 10. Active Hero and ownership safety
 
-Safe allowlist fields:
+Global active Hero is a preference/default only.
+
+Start mutation takes explicit `heroId`; another local host changing active Hero cannot silently retarget an already-formed Start request.
+
+Existing Quest ownership is immutable.
+
+## 11. MCP annotations
+
+Annotations are UX/model hints, not security controls.
+
+Server-side validation/invariants enforce setup/bootstrap state, safe IDs/text/enums, Hero/open-Quest guards, Project context, idempotency mismatch and finalized-Quest conflict.
+
+## 12. MCP stdio
+
+stdout is protocol only. Diagnostics use privacy-scrubbed stderr.
+
+Never log full request bodies by default, especially goal/summary, environment variables or secrets.
+
+## 13. Read-only means no hidden writes
+
+`hero.get_context`, `hero.list`, `hero.get_card` must not create Project rows, update last-seen analytics or write preferences merely because they were called.
+
+This keeps `readOnlyHint` truthful and reduces unnecessary WAL/lock churn.
+
+## 14. Project privacy
+
+Persist salted workspace fingerprint/display name, not full path/remote.
+
+Routine MCP outputs omit internal ProjectId/fingerprint/path.
+
+Git identity resolver is read-only, scrubs redirection env vars, does not weaken `safe.directory`.
+
+## 15. SQLite storage
+
+No encryption-at-rest claim in 0.1. Hero Passport relies on user/OS/device/filesystem protection.
+
+If application-level DB encryption becomes required, select/threat-model it explicitly rather than implying SQLitePCLRaw provides encryption.
+
+## 16. Network boundary
+
+0.1 local stdio mode has no Hero Passport cloud endpoint, own OAuth or telemetry upload.
+
+Future HTTP/sync requires separate auth/authz/encryption/deletion/conflict/privacy threat model.
+
+## 17. Logs/diagnostics allowlist
+
+Safe diagnostic fields may include:
 
 ```text
 error code/category
-operation name
-tool name
-rule/schema versions
+operation/tool
+rule/schema/contract versions
 SQLite version/pragmas
-bounded timing/diagnostic values
+bounded timing values
 UUIDs where useful
 ```
 
-Default logs exclude:
+Default diagnostics exclude Quest text, paths/remotes, bound SQL values and raw exception material that exposes user content.
 
-```text
-Quest goal/summary text
-Hero confirmation strings
-paths/remotes
-SQL with bound values
-raw exception data if it exposes paths/content
-```
-
-## 15. Export
-
-Export is an explicit user action. Export schema must state exactly which Hero/Quest/game fields are included. Source/log/prompt data cannot appear because it is not collected.
-
-## 16. Security tests
+## 18. Security tests
 
 Release gates include:
 
 ```text
 SafeText hostile vectors
-closed MCP schemas / unknown fields rejected
-UUIDv7 parsing
-idempotency token reuse with changed args rejected
-open-Quest invariant races
-Finish replay cannot double reward
-permanent delete guards + late retry
-stdout contains only MCP frames
-stderr/request logging privacy scans
-no forbidden persistence columns/DTO fields
-project path/remote absent from MCP/card/export unless explicitly designed
-unsupported storage/old SQLite fail closed
+closed MCP schemas
+UUID parsing
+bootstrap/Start/Finish request reuse with changed args -> HP135
+Finish semantic disagreement -> HP136
+one-open race
+read-only no-write assertions
+SQLite CHECK/FK direct-invalid-write rejection
+trusted_schema OFF / foreign_keys ON
+logical CLI delete guards + target_deleted receipts
+privacy wording does not claim forensic erasure
+stdout protocol-only
+forbidden DTO/entity/log fields absent
+Skill/Core incompatibility fails safe
 ```
