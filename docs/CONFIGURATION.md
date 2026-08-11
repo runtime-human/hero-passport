@@ -1,19 +1,38 @@
 # Hero Passport — Configuration and Onboarding
 
-**Status:** Accepted v3.2  
+**Status:** Accepted v3.2.1  
 **Snapshot:** 2026-08-11
 
 ## 1. Principle
 
-Configuration is small, typed and user-owned. Game state is not configuration.
+Configuration is small, typed and user-owned. Game progression is not configuration.
 
-Do not allow config/API fields for XP, levels, ranks, Skills, Trust, Strain, streak, Traits, Titles or historical Quest outcomes.
+Never expose config fields for XP, levels, ranks, Skill XP, Trust/Strain, streak, Traits/Titles or historical Quest outcomes.
 
-## 2. First-run state
+## 2. Typed singleton
 
-Persist `setup_completed=false` until the first setup transaction succeeds.
+Persistence is one typed `app_settings` row (`id=1`), not a generic KV store.
 
-Short onboarding:
+Stored values:
+
+```text
+setup_completed
+active_hero_id
+locale
+presentation_style
+auto_start_quest
+auto_finish_quest
+project_identity_salt_v1
+config_version
+```
+
+Before setup: `setup_completed=false`, `active_hero_id=NULL`.
+
+After setup: active Hero must be non-null.
+
+## 3. First run
+
+Short onboarding remains:
 
 1. locale (`ru-RU` / `en-US`);
 2. initial Hero name;
@@ -29,36 +48,39 @@ autoStartQuest    = true
 autoFinishQuest   = true
 ```
 
-Locale is inferred by the host/agent when reasonable but explicitly confirmed as part of onboarding. User override always wins.
+## 4. CLI first run
 
-## 3. CLI
-
-Canonical first-run command:
+Canonical command:
 
 ```text
 hero-passport init
 ```
 
-Interactive CLI may ask step-by-step questions on the terminal.
+Interactive CLI may ask step-by-step terminal questions. Script/non-interactive paths use explicit flags/input and never hang for prompts.
 
-Script/non-interactive paths must have explicit flags/JSON input rather than hanging for prompts.
+The CLI ultimately executes the same bootstrap Application use case and crash-safe request semantics.
 
-## 4. MCP first run
+## 5. MCP first run
 
-stdio transport must remain protocol-pure.
+stdio remains protocol-pure; no onboarding prompts on stdout.
 
 Before setup:
 
 ```text
-hero.configure -> allowed
-other HP-MCP game/hero tools -> HP001 setup_required
+hero.get_context -> allowed
+hero.bootstrap   -> allowed
+all other HP-MCP tools -> HP001 setup_required
 ```
 
-The Agent Skill handles conversational setup and sends the completed setting set through `hero.configure`.
+The Agent Skill conducts conversational setup and calls `hero.bootstrap` with a fresh `bootstrapRequestId`.
 
-## 5. Mutable settings
+Bootstrap is resource creation and is separately crash-idempotent. It is no longer overloaded into `hero.configure`.
 
-Post-setup `hero.configure` can change only:
+Fresh bootstrap after setup -> `HP002 setup_already_completed`.
+
+## 6. Mutable preferences
+
+Post-setup `hero.configure` changes only:
 
 ```text
 locale
@@ -67,13 +89,33 @@ autoStartQuest
 autoFinishQuest
 ```
 
-Initial Hero name is onboarding-only through this tool; Hero lifecycle is managed through Hero operations, not generic config.
+No Hero name field exists in configure.
 
-## 6. Locale semantics
+Repeating the same complete preference set is a no-op success.
+
+## 7. Runtime hydration
+
+A separately installed/restarted Skill must not rely on remembered defaults.
+
+At relevant startup/recovery, `hero.get_context` returns effective persisted preferences and compatibility versions.
+
+This prevents `autoStartQuest=false` or presentation/locale preferences from being ignored after a host restart.
+
+## 8. Active Hero semantics
+
+`active_hero_id` is the global **default preference** for forming a new Quest.
+
+It is not hidden ownership context inside `StartQuest`.
+
+The Skill reads it via `hero.get_context`, then passes explicit `heroId` to `hero.start_quest`.
+
+A concurrent activation in another host therefore cannot retarget an already-formed Start request.
+
+## 9. Locale semantics
 
 Global locale affects general UI and new Quest presentation.
 
-A Quest snapshots effective locale at start. Historical game facts remain semantic keys/numbers and are not rewritten when locale changes.
+A new Quest snapshots the current effective locale inside the Start writer transaction after idempotency receipt lookup. Replays return the original persisted Quest locale even if global locale later changes.
 
 0.1 resources must be complete for:
 
@@ -84,42 +126,47 @@ en-US
 
 Missing keys fail tests/CI.
 
-## 7. Presentation style
+## 10. Presentation style
 
 MVP enum:
 
 ```text
-rpg_engineering  default; concise RPG + developer vocabulary
-classic_rpg      less engineering humor
-minimal          numbers/status with minimal flavor
+rpg_engineering
+classic_rpg
+minimal
 ```
 
-Style changes formatting/flavor only, never game calculations.
+Presentation changes formatting/flavor only, never game calculations.
 
-## 8. Environment/config locations
+## 11. Skill/Core compatibility
 
-App data uses OS-standard locations documented in `DISTRIBUTION.md`.
-
-Development/test isolation override:
+`hero.get_context` exposes at least:
 
 ```text
-HERO_PASSPORT_HOME
+productVersion
+contractVersion
+skillContractVersion
+ruleVersions
 ```
 
-Do not create a broad environment-variable configuration surface for game rules.
+Portable Skill package declares its expected `hero-passport-skill/1` compatibility metadata.
 
-## 9. Project root override
+If Core/Skill contract is incompatible, Skill must surface upgrade guidance and avoid guessing changed wire semantics.
 
-CLI/integration may supply explicit `--project-root`; otherwise current working directory is resolved by `project-identity/1`.
+## 12. Project root override
 
-This is process/invocation configuration, not stored user profile data.
+CLI/integration may supply explicit `--project-root`; otherwise current working directory resolves through `project-identity/1`.
 
-## 10. Validation
+This is invocation configuration, not persisted profile data.
 
-All configuration is validated at a single boundary and exposed internally as typed options/value objects.
+## 13. Environment/data locations
 
-Unknown keys, malformed locales, unknown presentation styles and invalid Hero names fail deterministically with safe errors.
+`HERO_PASSPORT_HOME` is the dev/test isolation override.
 
-## 11. No hidden tuning
+Do not create a broad environment-variable tuning surface for game rules.
 
-XP/rule thresholds are versioned game content in Domain, not user configuration in 0.1. This avoids different agents silently changing the economy.
+## 14. Validation
+
+All configuration is validated at one typed boundary. Unknown keys, malformed locales/styles/names fail deterministically with safe errors.
+
+XP/rule thresholds remain versioned game content, not mutable user config.
