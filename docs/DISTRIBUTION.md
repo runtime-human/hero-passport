@@ -1,6 +1,6 @@
 # Hero Passport — Distribution
 
-**Status:** Accepted v3.2 distribution contract  
+**Status:** Accepted v3.2.1 distribution contract  
 **Snapshot:** 2026-08-11
 
 ## 1. 0.1 deliverables
@@ -13,13 +13,11 @@ Hero Passport Agent Skill directory
 documentation / license / notices
 ```
 
-The executable provides CLI + local stdio MCP. The Skill provides portable lifecycle orchestration.
+Executable provides CLI + local stdio MCP. Skill provides portable lifecycle orchestration.
 
-## 2. Supported platform target
+## 2. Supported platforms
 
-Target .NET 10 supported desktop/server OSes selected in CI/release matrix. Exact OS/architecture artifacts are release-tested before claiming support.
-
-Do not claim a platform merely because .NET can theoretically run there.
+Target .NET 10 supported desktop/server OSes selected in CI/release matrix. Exact OS/architecture artifacts are release-tested before support is claimed.
 
 ## 3. Data locations
 
@@ -29,13 +27,13 @@ macOS:   ~/Library/Application Support/HeroPassport
 Linux:   XDG data/config conventions
 ```
 
-Database is under the application data directory. `HERO_PASSPORT_HOME` overrides the root for development/tests and deliberate portable isolation.
+`HERO_PASSPORT_HOME` overrides root for development/tests/deliberate portable isolation.
 
-The product never stores normal game state inside a repository’s `.git` directory.
+Normal game state is never stored in repository `.git`.
 
 ## 4. First run
 
-Human CLI path:
+Human CLI:
 
 ```text
 hero-passport init
@@ -45,65 +43,75 @@ Agent path:
 
 ```text
 host launches hero-passport mcp
--> gameplay call reports HP001 setup_required
--> Hero Passport Skill conducts short onboarding
--> hero.configure persists setup
+-> Skill calls hero.get_context
+-> setupCompleted=false
+-> Skill conducts short onboarding
+-> hero.bootstrap(bootstrapRequestId, ...)
 ```
 
-The MCP stdio server never prints an interactive wizard into stdout.
+Ambiguous bootstrap response is retried with the same request ID/arguments. Post-setup preferences use `hero.configure`.
+
+MCP stdio never prints terminal wizard text to stdout.
 
 ## 5. Host installation
 
-Installation has two independent concerns:
+Two independent concerns:
 
-1. configure the host to launch/connect to `hero-passport mcp` for the project;
-2. install/enable the official Hero Passport Agent Skill where the host supports Agent Skills or equivalent instruction packaging.
+1. configure host to launch/connect `hero-passport mcp` for intended project;
+2. install/enable official Agent Skill where host supports Agent Skills or equivalent instruction packaging.
 
-Host-specific commands/paths live in `docs/integrations/` and must be verified against the current official host documentation during release qualification.
+Host-specific commands/paths live under `docs/integrations/` and must be verified against current official host docs at release time.
 
-A host without native Skill support may use an equivalent project/global instruction mechanism; this is compatibility glue, not a fork of game semantics.
+Host without native Skill support may use equivalent instructions; compatibility glue never forks game semantics.
 
-## 6. Project binding
+## 6. Project/Hero binding
 
-Preferred host setup launches MCP from the intended project cwd. Explicit `--project-root` is available when host cwd is unreliable or when a deliberate monorepo scope is required.
+Preferred host setup launches MCP from intended project cwd. Explicit `--project-root` exists when cwd is unreliable or deliberate monorepo scope is required.
 
-`project-identity/1` decides identity; installers/integration docs must not create a second project-ID scheme.
+`project-identity/1` is the only Project identity scheme.
+
+Skill hydrates default active Hero via `hero.get_context`, then passes explicit `heroId` to Start. A concurrent host changing active Hero cannot retarget an already formed request.
 
 ## 7. Updates
 
-Package/application updates must preserve the local database through EF migrations.
+Updates preserve local DB through EF migrations.
 
-Before an update that performs a material DB migration, follow the backup/migration policy in `PERSISTENCE-RELIABILITY.md`.
+Material DB migration follows backup/migration policy in `PERSISTENCE-RELIABILITY.md`, including abandoned migration-lock diagnostics/recovery semantics.
 
-Game rule updates are versioned. Upgrading the executable never silently recalculates completed Quest rewards.
+Game rule updates are versioned; executable upgrade never recalculates completed Quest rewards.
 
-## 8. Uninstall
+## 8. Uninstall/delete
 
-Executable/Skill removal and user-data removal are separate actions.
+Executable/Skill removal and user-data removal are separate.
 
-Normal uninstall should not silently delete the user’s Hero Passport database. A deliberate purge operation may remove app data with clear irreversible intent.
+Normal uninstall does not silently delete Hero Passport DB.
+
+Permanent individual Hero deletion is explicit CLI logical deletion. It does not claim forensic erasure from backups/snapshots/storage media.
+
+A deliberate full purge may remove application data only with clear irreversible user intent and separately documented behavior.
 
 ## 9. Export/backup
 
-`hero-passport export` is a logical user-readable/machine-readable data export, not a physical live DB copy.
+`hero-passport export` is logical bounded export, not raw live DB copy.
 
-Physical backup uses the SQLite backup API and independent integrity verification.
+Physical backup uses SQLite backup API and independent integrity/schema validation before publishing the candidate.
 
 ## 10. Supply-chain/release checks
 
-Before publishing an artifact:
+Before publishing:
 
 ```text
-restore from locked/pinned stable dependencies
+restore pinned stable dependencies (including actual ModelContextProtocol 2.1.0 restore)
 build Release
 run full test/eval matrix
 publish platform artifact
-run fresh-artifact smoke
+fresh-artifact smoke
 verify version output
-verify MCP stdio stdout purity
-verify Skill format
-verify packaged files/license/notices
-record checksums/signing if release infrastructure supports them
+verify actual SQLite runtime/pragmas
+verify MCP stdout purity
+verify Skill format/compat metadata
+verify packaged files/licenses/notices
+record checksums/signing if infrastructure supports them
 ```
 
-No release claim is made from source tests alone; test the packaged artifact.
+No release claim from source tests alone; packaged artifact is tested.
