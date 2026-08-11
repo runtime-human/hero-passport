@@ -1,6 +1,6 @@
 # Hero Passport — Deployment Modes
 
-**Status:** Accepted v3.2 boundary specification  
+**Status:** Accepted v3.2.1 boundary specification  
 **Snapshot:** 2026-08-11
 
 ## 1. 0.1 primary profile — local project-bound stdio
@@ -13,13 +13,7 @@ AI/MCP host
   -> same-host SQLite
 ```
 
-Trust boundary:
-
-```text
-one local OS user
-host allowed to execute the command
-local filesystem permissions
-```
+Trust boundary: one local OS user, host allowed to execute the command, local filesystem permissions.
 
 No Hero Passport network listener, cloud account or OAuth flow.
 
@@ -30,26 +24,46 @@ explicit --project-root else process cwd
 -> project-identity/1
 ```
 
-Hero binding: globally active Hero for new Quests; existing Quest owner is persisted and immutable.
+Hero binding: `activeHeroId` is only the default preference used by Skill/CLI when forming a new request. `hero.start_quest` carries explicit `heroId`; persisted Quest ownership is immutable.
 
 ## 2. Agent Skill deployment
 
-The official Hero Passport Agent Skill is installed into a host-supported Skill/instruction location separately from the executable when necessary.
+Official Hero Passport Agent Skill may be installed separately from executable.
 
-The portable Skill does not contain secrets or mutable game state. It only contains lifecycle/report/presentation instructions and references.
+Portable Skill contains lifecycle/report/presentation policy and references, not secrets or mutable game state.
 
-Host-specific installation paths/config are documented under `docs/integrations/` and are release-smoke-tested; they do not define product semantics.
+At activation/restart it uses `hero.get_context` for persisted settings, version compatibility and current-Project recovery.
 
-## 3. stdio rules
+Host-specific installation paths/config live under `docs/integrations/` and are release-smoke-tested; they never define product semantics.
+
+## 3. stdio rules/onboarding
 
 ```text
 stdout -> MCP protocol frames only
 stderr -> safe diagnostics/logs
 ```
 
-No first-run terminal wizard is written into MCP stdout. Conversational onboarding occurs through the host/Skill and `hero.configure`.
+No terminal wizard is printed into MCP stdout.
 
-## 4. 0.2 local Web profile
+Conversational first run:
+
+```text
+hero.get_context -> setupCompleted=false
+Skill conducts short onboarding
+hero.bootstrap with bootstrapRequestId
+```
+
+Post-setup preference changes use `hero.configure`.
+
+## 4. SQLite deployment policy
+
+Writable database is same-host local filesystem only.
+
+Effective profile includes WAL, FULL synchronous, foreign keys ON, trusted_schema OFF and no shared cache.
+
+Connection-scoped pragmas must be applied on every actual product connection; pooled/new-process behavior is qualified.
+
+## 5. 0.2 local Web profile
 
 Future local browser UI:
 
@@ -60,47 +74,29 @@ Browser
   -> same local SQLite
 ```
 
-This is primarily presentation/management; MCP Core semantics do not change.
+This is presentation/management; MCP Core/game semantics remain shared.
 
-Exact hosting/origin/security design is finalized before 0.2 implementation.
-
-## 5. Future project-scoped Streamable HTTP
+## 6. Future project-scoped Streamable HTTP
 
 Deferred until a concrete consumer requires URL-based MCP.
 
-A future HTTP deployment must bind Project identity explicitly from server configuration/auth context; process cwd is not a caller identity mechanism for a shared HTTP service.
+Future HTTP must bind Project identity explicitly from server/auth configuration; cwd is not caller identity in a shared service.
 
-If implemented, use the official MCP ASP.NET Core adapter and current transport/security requirements. Do not build custom HTTP framing when the official SDK already supplies it.
+Use current official MCP ASP.NET Core adapter/security requirements rather than custom framing.
 
-## 6. Future public/multi-tenant service
+## 7. Future public/multi-tenant service
 
-This is a **different security/storage architecture**, not local mode with a public bind.
+A different architecture requiring HTTPS, current MCP authorization, authenticated principal, Hero/Project authorization, tenant isolation, remote durable store, abuse controls, secrets, backups and explicit retention/deletion/security logging.
 
-It requires at minimum:
+Local fingerprints, questId and mutation request IDs are not authentication credentials.
 
-```text
-public HTTPS
-current MCP authorization compliance
-authenticated principal
-Hero/Project authorization
-tenant isolation
-remote durable store choice
-rate/abuse controls
-secret management
-backup/restore
-privacy/retention/delete policy
-security/operational logging
-```
+## 8. Optional future sync
 
-Local project fingerprints, client name, `questId` and request IDs are never authentication credentials.
+No sync requirement in 0.1/0.2. Current schema is sync-conscious, not sync-ready.
 
-## 7. Optional future sync
+Future sync requires dedicated cross-device identity/conflict/delete/security design. Never point two machines at one shared writable SQLite WAL file.
 
-Sync is not a deployment requirement in 0.1/0.2. The local database remains useful offline with no server.
-
-A sync service requires its own conflict/delete/security design. Do not point two machines at one shared SQLite WAL file.
-
-## 8. Unsupported 0.1 profiles
+## 9. Unsupported 0.1 profiles
 
 ```text
 writable SQLite on network/NFS/cloud-shared filesystem
@@ -110,19 +106,8 @@ legacy SSE server
 team/shared local DB
 ```
 
-## 9. Invariants across future adapters
+## 10. Invariants across future adapters
 
-Every future adapter preserves:
-
-```text
-explicit mutation request identity
-one open Quest per Hero+Project
-immutable Quest owner
-at-most-once committed progression
-same deterministic rule versions
-same bounded fact/provenance semantics
-same privacy deny-list
-same stable HP error meanings
-```
+Every future adapter preserves explicit mutation request identity, explicit Hero Start ownership, one open Quest per Hero+Project, immutable Quest owner, HP136 finalization-conflict detection, at-most-once committed progression, deterministic rule versions, bounded attestation semantics and privacy deny-list.
 
 Transport differences never silently change game semantics.
