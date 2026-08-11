@@ -22,7 +22,7 @@ public sealed class ProjectIdentityResolver
         "GIT_CEILING_DIRECTORIES",
     ];
 
-    public async Task<ResolvedProjectIdentity> ResolveAsync(
+    public static async Task<ResolvedProjectIdentity> ResolveAsync(
         string? explicitProjectRoot,
         string currentDirectory,
         ReadOnlyMemory<byte> installationSalt,
