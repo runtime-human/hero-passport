@@ -1,4 +1,4 @@
-# Hero Passport — HP-MCP/2 v3.2 Wire Contract
+# Hero Passport — HP-MCP/2 v3.2.1 Wire Contract
 
 **Status:** Accepted normative deep dive  
 **Snapshot:** 2026-08-11  
@@ -10,72 +10,66 @@ This file is the field/schema/result source of truth for the model-facing contra
 
 ## 1. Protocol rules
 
-Hero Passport leaves protocol negotiation to the official SDK and does not make application correctness depend on MCP sessions/connections.
+Hero Passport leaves protocol negotiation to the official SDK and never makes application correctness depend on MCP sessions/connections.
 
-`questId` and explicit mutation request IDs are ordinary application handles/identities.
+Successful calls return canonical `structuredContent` plus one deterministic serialized JSON `TextContent` compatibility block that is semantically equal to it. JSON whitespace/minification is not business semantics.
 
-Every successful call returns:
+Expected validation/business failures return `isError=true`, one safe TextContent and no structuredContent.
 
-```text
-structuredContent = canonical result JSON value
-content            = exactly one TextContent containing minified JSON
-                     semantically equal to structuredContent
-isError            = false/omitted according to SDK serialization
-```
+Protocol/framing/unknown-tool errors remain SDK-level MCP/JSON-RPC errors.
 
-Every expected validation/business failure returns:
+## 2. Current tool inventory/order
 
 ```text
-isError            = true
-content            = exactly one safe actionable TextContent
-structuredContent  = absent
-```
-
-Protocol/framing/unknown-tool errors remain SDK-level JSON-RPC/MCP errors.
-
-## 2. Tool inventory and order
-
-Exactly this static explicit order:
-
-```text
+hero.bootstrap
 hero.configure
+hero.get_context
 hero.create
 hero.list
 hero.activate
 hero.archive
 hero.restore
-hero.delete
 hero.start_quest
 hero.finish_quest
-hero.list_active_quests
 hero.get_card
 ```
 
-No assembly-wide scanning, dynamic aliases or host-specific names.
+The order is static/explicit for this contract snapshot. The number of tools is not a permanent architecture invariant.
 
-## 3. Tool annotation matrix
+No assembly-wide scanning, dynamic aliases or host-specific tool names.
 
-Annotations are hints, not security controls.
+Removed from model-facing MCP in v3.2.1:
+
+```text
+hero.delete
+hero.list_active_quests
+```
+
+Permanent deletion is CLI-only. Recovery/settings hydration use `hero.get_context`.
+
+## 3. Annotation matrix
+
+Annotations are hints, never security controls.
 
 | Tool | readOnly | destructive | idempotent | openWorld |
 |---|---:|---:|---:|---:|
+|`hero.bootstrap`|false|false|true|false|
 |`hero.configure`|false|false|true|false|
+|`hero.get_context`|true|false|true|false|
 |`hero.create`|false|false|true|false|
 |`hero.list`|true|false|true|false|
 |`hero.activate`|false|false|true|false|
 |`hero.archive`|false|false|true|false|
 |`hero.restore`|false|false|true|false|
-|`hero.delete`|false|true|true|false|
 |`hero.start_quest`|false|false|true|false|
 |`hero.finish_quest`|false|false|true|false|
-|`hero.list_active_quests`|true|false|true|false|
 |`hero.get_card`|true|false|true|false|
 
-`create`, `delete` and `start_quest` are retry-safe because their schemas carry caller-generated request identities. Same request identity with changed canonical arguments is rejected.
+`bootstrap`, `create`, `start_quest` and `finish_quest` use caller-generated request identities. Same request identity with changed canonical scope/arguments is rejected.
 
 ## 4. JSON Schema profile
 
-Use closed shallow object schemas:
+Use closed shallow schemas:
 
 ```text
 object root
@@ -87,22 +81,20 @@ array min/max/unique
 simple patterns
 ```
 
-Runtime validation is authoritative; generated schemas/data annotations are not sufficient enforcement.
-
-No current success field is emitted as `null`; absence or empty arrays have explicitly documented meaning.
+Runtime validation is authoritative. No current success field is emitted as null; optional meaning is represented by documented field absence/empty arrays.
 
 ## 5. SafeTextV1
 
-Model/user-facing stored text uses the existing SafeTextV1 algorithm:
+Stored/model-returned user/model text:
 
-1. reject invalid Unicode scalar sequences/unpaired surrogates;
-2. reject non-whitespace C0/C1 controls including NUL/DEL;
-3. reject bidi controls U+061C, U+200E/F, U+202A..E, U+2066..9;
-4. normalize NFC;
-5. trim Unicode whitespace;
-6. collapse internal whitespace runs to ASCII space;
-7. count Unicode scalar values after normalization;
-8. enforce per-field bounds.
+1. rejects invalid Unicode scalars/unpaired surrogates;
+2. rejects non-whitespace C0/C1 controls including NUL/DEL;
+3. rejects bidi controls U+061C, U+200E/F, U+202A..E, U+2066..9;
+4. normalizes NFC;
+5. trims Unicode whitespace;
+6. collapses whitespace runs to ASCII space;
+7. counts Unicode scalars after normalization;
+8. enforces field bounds.
 
 Bounds:
 
@@ -114,31 +106,13 @@ summary      1..2000 scalars
 displayText  tool-specific, max 4000 scalars
 ```
 
-Wire schema lengths remain a compatibility hint; Rune/scalar-aware runtime validation is authority.
+## 6. IDs, timestamps, numeric ceiling
 
-## 6. IDs, timestamps and numeric ceiling
+Current exposed application IDs/request IDs use lowercase canonical UUIDv7. Server-generated IDs use `.NET Guid.CreateVersion7()`.
 
-Public entity/mutation IDs use canonical lowercase UUIDv7 text:
+Timestamps emitted by HP-MCP use `YYYY-MM-DDTHH:mm:ss.fffZ`.
 
-```text
-xxxxxxxx-xxxx-7xxx-[89ab]xxx-xxxxxxxxxxxx
-```
-
-Server IDs are generated with .NET `Guid.CreateVersion7()`.
-
-Timestamps produced by HP-MCP use:
-
-```text
-YYYY-MM-DDTHH:mm:ss.fffZ
-```
-
-Long-lived nonnegative JSON integers are bounded by:
-
-```text
-0 .. 9_007_199_254_740_991
-```
-
-Checked arithmetic must fail safely before exceeding that ceiling.
+Long-lived nonnegative JSON integers are bounded by `0..9_007_199_254_740_991`; checked arithmetic fails before overflow.
 
 ## 7. Canonical enums
 
@@ -173,7 +147,7 @@ failed
 unknown
 ```
 
-Evidence:
+Attestation/evidence provenance:
 
 ```text
 observed
@@ -198,9 +172,9 @@ en-US
 
 Canonical Skills are the ten keys in `ENGINE-SPEC.md`.
 
-## 8. Evidence consistency
+## 8. Attestation consistency
 
-Runtime rules:
+These are bounded agent attestations, not independently verified evidence.
 
 ```text
 status = not_run -> evidence MUST be none
@@ -210,32 +184,73 @@ status = unknown -> evidence MAY be observed | reported | none
 testsStatus != not_run -> testsMentioned MUST be true
 ```
 
-Only `testsStatus=passed && testsEvidence=observed` satisfies the reward engine’s observed-tests bonus.
+Only `testsStatus=passed && testsEvidence=observed` satisfies the observed-tests reward bonus.
+
+`observed` means the agent asserts it directly ran/saw the result.
 
 ## 9. Mutation request identity
 
-Caller-generated request IDs are used for operations where automatic retry could otherwise duplicate a resource/destructive command:
+Caller request IDs:
 
 ```text
+bootstrapRequestId
 createRequestId
 startRequestId
-deleteRequestId
+finishRequestId
 ```
 
-For each operation, within its documented scope:
+For every persisted receipt:
 
 ```text
-same request ID + same canonical arguments -> semantically equivalent persisted result
-same request ID + changed canonical arguments -> HP135 idempotency_conflict
+same request ID + same canonical scope/args -> persisted replay
+same request ID + changed canonical scope/args -> HP135 idempotency_conflict
 ```
 
-The server stores request identity, canonical argument fingerprint and enough result identity to answer a late retry atomically with the mutation.
+Canonical mutation hashing is defined in `DATA-MODEL.md` and persists `args_encoding_version`.
 
-Mutation request IDs are not shared across operation kinds.
+Request IDs are scoped by operation kind and are not authentication credentials.
 
-# 10. `hero.configure`
+# 10. `hero.bootstrap`
 
-Purpose: first-run setup and mutable user preferences only.
+Purpose: crash-safe first-run creation.
+
+Input:
+
+```json
+{
+  "bootstrapRequestId": "019...",
+  "locale": "ru-RU",
+  "heroName": "Nova",
+  "presentationStyle": "rpg_engineering",
+  "autoStartQuest": true,
+  "autoFinishQuest": true
+}
+```
+
+All fields required.
+
+Runtime:
+
+```text
+same receipt + same args -> replay
+same receipt + changed args -> HP135
+no receipt + setup already complete -> HP002 setup_already_completed
+otherwise atomically create initial Hero, make active, persist settings + receipt
+```
+
+Success:
+
+```text
+setupCompleted: true
+hero { heroId, name }
+settings { locale, presentationStyle, autoStartQuest, autoFinishQuest }
+replayed: bool
+displayText
+```
+
+# 11. `hero.configure`
+
+Purpose: post-setup preference changes only.
 
 Input:
 
@@ -244,44 +259,54 @@ Input:
   "locale": "ru-RU",
   "presentationStyle": "rpg_engineering",
   "autoStartQuest": true,
-  "autoFinishQuest": true,
-  "initialHeroName": "Nova"
+  "autoFinishQuest": true
 }
 ```
 
-Properties:
+No Hero name/resource creation field exists.
 
-```text
-locale             required closed enum
-autoStartQuest     required bool
-autoFinishQuest    required bool
-presentationStyle  required closed enum
-initialHeroName    optional SafeTextV1 1..64
-```
-
-Runtime:
-
-- if setup is incomplete, `initialHeroName` is required and this call creates the initial Hero atomically with settings;
-- after setup, `initialHeroName` MUST be absent; this tool cannot rename/create Heroes;
-- repeated post-setup identical settings are a no-op success.
+Before setup: HP001. Repeating identical complete settings is a no-op success.
 
 Success:
 
-```json
-{
-  "setupCompleted": true,
-  "settings": {
-    "locale": "ru-RU",
-    "presentationStyle": "rpg_engineering",
-    "autoStartQuest": true,
-    "autoFinishQuest": true
-  },
-  "activeHero": {"heroId":"019...","name":"Nova"},
-  "displayText":"Hero Passport настроен."
-}
+```text
+settings { locale, presentationStyle, autoStartQuest, autoFinishQuest }
+changed: bool
+displayText
 ```
 
-# 11. `hero.create`
+# 12. `hero.get_context`
+
+Read-only hydration/recovery/version surface. Available before and after setup.
+
+Input: closed empty object.
+
+It resolves the invocation-bound Project identity but **must not create/update durable Project state** merely because this read occurs.
+
+Success shape:
+
+```text
+productVersion
+contractVersion = HP-MCP/2
+skillContractVersion = hero-passport-skill/1
+setupCompleted
+settings? { locale, presentationStyle, autoStartQuest, autoFinishQuest }
+activeHero? { heroId, name }
+project { displayName }
+openQuests[] {
+  questId, heroId, heroName,
+  questType, title, goal,
+  startedAtUtc, locale
+}
+ruleVersions { ... }
+displayText
+```
+
+`openQuests` spans all Heroes for the current Project, ordered by `startedAtUtc ASC, questId ASC`. At most one row per Hero exists by DB invariant; total cardinality is `0..N`.
+
+Before setup, optional settings/activeHero are absent as documented and `setupCompleted=false`.
+
+# 13. `hero.create`
 
 Input:
 
@@ -292,42 +317,37 @@ Input:
 }
 ```
 
-`createRequestId` is required canonical UUIDv7. `name` is SafeTextV1 1..64.
+Creation is retry-safe by receipt and does not automatically activate the Hero.
 
 Success:
 
 ```text
-hero { heroId, name, level, rank, trust, strain, archived }
+hero { heroId, name, level, rankKey, trust, strain, archived }
 replayed: bool
 displayText
 ```
 
-Creation does not automatically activate the Hero.
+If the Hero was later permanently deleted and a stale create request is retried, the surviving receipt may return a safe previously-committed-then-deleted outcome; it never recreates the Hero.
 
-# 12. `hero.list`
+# 14. `hero.list`
 
 Input: closed empty object.
+
+Read-only; never mutates Project/app state.
 
 Success:
 
 ```text
 heroes[] {
   heroId, name, archived, active,
-  level, rankKey, totalXp, trust, strain
+  totalXp, level, rankKey, trust, strain
 }
 displayText
 ```
 
-Order:
+Order: active first, then non-archived, then createdAtUtc ASC, then heroId ASC.
 
-```text
-active first
-then non-archived before archived
-then createdAtUtc ASC
-then heroId ASC
-```
-
-# 13. `hero.activate`
+# 15. `hero.activate`
 
 Input:
 
@@ -335,147 +355,92 @@ Input:
 {"heroId":"019..."}
 ```
 
-Hero must exist and not be archived. Repeating activation is success with no extra effect. Existing open Quests owned by another Hero are not moved/closed.
+Target must exist and not be archived. Repeating activation is no-op success.
 
-Success:
+Activation only changes the default Hero preference for future Start formation. It never moves/closes/reassigns open Quests.
 
-```text
-activeHero { heroId, name }
-alreadyActive: bool
-displayText
-```
+# 16. `hero.archive`
 
-# 14. `hero.archive`
-
-Input:
-
-```json
-{"heroId":"019..."}
-```
+Input: `{"heroId":"019..."}`.
 
 Guards:
 
 - Hero exists;
-- no open Quest owned by this Hero in any project;
-- Hero is not the globally active Hero; activate another Hero first.
+- no open Quest owned by that Hero in any Project;
+- Hero is not current active default (activate another first).
 
-Repeated archive of an already archived Hero is success.
+Repeated archive is success.
 
-Success:
+# 17. `hero.restore`
 
-```text
-heroId
-archived: true
-alreadyArchived: bool
-displayText
-```
+Input: `{"heroId":"019..."}`.
 
-# 15. `hero.restore`
+Repeated restore is success. Restore does not activate automatically.
 
-Input:
+# 18. Permanent delete is not an MCP tool
 
-```json
-{"heroId":"019..."}
-```
+0.1 permanent logical Hero deletion is CLI-only.
 
-Repeated restore is success.
+MCP exposes reversible archive/restore. Future reintroduction of model-controlled destructive delete requires a separately qualified human-confirmation design (for example MRTR) and a new contract revision.
 
-Success:
-
-```text
-heroId
-archived: false
-alreadyRestored: bool
-displayText
-```
-
-Restoring does not activate automatically.
-
-# 16. `hero.delete`
-
-Permanent local deletion.
-
-Input:
-
-```json
-{
-  "deleteRequestId": "019...",
-  "heroId": "019...",
-  "confirmHeroName": "OldMage"
-}
-```
-
-Guards:
-
-- exact current SafeText-normalized Hero name must equal `confirmHeroName`;
-- Hero is not globally active;
-- Hero has no open Quest in any project.
-
-The delete transaction removes the Hero’s local game/history rows and stores only the minimal mutation receipt needed to return a safe late retry (`deleteRequestId`, canonical argument fingerprint, deleted HeroId, deletion timestamp). It does not retain deleted Quest/history content.
-
-Success:
-
-```text
-heroId
-deletedAtUtc
-replayed: bool
-displayText
-```
-
-# 17. `hero.start_quest`
+# 19. `hero.start_quest`
 
 Input:
 
 ```json
 {
   "startRequestId": "019...",
+  "heroId": "019...",
   "questType": "coding",
   "title": "Добавить onboarding",
-  "goal": "Добавить first-run onboarding для CLI и MCP Skill без нарушения stdio."
+  "goal": "Добавить first-run onboarding для CLI и Skill без нарушения stdio."
 }
 ```
 
 All fields required.
 
+ProjectId is invocation-bound and omitted from model-visible input, but is part of canonical request scope/hash.
+
 Semantics:
 
 ```text
 validate + SafeText
-resolve globally active Hero
-resolve local ProjectId
-snapshot current locale
+resolve ProjectId
 BEGIN writer
-existing start request?
-  same canonical args -> return persisted start result, replayed=true
-  changed args        -> HP135
-open Quest for Hero+Project?
-  yes -> HP133 active_quest_exists
-insert request + Quest + project start projection
+lookup receipt(start_quest, startRequestId)
+  found:
+    same ProjectId + HeroId + canonical args under stored encoding -> original Quest replay
+    changed context/args -> HP135
+  absent:
+    require setup complete
+    validate explicit Hero exists/not archived
+    snapshot current locale
+    open Quest for explicit HeroId+ProjectId? -> HP133
+    insert Quest + receipt + projection update
 COMMIT
 ```
+
+Current active Hero is never re-read to decide ownership. A replay after active-Hero/locale changes returns the original Quest.
 
 Success:
 
 ```text
-quest {
-  questId, questType, title, goal, startedAtUtc, locale
-}
+quest { questId, heroId, questType, title, goal, startedAtUtc, locale }
 hero { heroId, name, level, rankKey }
 replayed: bool
 displayText
 ```
 
-`displayText` is a tiny start banner and may include the safe title.
-
-# 18. `hero.finish_quest`
+# 20. `hero.finish_quest`
 
 Input:
 
 ```json
 {
+  "finishRequestId": "019...",
   "questId": "019...",
   "result": "success",
-  "summary": "Added first-run setup and locale persistence.",
+  "summary": "Added first-run setup and recovery.",
   "metrics": {
     "testsMentioned": true,
     "scopeViolations": 0,
@@ -489,13 +454,33 @@ Input:
 }
 ```
 
-`skillsUsed`: 1..3, unique, canonical, semantically ordered.
+`skillsUsed`: 1..3 unique canonical keys ordered primary/secondary/tertiary.
 
-Finish resolves the process-bound ProjectId and loads the Quest by `questId`. **Current active Hero does not replace Quest ownership.** The Quest’s persisted HeroId receives progression. A Quest from another project returns context mismatch.
+Finish resolves invocation-bound ProjectId and loads Quest by questId. Current active Hero never replaces persisted ownership.
 
-If already finished, return its persisted original result with `replayed=true`; never recalculate under current rules.
+Semantics:
 
-New finish is one atomic writer transaction.
+```text
+canonicalize finish payload + hash
+BEGIN writer
+receipt(finish_quest, finishRequestId)?
+  same args -> persisted replay
+  changed args -> HP135
+load Quest + verify ProjectId
+if Quest already finalized:
+  payload equals persisted finalization hash
+    -> persist/accept this request receipt and return original result, alreadyFinalized=true
+  payload differs
+    -> HP136 quest_already_finalized_conflict
+else:
+  calculate current deterministic rules once
+  atomically persist report/components/Skill deltas/XP event/unlocks/projections
+  persist finalization hash + finish receipt
+  mark Quest finished
+COMMIT
+```
+
+No overwrite of finalized history.
 
 Success shape:
 
@@ -503,71 +488,53 @@ Success shape:
 questId
 result
 replayed
-reward {
-  baseXp, bonusXp, penaltyXp, rawXp,
-  outcomePermille, xpGained, rewardRuleVersion,
-  components[] { key, xpDelta }
-}
+alreadyFinalized
+reward { baseXp, bonusXp, penaltyXp, rawXp, outcomePermille, xpGained, rewardRuleVersion, components[] }
 heroProgress {
   heroId, totalXpBefore, totalXpAfter,
   levelBefore, levelAfter,
-  levelXp, levelXpRequired,
+  isLevelCapped,
+  levelXp,
+  nextLevelXpRequired?   # omitted at Hero cap
   rankBefore, rankAfter
 }
-trustStrain {
-  trustBefore, trustAfter,
-  strainBefore, strainAfter,
-  components[] { key, trustDelta, strainDelta },
-  ruleVersion
-}
+trustStrain { trustBefore, trustAfter, strainBefore, strainAfter, components[], ruleVersion }
 streak { before, after, ruleVersion }
 skillProgress[] {
   skillKey, xpGained, xpAfter,
-  levelBefore, levelAfter
+  levelBefore, levelAfter,
+  isLevelCapped,
+  nextLevelXpRequired?  # omitted at Skill cap
 }
 traitsUnlocked[]
 titlesUnlocked[]
 activeTitle
-milestones[] { eventKey, flavorKey }
+milestones[] { eventKey, semanticKey }
 displayText
 ```
 
-All arrays may be empty; no invented minimum progress is emitted.
+Flavor prose/key selection is presentation, not authoritative engine output.
 
-# 19. `hero.list_active_quests`
+# 21. `hero.get_card`
 
-Input: closed empty object.
+Input:
 
-Resolves the globally active Hero + process-bound Project.
+```json
+{"heroId":"019..."}
+```
+
+Read-only. Does not rely on current active default after receiving explicit heroId.
 
 Success:
 
 ```text
-quests[] { questId, questType, title, goal, startedAtUtc, locale }
-displayText
-```
-
-Cardinality is exactly `0..1` by Core invariant.
-
-This is the recovery/handoff tool. It is not a polling/telemetry loop.
-
-# 20. `hero.get_card`
-
-Input: closed empty object.
-
-Returns current globally active Hero plus current process-bound Project projection:
-
-```text
 hero {
   heroId, name,
-  totalXp, level, levelXp, levelXpRequired,
+  totalXp, level, isLevelCapped, levelXp, nextLevelXpRequired?,
   rankKey, activeTitle,
   trust, strain, successStreak,
-  topSkills[] { skillKey, xp, level },
+  topSkills[] { skillKey, xp, level, isLevelCapped, nextLevelXpRequired? },
   traits[], titles[]
-}
-activeQuest? {
-  questId, questType, title, startedAtUtc
 }
 project {
   displayName,
@@ -579,26 +546,29 @@ project {
 displayText
 ```
 
-`activeQuest` is omitted when none exists. No project internal ID/fingerprint/path is exposed.
+`nextLevelXpRequired` is omitted when the corresponding Hero/Skill level is capped.
 
-## 21. Setup gate
+No project internal ID/fingerprint/path is exposed.
 
-Before setup completion:
+## 22. Setup gate
+
+Before setup:
 
 ```text
-hero.configure -> allowed
-read-only diagnostic/version surfaces outside this MCP tool set -> host/CLI specific
+hero.get_context -> allowed
+hero.bootstrap   -> allowed
 all other HP-MCP tools -> HP001 setup_required
 ```
 
-After setup all tools follow normal guards.
+After setup, a fresh bootstrap request -> HP002 setup_already_completed.
 
-## 22. Error codes
+## 23. Errors
 
-Stable v3.2 application errors include:
+Stable application errors include:
 
 ```text
 HP001 setup_required
+HP002 setup_already_completed
 HP100 invalid_request
 HP110 invalid_quest_type
 HP111 invalid_result
@@ -608,11 +578,11 @@ HP130 quest_not_found
 HP133 active_quest_exists
 HP134 quest_context_mismatch
 HP135 idempotency_conflict
+HP136 quest_already_finalized_conflict
 HP140 hero_not_found
 HP141 hero_archived
 HP143 hero_has_open_quest
 HP145 active_hero_protected
-HP146 hero_confirmation_mismatch
 HP200 storage_unavailable
 HP202 database_busy
 HP203 storage_full
@@ -631,28 +601,24 @@ HP313 bare_repository_unsupported
 HP900 internal_error
 ```
 
-Do not include raw SQL, stack traces, absolute paths, request dumps, prompts or secrets in model-facing errors.
+Do not expose raw SQL, stack traces, absolute paths, request dumps, prompts or secrets.
 
-## 23. Contract snapshots
+## 24. Contract snapshots
 
-Implementation-generated snapshots under:
-
-```text
-contracts/mcp/hp-mcp-2/
-```
-
-must cover:
+Implementation-generated snapshots under `contracts/mcp/hp-mcp-2/` cover:
 
 ```text
-exact tool order
-annotations
+current exact order/annotations
 input/output schemas
 SafeText/UUID/time/integer rules
-all success goldens
-business error shape
-request-id replay + mismatch
-one-open Quest behavior
-structuredContent == parsed compatibility TextContent
+bootstrap replay/mismatch
+get_context pre/post setup
+Start Project/Hero idempotency scope
+Finish request replay + HP136 semantic conflict
+one-open Hero+Project behavior
+level-cap optional-field semantics
+structuredContent compatibility TextContent semantic equality
+read-only no-write behavior
 forbidden-field absence
-2026-07-28 and 2025-11-25 qualification
+2026-07-28 + 2025-11-25 qualification
 ```
