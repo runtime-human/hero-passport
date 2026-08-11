@@ -2,23 +2,27 @@
 
 > Local-first RPG companion for people working with AI coding agents.
 
-Hero Passport turns meaningful agent-assisted work into persistent XP, Skills, Levels, Ranks, Trust/Strain, Streaks, Traits and Titles — without collecting source code or requiring a cloud account.
+Hero Passport turns meaningful agent-assisted project work into persistent XP, Skills, Levels, Ranks, Trust/Strain, Streaks, Traits and Titles — without collecting source code or requiring a cloud account.
 
 ## Experience
 
 ```text
-You ask an AI agent to do meaningful project work
+Agent Skill hydrates Hero Passport context
         ↓
-Hero Passport Agent Skill starts/resumes a Quest automatically
+meaningful project work begins
         ↓
-Agent works normally
+Skill starts/resumes an explicit durable Quest
+        ↓
+agent works normally
         ↓
 Skill finishes when the goal is genuinely done
         ↓
-Hero Passport Core calculates deterministic progression
+Core calculates deterministic progression
         ↓
-Compact RPG logs + result card
+compact RPG result
 ```
+
+“One coherent meaningful goal per Quest” is a conservative Skill heuristic. Core truth is simpler: a Quest is an explicitly started durable progression unit.
 
 Typical start:
 
@@ -26,27 +30,14 @@ Typical start:
 ⚔ Добавить first-run onboarding
 ```
 
-Typical clean coding finish:
+Canonical clean coding finish is **95 XP** before any future rule-version change.
 
-```text
-+60 XP  Базовая награда
-+10 XP  Тестирование
-+10 XP  Бонус за контроль
-+10 XP  Итоговый отчёт
- +5 XP  Без исправлений
-
-★ Level 7 → 8
-XP      +95
-Trust   52 → 54
-Strain  18 → 16
-```
-
-## v3.2 architecture snapshot — 11 August 2026
+## v3.2.1 architecture snapshot — 11 August 2026
 
 ```text
 C# 14 / .NET 10 LTS / SDK 10.0.302
 ModelContextProtocol 2.1.0
-MCP semantics 2026-07-28; compatibility qualification 2025-11-25
+MCP semantics 2026-07-28; qualification path 2025-11-25
 EF Core SQLite / Microsoft.Data.Sqlite 10.0.10
 SQLitePCLRaw.bundle_e_sqlite3 3.0.5
 qualified actual SQLite runtime >= 3.53.4
@@ -54,63 +45,72 @@ System.CommandLine 2.0.10
 xunit.v3 3.2.2
 ```
 
-Runtime structure:
-
-```text
-AI agent
-  ↕ Hero Passport Agent Skill
-  ↕ HP-MCP/2 stdio
-HeroPassport.App
-  ↓
-Application
-  ↓
-Domain
-  ↕
-Infrastructure -> SQLite
-```
-
 0.1 ships MCP Core + Agent Skill + CLI. Local Web UI is 0.2.
 
-## Quest identity
+## Durable identity and retries
 
-Hero Passport v3.2 deliberately separates retry intent from work identity:
+Hero Passport separates retry intent from game/work identity:
 
 ```text
-startRequestId = caller-generated identity of one start intent/retry sequence
-questId        = server-generated durable Quest identity
+bootstrapRequestId  caller bootstrap retry identity
+createRequestId     caller Hero-create retry identity
+startRequestId      caller Start retry identity
+finishRequestId     caller Finish retry identity
+questId             server-generated durable Quest identity
 ```
 
-Exactly one Quest may be open for one Hero + Project.
+Natural-language goal text is never an idempotency key.
 
-Natural-language goal text is **not** an idempotency key. Repeating the same start request safely replays the same Quest; a fresh request can later create another Quest with identical wording.
+Start also carries explicit `heroId`; global active Hero is only a default preference. Process-bound `ProjectId` participates in canonical Start retry scope.
 
-A Quest belongs to the Hero + Project, not to Codex/Claude/another agent. Agents can hand the same `questId` to one another.
+A Quest belongs to persisted Hero + Project, not Codex/Claude/another agent.
 
-## HP-MCP/2 v3.2
+## Recovery
 
-Static explicit tool order:
+`hero.get_context` hydrates a fresh/restarted Skill with:
 
 ```text
+setup/settings
+Core/Skill/contract versions
+active default Hero
+current Project
+all open Quests in that Project across Heroes
+rule versions
+```
+
+Exactly one Quest may be open per Hero+Project. Linked Git worktrees share one Project identity, so 0.1 deliberately does not support parallel independent same-Hero Quests across linked worktrees.
+
+## HP-MCP/2 v3.2.1
+
+Current explicit tool order:
+
+```text
+hero.bootstrap
 hero.configure
+hero.get_context
 hero.create
 hero.list
 hero.activate
 hero.archive
 hero.restore
-hero.delete
 hero.start_quest
 hero.finish_quest
-hero.list_active_quests
 hero.get_card
 ```
+
+The current count is a contract snapshot, not a forever architectural invariant.
+
+Permanent Hero delete is **CLI-only** in 0.1; model-facing removal uses reversible archive/restore.
 
 Exact schemas/results/errors: [`docs/WIRE-CONTRACT.md`](docs/WIRE-CONTRACT.md).
 
 ## Game rules
 
-Game state is calculated locally and deterministically. The agent reports bounded facts and provenance; it never chooses its own reward.
+Core calculates progression deterministically from validated **bounded agent attestations**. The agent never chooses its XP/game deltas.
 
-Current outcome multipliers:
+`observed` means the agent asserts it directly ran/saw the referenced result; Hero Passport does not independently inspect raw evidence.
+
+Outcome multipliers:
 
 ```text
 success    100%
@@ -120,32 +120,45 @@ failed      10%
 abandoned    0%
 ```
 
-Canonical clean coding golden remains **95 XP**.
-
-Full rules: [`docs/ENGINE-SPEC.md`](docs/ENGINE-SPEC.md).
+Full numeric rules: [`docs/ENGINE-SPEC.md`](docs/ENGINE-SPEC.md).
 
 ## Trust + Strain
 
-```text
-Trust  = demonstrated reliability
-Strain = accumulated technical friction/turbulence
-```
+Trust/Strain are transparent RPG stats derived from bounded Quest signals, not objective employee/productivity telemetry.
 
-Both are `0..100`, deterministic and Quest-driven. No passive time regeneration, no harsh XP feedback loop and no product features locked behind them.
+Both are `0..100`, Quest-driven only, have no passive clock regeneration, do not multiply XP and do not gate product functionality.
 
 ## Heroes
 
-A Hero progresses globally across projects. Multiple Heroes are supported locally:
+Multiple local Heroes remain in 0.1:
 
 ```text
-create / list / activate / archive / restore / permanently delete
+create / list / activate / archive / restore
+CLI permanent logical delete
 ```
 
-One Hero is globally active for **new** Quests. Existing Quests never change owner when the active Hero changes.
+Active Hero is the default for forming a new Start request. Start itself carries explicit HeroId; existing Quests never change owner.
+
+## SQLite reliability
+
+Supported writable profile:
+
+```text
+same-host local filesystem
+WAL
+synchronous=FULL
+foreign_keys=ON
+trusted_schema=OFF
+Cache=Default
+Pooling=True
+Default Timeout=5
+```
+
+Critical DB state is protected by physical CHECK/FK/index invariants, versioned mutation receipts, non-deferred writer transactions and crash/recovery tests using real file-backed SQLite.
 
 ## Privacy
 
-Hero Passport intentionally does not request or persist routine:
+Hero Passport intentionally does not request/persist routine:
 
 ```text
 source/file contents
@@ -158,30 +171,37 @@ Git remote URLs
 continuous activity/heartbeat telemetry
 ```
 
-This is a companion, not a work-surveillance product.
+Quest title/goal/summary are still potentially sensitive local project metadata.
 
-## Local-first
+Permanent CLI delete is logical irreversible removal from the active Hero Passport database; Hero Passport does not claim forensic erasure from backups, filesystem snapshots or storage media.
 
-0.1 requires no account/cloud backend and uses same-host SQLite. The data model uses UUIDv7 and immutable completion facts so optional future sync can be designed later; sync itself is not part of MVP.
+## Local-first, sync-conscious
 
-## Documentation
+0.1 requires no account/cloud backend and implements no sync.
 
-Start at [`docs/README.md`](docs/README.md).
+UUIDv7, immutable completed outcomes and rebuildable projections are **sync-conscious seams**, not a claim that cross-device Project identity, deletion, conflicts or causality are solved.
 
-Primary contracts:
+## Implementation strategy
 
-- [`docs/PRODUCT-SPEC.md`](docs/PRODUCT-SPEC.md)
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- [`docs/WIRE-CONTRACT.md`](docs/WIRE-CONTRACT.md)
-- [`docs/ENGINE-SPEC.md`](docs/ENGINE-SPEC.md)
-- [`docs/AGENT-SKILL.md`](docs/AGENT-SKILL.md)
-- [`docs/PERSISTENCE-RELIABILITY.md`](docs/PERSISTENCE-RELIABILITY.md)
-- [`docs/PROJECT-IDENTITY.md`](docs/PROJECT-IDENTITY.md)
-- [`docs/TESTING-QUALITY.md`](docs/TESTING-QUALITY.md)
-- [`docs/ECOSYSTEM-BENCHMARK.md`](docs/ECOSYSTEM-BENCHMARK.md)
+Before implementing the complete RPG layers, prove a risk-first vertical slice:
+
+```text
+SQLite/migrations/connection policy
+project identity
+bootstrap/get_context
+minimal Start
+minimal Finish/base XP
+real MCP adapter
+minimal Agent Skill
+Codex E2E + restart/retry/race/crash
+```
+
+Then add full reward/Skills/levels/Rank/Trust-Strain/Streak/Traits/Titles/localization/admin/release qualification.
 
 Implementation plan:
 
-- `docs/superpowers/plans/2026-08-11-hero-passport-v3.2-implementation.md`
+- `docs/superpowers/plans/2026-08-11-hero-passport-v3.2.1-implementation.md`
 
-This architecture PR is documentation-only; it does **not** claim product build/test success before implementation exists.
+## Documentation
+
+Start at [`docs/README.md`](docs/README.md). The architecture PR is documentation-only and does **not** claim product build/test success before implementation exists.
