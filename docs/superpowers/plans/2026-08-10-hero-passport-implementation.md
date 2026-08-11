@@ -1,35 +1,42 @@
-# Hero Passport v3 Implementation Plan
+# Hero Passport v3.1 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: use a task-by-task TDD execution workflow. Every task is independently reviewable. Do not implement later tasks early merely because a seam is obvious.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** deliver Hero Passport `0.1.0`, a portable local-first stdio MCP server/CLI with HP-MCP/2, deterministic RPG progression, multi-agent-safe quest lifecycle, SQLite persistence, Codex reference qualification, contract compatibility tests and host integration documentation.
+**Goal:** Deliver Hero Passport `0.1.0`, a portable local-first stdio MCP server/CLI with HP-MCP/2, deterministic RPG progression, project-identity/1, race/crash-safe SQLite persistence, exact wire contracts and Codex reference qualification.
 
-**Architecture:** modular monolith `Domain -> Application -> Infrastructure -> App`. Application owns transport-neutral semantics; MCP/CLI are thin adapters. Project/hero binding is local startup/application context, not model input. Multiple distinct open quests may coexist, while same logical work converges through a versioned logical key and DB uniqueness.
+**Architecture:** Modular monolith `Domain -> Application -> Infrastructure -> App`. Application owns transport-neutral semantics; MCP/CLI are adapters. Project/hero binding is local process/application context, not model input. Read-modify-write SQLite operations acquire immediate writer intent before invariant reads. HP-MCP success returns canonical structured content plus equivalent JSON TextContent.
 
 **Tech Stack:** C# 14, .NET SDK 10.0.302 / `net10.0`, official `ModelContextProtocol 2.0.0`, EF Core SQLite 10.0.10, `SQLitePCLRaw.bundle_e_sqlite3 3.0.5`, System.CommandLine 2.0.10, xUnit.net v3 3.2.2.
 
-## Global constraints
+## Global Constraints
 
-- Use exact stable dependency baseline in `docs/DEPENDENCIES.md`.
-- `McpServerOptions.ProtocolVersion` stays unset/null in the ordinary server.
-- 0.1 runtime transport is stdio only; do not add `ModelContextProtocol.AspNetCore`.
-- Exact HP-MCP/2 tool order: `hero.start_quest`, `hero.finish_quest`, `hero.list_active_quests`, `hero.get_card`.
-- Register tool types explicitly; no assembly-wide discovery.
-- Application correctness never depends on MCP sessions/connection identity.
-- No model-facing source code, file content, diff, raw log, prompt/chat, secret, environment bag, workspace path or arbitrary metadata bag.
-- Project binding uses `--project-root` or process cwd/Git-root discovery; MCP Roots are not a dependency.
-- Hero binding uses local active/default state or startup `--hero`, never routine model input.
-- Multiple distinct open quests allowed; same logical work converges using LogicalQuestKey V1.
-- Maximum open quests per hero/project is 16 and must survive real SQLite concurrency tests.
-- `FinishQuest` verifies bound hero/project context and creates at most one XP ledger event.
-- Persistence uses real SQLite, `IDbContextFactory`, short synchronous DB calls, WAL/FULL/FKs, no `Task.Run` wrappers.
-- Domain/Application do not render localized strings; App presentation owns `displayText`.
-- `scope_control` RU = `Контроль`; clean scope = `Бонус за контроль`; violation = `Выход за задачу`.
-- Keep documentation/ADR/contracts synchronized in the same PR for any semantic change.
+- Normative precedence is `docs/README.md`; read the relevant deep dive before coding.
+- Exact project identity: `docs/PROJECT-IDENTITY.md`.
+- Exact DB transaction/crash/backup behavior: `docs/PERSISTENCE-RELIABILITY.md`.
+- Exact HP-MCP fields/validation/results: `docs/WIRE-CONTRACT.md`.
+- SDK pinned to 10.0.302; stable packages only; Central Package Management + lock files.
+- `McpServerOptions.ProtocolVersion` remains unset/null.
+- 0.1 runtime transport is stdio only; no `ModelContextProtocol.AspNetCore`.
+- Exact tool order: `hero.start_quest`, `hero.finish_quest`, `hero.list_active_quests`, `hero.get_card`.
+- `start_quest` MCP idempotent hint is false; finish/list/card are true.
+- MCP success: structured object + one semantically equal minified JSON TextContent.
+- MCP business/validation error: `isError=true`, one safe TextContent, no structuredContent.
+- Tool arguments receive explicit runtime validation; generated schema/DataAnnotations are not validation.
+- Model `goal`/`summary` use SafeTextV1; scalar-aware bounds.
+- Active retry identity uses `QuestDedupKeyV1`, case preserved; `LogicalQuestKeyV1` must not be introduced.
+- Up to 16 active quests per hero/project; count=15 race must end exactly at 16.
+- All DB read-modify-write use a non-deferred Serializable transaction before invariant reads; selected provider path must prove immediate writer semantics.
+- Writable DB supported profile is same-host local filesystem, WAL/FULL/FKs, default timeout 5s.
+- Actual loaded SQLite must qualify `>=3.51.3` for supported WAL runtime.
+- Never raw-`File.Copy` a live DB; never delete WAL/SHM for recovery.
+- Git project identity uses canonical `git-common-dir`; linked worktrees share identity; no remote URL/path persistence.
+- No source/file/diff/raw-log/prompt/secret/environment/workspace-path model data.
+- Domain/Application do not render localization; App presentation owns `displayText`.
+- RPG rules remain `reward/1.0.0`, `trust-risk/1.0.0`, `traits/1.0.0`; clean coding golden = 95 XP.
 
 ---
 
-# Planned repository structure
+## Planned Repository Structure
 
 ```text
 HeroPassport.slnx
@@ -37,42 +44,23 @@ global.json
 Directory.Build.props
 Directory.Packages.props
 .editorconfig
-.gitignore
 
 src/
   HeroPassport.Domain/
     Heroes/
     Projects/
     Quests/
-      Quest.cs
-      QuestId.cs
-      QuestType.cs
-      QuestResult.cs
-      QuestStatus.cs
-      LogicalQuestKey.cs
-      LogicalQuestKeyV1.cs
     Rewards/
     Skills/
     Traits/
-    Shared/
 
   HeroPassport.Application/
     Abstractions/
-      IHeroStore.cs
-      IQuestStore.cs
-      IProjectStore.cs
-      IHeroReadStore.cs
-      IProjectBindingResolver.cs
-      IHeroBindingResolver.cs
-      IUnitOfWork.cs
     Context/
-      HeroOperationContext.cs
-      InvocationOrigin.cs
-      InvocationSurface.cs
     Contracts/
-      HeroError.cs
-      HeroResult.cs
+    Validation/
     Quests/
+      Dedup/
       StartQuest/
       FinishQuest/
       ListActiveQuests/
@@ -89,44 +77,34 @@ src/
       Migrations/
       Stores/
       Queries/
-      SqliteUnitOfWork.cs
+      SqliteWriteUnitOfWork.cs
+      SqliteBackupService.cs
     Paths/
-      AppDataPaths.cs
     Projects/
+      GitRepositoryProbe.cs
       ProjectBindingResolver.cs
       ProjectIdentityV1.cs
+      ProjectIdentitySaltStore.cs
     Heroes/
-      HeroBindingResolver.cs
     Configuration/
-      HeroPassportOptions.cs
-      HeroPassportOptionsValidator.cs
     Diagnostics/
-    Export/
 
   HeroPassport.App/
     Program.cs
     Hosting/
-      ServiceRegistration.cs
     Cli/
-      RootCommandFactory.cs
-      Commands/
     Mcp/
       HeroPassportMcpManifest.cs
       HeroPassportServerInstructions.cs
       McpOperationContextResolver.cs
+      Validation/
+      Results/
       Tools/
-        StartQuestTool.cs
-        FinishQuestTool.cs
-        ListActiveQuestsTool.cs
-        GetCardTool.cs
     Presentation/
-      HeroTextRenderer.cs
-      Localization/
 
-contracts/
-  mcp/hp-mcp-2/           # generated after Task 10
+contracts/mcp/hp-mcp-2/
 
- tests/
+tests/
   HeroPassport.Domain.Tests/
   HeroPassport.Application.Tests/
   HeroPassport.Infrastructure.Tests/
@@ -138,32 +116,29 @@ contracts/
 
 ---
 
-## Task 1 — Reproducible .NET foundation (`0.0.1`)
+### Task 1: Reproducible .NET foundation (`0.0.1`)
 
-**Files**
-
+**Files:**
 - Create: `global.json`
 - Create: `Directory.Build.props`
 - Create: `Directory.Packages.props`
 - Create: `.editorconfig`
-- Create/modify: `.gitignore`
+- Create: `.gitignore`
 - Create: `HeroPassport.slnx`
-- Create: four source `.csproj` files (Domain/Application/Infrastructure/App)
-- Create: seven test/eval `.csproj` files listed above
+- Create: four source `.csproj` files
+- Create: seven test/eval `.csproj` files
+- Test: `tests/HeroPassport.Architecture.Tests/ProjectReferenceTests.cs`
 
-**Interfaces produced**
+**Interfaces:**
+- Produces the fixed project/reference/package graph used by every later task.
 
-No product API yet; this task produces build/dependency boundaries only.
-
-**Steps**
-
-- [ ] **1. Pin SDK.** Create `global.json` with SDK `10.0.302`, `rollForward: disable`, `allowPrerelease: false`, and Microsoft Testing Platform runner configuration supported by the SDK/xUnit baseline.
-- [ ] **2. Centralize build rules.** `Directory.Build.props`: `net10.0`, C# 14, nullable enabled, implicit usings, deterministic build, latest stable analysis, warnings policy selected so the empty scaffold builds cleanly.
-- [ ] **3. Centralize package versions.** `Directory.Packages.props` contains exactly the accepted package baseline and no MCP ASP.NET package.
-- [ ] **4. Create project reference graph.** Domain none; Application -> Domain; Infrastructure -> Application+Domain; App -> Application+Infrastructure. Test projects reference only their intended layer(s).
-- [ ] **5. Add package lock configuration** and generate committed `packages.lock.json` for package-using projects.
-- [ ] **6. Add architecture smoke test** asserting project references have the intended direction from loaded assemblies/project metadata.
-- [ ] **7. Verify.** Run:
+- [ ] **Step 1: Pin SDK.** Create `global.json` with exact SDK `10.0.302`, `rollForward: disable`, `allowPrerelease: false`.
+- [ ] **Step 2: Add centralized build properties.** Target `net10.0`, C# 14, nullable/implicit usings, deterministic build, warnings policy.
+- [ ] **Step 3: Add Central Package Management.** Pin exactly the approved stable packages; do not include MCP ASP.NET package.
+- [ ] **Step 4: Create project graph.** Domain no product refs; Application -> Domain; Infrastructure -> Application+Domain; App -> Application+Infrastructure.
+- [ ] **Step 5: Create failing architecture test** that detects a forbidden reverse project reference.
+- [ ] **Step 6: Configure package lock files** and restore once with lock generation.
+- [ ] **Step 7: Verify foundation.** Run:
 
 ```bash
 dotnet --version
@@ -172,27 +147,23 @@ dotnet build --configuration Release --no-restore
 dotnet test --configuration Release --no-build
 ```
 
-Expected: all pass, SDK exactly 10.0.302.
+Expected SDK: `10.0.302`; build/tests pass for scaffold.
 
-- [ ] **8. Commit:** `build: establish reproducible net10 foundation`.
+- [ ] **Step 8: Commit.** `build: establish reproducible net10 foundation`
 
 ---
 
-## Task 2 — Domain vocabulary, operation context and stable error contract (`0.0.2`)
+### Task 2: Domain vocabulary and deterministic IDs (`0.0.2`)
 
-**Files**
+**Files:**
+- Create: `src/HeroPassport.Domain/Heroes/HeroId.cs`
+- Create: `src/HeroPassport.Domain/Projects/ProjectId.cs`
+- Create: `src/HeroPassport.Domain/Quests/QuestId.cs`
+- Create: `QuestType.cs`, `QuestResult.cs`, `QuestStatus.cs`
+- Create: `src/HeroPassport.Domain/Shared/JsonSafeInteger.cs`
+- Test: `tests/HeroPassport.Domain.Tests/Shared/IdAndRangeTests.cs`
 
-- Create Domain ID/enums under `Heroes/`, `Projects/`, `Quests/`.
-- Create: `src/HeroPassport.Domain/Quests/LogicalQuestKey.cs`
-- Create: `src/HeroPassport.Domain/Quests/LogicalQuestKeyV1.cs`
-- Create: `src/HeroPassport.Application/Context/HeroOperationContext.cs`
-- Create: `InvocationOrigin.cs`, `InvocationSurface.cs`
-- Create: `src/HeroPassport.Application/Contracts/HeroError.cs`
-- Create: `HeroResult.cs`
-- Tests: `HeroPassport.Domain.Tests/Quests/LogicalQuestKeyV1Tests.cs`
-- Tests: `HeroPassport.Application.Tests/Contracts/HeroErrorTests.cs`
-
-**Interfaces produced**
+**Interfaces:**
 
 ```csharp
 public readonly record struct HeroId(Guid Value);
@@ -201,142 +172,175 @@ public readonly record struct QuestId(Guid Value);
 
 public enum QuestType { Planning, Research, Coding, Review, Debugging, Documentation, Maintenance }
 public enum QuestResult { Success, Partial, Failed, Blocked, Abandoned }
+public enum QuestStatus { Open, Finished }
 
-public readonly record struct LogicalQuestKey(int Version, ImmutableArray<byte> Hash);
+public static class JsonSafeInteger
+{
+    public const long Max = 9_007_199_254_740_991L;
+}
+```
 
-public static class LogicalQuestKeyV1
+- [ ] **Step 1: Write failing typed-ID tests** proving HeroId/ProjectId/QuestId cannot be interchanged by API type.
+- [ ] **Step 2: Write UUIDv7 generation/round-trip test** around the chosen ID factory using `Guid.CreateVersion7()`.
+- [ ] **Step 3: Add enum key tests** for the exact canonical values needed by later adapters.
+- [ ] **Step 4: Add JSON-safe integer bound tests** for Max, Max+1 rejection and checked overflow behavior.
+- [ ] **Step 5: Implement the minimum types** without JSON/MCP/EF attributes in Domain.
+- [ ] **Step 6: Run Domain tests.**
+- [ ] **Step 7: Commit.** `feat: add typed domain vocabulary`
+
+---
+
+### Task 3: SafeTextV1, QuestDedupKeyV1, operation context and error contract (`0.0.3`)
+
+**Files:**
+- Create: `src/HeroPassport.Application/Validation/SafeTextV1.cs`
+- Create: `src/HeroPassport.Application/Quests/Dedup/QuestDedupKey.cs`
+- Create: `QuestDedupKeyV1.cs`
+- Create: `src/HeroPassport.Application/Context/HeroOperationContext.cs`
+- Create: `InvocationOrigin.cs`, `InvocationSurface.cs`
+- Create: `src/HeroPassport.Application/Contracts/HeroError.cs`, `HeroResult.cs`
+- Test: `tests/HeroPassport.Application.Tests/Validation/SafeTextV1Tests.cs`
+- Test: `tests/HeroPassport.Application.Tests/Quests/QuestDedupKeyV1Tests.cs`
+
+**Interfaces:**
+
+```csharp
+public readonly record struct SafeText(string Value, int ScalarLength);
+
+public static class SafeTextV1
+{
+    public static HeroResult<SafeText> NormalizeGoal(string input);
+    public static HeroResult<SafeText> NormalizeSummary(string input);
+}
+
+public readonly record struct QuestDedupKey(int Version, ImmutableArray<byte> Hash);
+
+public static class QuestDedupKeyV1
 {
     public const int Version = 1;
-    public static LogicalQuestKey Create(QuestType type, string validatedGoal);
-    public static string CanonicalizeGoal(string validatedGoal);
+    public static QuestDedupKey Create(QuestType type, SafeText goal);
 }
 
 public sealed record HeroOperationContext(HeroId HeroId, ProjectId ProjectId, InvocationOrigin Origin);
-public sealed record InvocationOrigin(InvocationSurface Surface, string? ClientName = null, string? ClientVersion = null);
 ```
 
-**Steps**
-
-- [ ] **1. Write logical-key goldens** for Unicode NFC equivalence, trim, Unicode whitespace collapse, invariant case normalization, type difference and real goal difference.
-- [ ] **2. Verify tests fail** before implementation.
-- [ ] **3. Implement canonicalization.** Normalize `NormalizationForm.FormC`; trim; treat Unicode whitespace via `char.IsWhiteSpace`/Rune-aware helper; collapse to ASCII space; apply invariant case normalization; hash UTF-8 of canonical quest key + newline + canonical goal with SHA-256.
-- [ ] **4. Ensure no original goal mutation.** Test `Create` does not require/persist canonical text as the display/history text.
-- [ ] **5. Implement typed IDs/enums/context.** Avoid a type called `ExecutionContext`.
-- [ ] **6. Implement error model** preserving Code/Category/Retryability/MessageKey/SafeDetails semantics from `API-CONTRACTS.md`.
-- [ ] **7. Add negative tests** showing client metadata does not enter domain APIs/reward types.
-- [ ] **8. Run Domain + Application tests.**
-- [ ] **9. Commit:** `feat: add v3 domain and operation contracts`.
+- [ ] **Step 1: Write SafeText failing vectors** from `WIRE-CONTRACT.md`: NFC, emoji scalar count, whitespace collapse, controls/bidi rejection, 500/501 and 2000/2001 boundaries.
+- [ ] **Step 2: Verify `.Length` cannot satisfy emoji boundary tests.** Expected failing evidence before Rune-aware implementation.
+- [ ] **Step 3: Implement SafeTextV1** using `Rune`/valid scalar enumeration, NFC, trimming and whitespace collapse; never persist raw unnormalized model text.
+- [ ] **Step 4: Write dedup goldens** proving whitespace/NFC equivalence but **case difference and punctuation difference produce different keys**.
+- [ ] **Step 5: Implement QuestDedupKeyV1** as SHA-256 of canonical quest key + newline + case-preserved SafeText goal.
+- [ ] **Step 6: Add stale-name test** rejecting production type name `LogicalQuestKeyV1`.
+- [ ] **Step 7: Implement operation context and typed error model** with Code/Category/Retryability/MessageKey/SafeDetails.
+- [ ] **Step 8: Assert InvocationOrigin does not enter Domain reward APIs.**
+- [ ] **Step 9: Run Application + Domain tests.**
+- [ ] **Step 10: Commit.** `feat: add safe text dedup and operation contracts`
 
 ---
 
-## Task 3 — Deterministic reward and level engine (`0.0.3`)
+### Task 4: Deterministic reward and level engine (`0.0.4`)
 
-**Files**
-
-- Create: `Domain/Rewards/RewardRulesV1.cs`
+**Files:**
+- Create: `src/HeroPassport.Domain/Rewards/RewardRulesV1.cs`
 - Create: `RewardCalculator.cs`, `RewardBreakdown.cs`, `QuestQualityFlags.cs`
-- Create: `Domain/Heroes/LevelCurveV1.cs`
-- Tests: focused reward/level golden files
+- Create: `src/HeroPassport.Domain/Heroes/LevelCurveV1.cs`
+- Test: `tests/HeroPassport.Domain.Tests/Rewards/RewardCalculatorTests.cs`
+- Test: `tests/HeroPassport.Domain.Tests/Heroes/LevelCurveV1Tests.cs`
 
-**Interfaces**
+**Interfaces:**
 
 ```csharp
-public static class RewardRulesV1 { public const string Version = "1.0.0"; }
-public sealed class RewardCalculator
+public sealed record QuestQualityFlags(
+    bool HasTestsMentioned,
+    bool HasCleanScope,
+    bool HasClearSummary,
+    bool HasNoUserCorrections,
+    bool HasBuildPassed,
+    bool HasTestsPassed);
+```
+
+- [ ] **Step 1: Write failing clean-coding golden.** Expected exactly 95 XP.
+- [ ] **Step 2: Write every quest/result multiplier and penalty boundary test** from `ENGINE-SPEC.md`.
+- [ ] **Step 3: Use normalized SafeText scalar length to derive clear-summary flag** at Application boundary; Domain receives the flag.
+- [ ] **Step 4: Implement integer permille reward arithmetic only.**
+- [ ] **Step 5: Implement level threshold/progress with checked arithmetic and JSON-safe ceiling.**
+- [ ] **Step 6: Run Domain tests.**
+- [ ] **Step 7: Commit.** `feat: add deterministic reward and levels`
+
+---
+
+### Task 5: Skills, Trust/Risk and traits (`0.0.5`)
+
+**Files:**
+- Create: Domain skill keys/allocation/TrustRisk/Trait rule types
+- Test: focused Domain tests for each rule family
+
+**Interfaces:**
+
+```csharp
+public static class SkillXpAllocator
 {
-    public RewardBreakdown Calculate(QuestType type, QuestResult result, QuestQualityFlags flags, int scopeViolations, int userCorrections);
+    public static IReadOnlyList<SkillXpDelta> Allocate(long xp, IReadOnlyList<SkillKey> orderedSkills);
 }
 ```
 
-**Steps**
-
-- [ ] **1. Write failing golden:** coding success + tests + clean scope + clear summary + no corrections = 95 XP.
-- [ ] **2. Add boundary tests** for every base type, multiplier, penalty, min zero and summary threshold defined in `ENGINE-SPEC.md`.
-- [ ] **3. Implement integer permille arithmetic only.** No `double`/locale-sensitive calculations.
-- [ ] **4. Implement level threshold/progress functions** exactly from `ENGINE-SPEC.md` with boundary tests.
-- [ ] **5. Run all Domain tests.**
-- [ ] **6. Commit:** `feat: add deterministic reward and level rules`.
-
----
-
-## Task 4 — Skills, Trust/Risk, traits and localization keys (`0.0.4`)
-
-**Files**
-
-- Domain skill normalizer/allocation types
-- Trust/Risk rules
-- initial trait progression
-- tests for all three
-
-**Steps**
-
-- [ ] **1. Write failing skill normalization tests** for canonical aliases/unknowns/duplicates/max-3 behavior.
-- [ ] **2. Write allocation conservation tests** for 1/2/3 skills and odd XP totals; assert sum exactly equals reward XP.
-- [ ] **3. Implement cumulative-floor allocation** documented in engine spec.
-- [ ] **4. Write/implement Trust/Risk rules** with clamp tests.
-- [ ] **5. Write/implement three initial trait policies** with unlock monotonicity tests.
-- [ ] **6. Verify persisted keys are canonical English keys only.** Localization is not added to Domain.
-- [ ] **7. Commit:** `feat: add skills trust risk and traits`.
+- [ ] **Step 1: Write canonical-skill and CLI-alias normalization tests.**
+- [ ] **Step 2: Write 1/2/3-skill allocation conservation tests** including 95 -> 47/29/19 for three ordered skills.
+- [ ] **Step 3: Implement cumulative-floor allocation** preserving input semantic order.
+- [ ] **Step 4: Write/implement Trust/Risk transition/clamp tests.**
+- [ ] **Step 5: Write/implement initial trait unlock monotonicity tests.**
+- [ ] **Step 6: Verify no localized labels are Domain persistence keys.**
+- [ ] **Step 7: Commit.** `feat: add skills trust risk and traits`
 
 ---
 
-## Task 5 — Transport-neutral Application lifecycle (`0.0.5`)
+### Task 6: Transport-neutral quest lifecycle (`0.0.6`)
 
-**Files**
+**Files:**
+- Create narrow Application store/read ports under `Application/Abstractions/`
+- Create `Application/Quests/StartQuest/*`
+- Create `FinishQuest/*`
+- Create `ListActiveQuests/*`
+- Create `Cards/GetHeroCard/*`
+- Test: Application handler tests using small fakes, not EF InMemory
 
-- `Application/Abstractions/IHeroStore.cs`
-- `IQuestStore.cs`, `IProjectStore.cs`, `IHeroReadStore.cs`, `IUnitOfWork.cs`
-- `Application/Quests/StartQuest/*`
-- `FinishQuest/*`
-- `ListActiveQuests/*`
-- `Cards/GetHeroCard/*`
-- Application tests with in-memory fakes (not EF InMemory)
-
-**Key interfaces**
+**Interfaces:**
 
 ```csharp
-public sealed record StartQuestCommand(HeroOperationContext Context, QuestType QuestType, string Goal);
+public sealed record StartQuestCommand(HeroOperationContext Context, QuestType QuestType, SafeText Goal);
 public sealed record StartQuestResult(QuestId QuestId, bool AlreadyOpen, HeroCardReadModel Hero);
 
 public sealed record FinishQuestCommand(
     HeroOperationContext Context,
     QuestId QuestId,
     QuestResult Result,
-    string Summary,
+    SafeText Summary,
     QuestMetrics Metrics,
-    IReadOnlyList<string> SkillsUsed);
-
-public sealed record ListActiveQuestsQuery(HeroOperationContext Context);
-public sealed record ListActiveQuestsResult(IReadOnlyList<ActiveQuestReadModel> Quests);
+    IReadOnlyList<SkillKey> SkillsUsed);
 ```
 
-**Steps**
-
-- [ ] **1. Write StartQuest tests**: new key creates, same key returns same, distinct key coexists, >=16 returns HP133.
-- [ ] **2. Write List tests**: empty success, max 16, deterministic order, exact context filtering.
-- [ ] **3. Write Finish tests**: unknown HP130, wrong hero/project HP134, finished returns original, skill validation, all result cases.
-- [ ] **4. Implement ports narrowly.** Do not add `IRepository<T>` or MediatR.
-- [ ] **5. Implement handlers** with deterministic domain calls and typed errors.
-- [ ] **6. Assert InvocationOrigin does not affect reward.** Run same command with Codex/unknown origin and compare result.
-- [ ] **7. Commit:** `feat: add transport neutral quest lifecycle`.
+- [ ] **Step 1: Write Start tests:** new declaration, matching open retry, case-different distinct, different type distinct, 16 -> HP133.
+- [ ] **Step 2: Add same-args-after-finish test.** Expected a **new** quest; this protects start's non-idempotent lifecycle semantics.
+- [ ] **Step 3: Write Finish tests:** HP130, HP134 hero/project, already-finished original result, all result categories.
+- [ ] **Step 4: Write metrics cross-field tests:** non-`not_run` testsStatus requires testsMentioned=true.
+- [ ] **Step 5: Make MCP canonical skill semantics explicit in handler input; keep aliases outside MCP adapter path.**
+- [ ] **Step 6: Write list/card ordering/filter/projection tests.**
+- [ ] **Step 7: Implement narrow ports/handlers; no `IRepository<T>` or MediatR.**
+- [ ] **Step 8: Run Application tests.**
+- [ ] **Step 9: Commit.** `feat: add transport neutral quest lifecycle`
 
 ---
 
-## Task 6 — Platform paths, config, project/hero binding and presentation (`0.0.6`)
+### Task 7: Platform paths, config and project/hero binding (`0.0.7`)
 
-**Files**
+**Files:**
+- Create: `Infrastructure/Paths/AppDataPaths.cs`
+- Create: config options/loader/validator
+- Create: `Infrastructure/Projects/GitRepositoryProbe.cs`
+- Create: `ProjectBindingResolver.cs`, `ProjectIdentityV1.cs`, `ProjectIdentitySaltStore.cs`
+- Create: `Infrastructure/Heroes/HeroBindingResolver.cs`
+- Test: `Infrastructure.Tests/Projects/ProjectIdentityV1Tests.cs`
 
-- `Infrastructure/Paths/AppDataPaths.cs`
-- `Infrastructure/Configuration/HeroPassportOptions.cs`
-- options validator/loader
-- `Infrastructure/Projects/ProjectBindingResolver.cs`
-- `ProjectIdentityV1.cs`
-- `Infrastructure/Heroes/HeroBindingResolver.cs`
-- `App/Presentation/HeroTextRenderer.cs`
-- localization resources/maps
-- corresponding tests
-
-**Interfaces**
+**Interfaces:**
 
 ```csharp
 public interface IProjectBindingResolver
@@ -344,330 +348,279 @@ public interface IProjectBindingResolver
     ProjectBinding Resolve(string? explicitProjectRoot, string processWorkingDirectory);
 }
 
-public interface IHeroBindingResolver
+internal sealed record GitProjectAnchor(string CommonDirectory, string WorktreeTopLevel, string Scope);
+```
+
+- [ ] **Step 1: Write platform data-path + `HERO_PASSPORT_HOME` tests.**
+- [ ] **Step 2: Write normal Git identity tests** root/nested cwd/spaces/Unicode/dash-leading path.
+- [ ] **Step 3: Create real linked worktree test.** Assert main+linked fingerprint equal because both use absolute `git-common-dir`.
+- [ ] **Step 4: Create real monorepo scope tests.** Nested cwd no explicit root => whole repo; explicit services/a and services/b => distinct scoped identities.
+- [ ] **Step 5: Create submodule/nested-repo tests** proving separate identities.
+- [ ] **Step 6: Create Git safety/failure tests** HP311/312/313 and assert no `safe.directory` mutation.
+- [ ] **Step 7: Implement Git probe with `ProcessStartInfo.ArgumentList`, `git -C`, sanitized Git location env variables, no shell/remotes/hooks.**
+- [ ] **Step 8: Implement installation 32-byte random project identity salt + salted SHA-256 fingerprint.**
+- [ ] **Step 9: Assert persisted project record excludes path/remote URL.**
+- [ ] **Step 10: Implement strict config v1 and hero selector ambiguity handling.**
+- [ ] **Step 11: Run Infrastructure project/config tests.**
+- [ ] **Step 12: Commit.** `feat: add project identity and local binding`
+
+---
+
+### Task 8: EF Core SQLite schema and migration 0001 (`0.0.8`)
+
+**Files:**
+- Create: `Infrastructure/Persistence/HeroPassportDbContext.cs`
+- Create EF entities/configurations
+- Create migration `0001_*` + model snapshot
+- Test: schema/migration integration tests
+
+**Schema contract:**
+
+```text
+quest_sessions.dedup_key
+quest_sessions.dedup_key_version
+partial UNIQUE open dedup key
+UNIQUE quest_reports.quest_id
+UNIQUE xp_events.quest_id
+projects.workspace_fingerprint UNIQUE
+no path/remote URL column
+```
+
+- [ ] **Step 1: Write failing schema assertions** against a fresh temp file DB.
+- [ ] **Step 2: Map bounded fields/FKs/check constraints** including JSON-safe maxima where practical.
+- [ ] **Step 3: Generate migration 0001** and add SQLite partial unique index SQL if EF mapping requires it.
+- [ ] **Step 4: Assert stale `logical_key` columns are absent.**
+- [ ] **Step 5: Configure WAL/FULL/FKs through tested initialization path.**
+- [ ] **Step 6: Assert actual `sqlite_version()` is queryable and release floor logic exists.**
+- [ ] **Step 7: Test empty -> latest and foreign-key/index state.**
+- [ ] **Step 8: Commit.** `feat: add sqlite schema and migration`
+
+---
+
+### Task 9: Writer transactions, races, crash recovery and backup (`0.0.9`)
+
+**Files:**
+- Create: `Infrastructure/Persistence/SqliteWriteUnitOfWork.cs`
+- Create persistence stores/queries
+- Create: `SqliteBackupService.cs`
+- Create: storage exception translator
+- Test: real SQLite concurrency/crash/backup suite
+
+**Interface:**
+
+```csharp
+public interface IWriteUnitOfWork
 {
-    HeroId Resolve(string? explicitSelector);
+    HeroResult<T> Execute<T>(Func<HeroPassportDbContext, T> operation);
 }
 ```
 
-**Steps**
+Implementation must begin `Database.BeginTransaction(IsolationLevel.Serializable)` before invariant reads and prove selected provider immediate-writer behavior.
 
-- [ ] **1. Write path tests** for Windows LocalApplicationData semantics, macOS Application Support and Linux XDG/fallback; use testable platform abstraction if needed without third-party package.
-- [ ] **2. Write `HERO_PASSPORT_HOME` isolation tests.**
-- [ ] **3. Implement strict config v1** with unknown-property/version rejection.
-- [ ] **4. Write project resolver tests**: explicit root, cwd, nested Git repo root, non-Git fallback, spaces/unicode, invalid path -> HP310.
-- [ ] **5. Implement versioned workspace fingerprint** without persisting absolute path.
-- [ ] **6. Write hero selector tests** for default, explicit unique selector, unknown/ambiguous failure.
-- [ ] **7. Write renderer goldens** for RU/EN compact/normal; include required RU labels.
-- [ ] **8. Verify list-active human text does not echo goal by default.**
-- [ ] **9. Commit:** `feat: add local binding config and presentation`.
+- [ ] **Step 1: Write provider-locking failing test** with two connections proving writer intent is acquired before invariant read sequence.
+- [ ] **Step 2: Implement short non-deferred Serializable writer unit of work.** No raw independent `BEGIN` behind EF.
+- [ ] **Step 3: Write same-dedup concurrent Start test** -> one row/same questId.
+- [ ] **Step 4: Write count=15 two-distinct-writer test** -> final count exactly 16, other HP133.
+- [ ] **Step 5: Write concurrent Finish test** -> one report, one xp_event, same result.
+- [ ] **Step 6: Write busy timeout test** -> HP202 after provider bound, no Polly stack.
+- [ ] **Step 7: Add child-process fault points** before commit and after commit-before-response.
+- [ ] **Step 8: Prove crash before commit leaves no partial progression.**
+- [ ] **Step 9: Prove crash after commit-before-response returns original result on retry.**
+- [ ] **Step 10: Prove WAL recovery works without deleting/renaming WAL/SHM.**
+- [ ] **Step 11: Add error mapping tests** HP203/204/205/206/207/208/211.
+- [ ] **Step 12: Implement `BackupDatabase` backup + independent quick/FK/schema verification test; static/test gate rejects live DB `File.Copy`.**
+- [ ] **Step 13: Test normal SQLite runtime floor >=3.51.3 and doctor failure path for a simulated unqualified version.**
+- [ ] **Step 14: Commit.** `feat: harden sqlite concurrency crash and backup`
 
 ---
 
-## Task 7 — EF Core SQLite schema and migration 0001 (`0.0.7`)
+### Task 10: Presentation, CLI and doctor (`0.0.10`)
 
-**Files**
+**Files:**
+- Create: `App/Presentation/HeroTextRenderer.cs` + localization maps
+- Create CLI root/commands
+- Create diagnostics read model/doctor services
+- Test: App process/renderer/doctor tests
 
-- `Infrastructure/Persistence/HeroPassportDbContext.cs`
-- EF entities/configurations
-- initial migration + model snapshot
-- stores/queries skeleton
-- Infrastructure integration tests
+- [ ] **Step 1: Write RU/EN presentation goldens** including `Контроль`, `Бонус за контроль`, `Выход за задачу`.
+- [ ] **Step 2: Assert displayText never echoes goal/summary by default and remains within wire bounds.**
+- [ ] **Step 3: Build CLI parser tree** for init/mcp/doctor/card/quest list/export/data path/version.
+- [ ] **Step 4: Implement doctor checks** paths, Git binding diagnostics, DB open/version/PRAGMAs/migrations/quick_check/FK check/storage location.
+- [ ] **Step 5: Ensure doctor has no destructive auto-repair path.**
+- [ ] **Step 6: Process-test stdout/stderr and isolated `HERO_PASSPORT_HOME`.**
+- [ ] **Step 7: Commit.** `feat: add cli presentation and diagnostics`
 
-**Schema requirements**
+---
 
-`quest_sessions` includes:
+### Task 11: Exact HP-MCP/2 stdio contract (`0.0.11`)
 
-```text
-logical_key
-logical_key_version
+**Files:**
+- Create: `App/Mcp/HeroPassportMcpManifest.cs`
+- Create: server instructions
+- Create: `App/Mcp/Validation/*`
+- Create: `App/Mcp/Results/McpToolResultFactory.cs`
+- Create four tool classes
+- Test: `HeroPassport.Contract.Tests/*`
+
+**Core result helper:**
+
+```csharp
+internal static CallToolResult Success<T>(T dto)
+{
+    JsonElement structured = JsonSerializer.SerializeToElement(dto, JsonOptions);
+    string json = JsonSerializer.Serialize(dto, JsonOptions);
+    return new CallToolResult
+    {
+        StructuredContent = structured,
+        Content = [new TextContentBlock { Text = json }],
+        IsError = false
+    };
+}
 ```
 
-and partial unique open logical key, **not** one-open-per-project.
+Use the actual SDK 2.0 type names/properties verified at implementation time; preserve semantics even if exact constructors differ.
 
-`xp_events.quest_id` unique.
-
-**Steps**
-
-- [ ] **1. Write migration/schema assertions first** against a temp file DB; expected failure because no migration exists.
-- [ ] **2. Implement DbContext mappings** with explicit lengths/required/FKs/checks where SQLite supports/useful.
-- [ ] **3. Generate initial EF migration.** Add SQLite-specific migration SQL for partial unique index if required.
-- [ ] **4. Configure connection builder** with ReadWriteCreate, Default cache, FKs, pooling, 5s timeout.
-- [ ] **5. Initialize/verify PRAGMAs:** WAL, FULL, foreign keys.
-- [ ] **6. Query and assert actual `sqlite_version()`.**
-- [ ] **7. Test fresh migration and seeds.**
-- [ ] **8. Confirm no `EnsureCreated` product path.**
-- [ ] **9. Commit:** `feat: add sqlite v3 persistence schema`.
-
----
-
-## Task 8 — SQLite transaction and concurrency correctness (`0.0.8`)
-
-**Files**
-
-- `Infrastructure/Persistence/SqliteUnitOfWork.cs`
-- store write implementations
-- concurrency integration test fixtures
-
-**Steps**
-
-- [ ] **1. Implement same-key race test** with two independent DbContexts/connections targeting the same file, synchronized to attempt start concurrently.
-- [ ] **2. Verify naïve implementation fails or characterize behavior.** Do not skip failure evidence.
-- [ ] **3. Implement write transaction/unique-race translation** so both calls return one persisted quest ID.
-- [ ] **4. Implement cap race test** starting from 15 active quests with two distinct concurrent starts.
-- [ ] **5. If ordinary EF transaction can permit 17**, localize an SQLite immediate/write-serialization path in Infrastructure; rerun until active count is exactly <=16 and one caller gets HP133.
-- [ ] **6. Implement finish race test**; assert one report, one xp_event, one aggregate mutation, both callers converge to original persisted result.
-- [ ] **7. Implement context mismatch integration test** using a valid UUID from another project/hero.
-- [ ] **8. Implement busy timeout/error translation** without Polly/general retries.
-- [ ] **9. Run concurrency suite repeatedly (e.g. 100 iterations for race fixtures) in CI-stable form.**
-- [ ] **10. Commit:** `feat: harden sqlite quest concurrency`.
+- [ ] **Step 1: Write failing manifest test** for exact four names/order and no fifth tool.
+- [ ] **Step 2: Write annotation test** start idempotent=false; finish/list/card true; readOnly/destructive/openWorld exact.
+- [ ] **Step 3: Build explicit runtime validators** for SafeText, canonical UUIDv7, enums, metrics, canonical-only ordered skills.
+- [ ] **Step 4: Write test proving schema annotations alone are not relied on:** invoke adapter with invalid object and expect HP100/typed tool error.
+- [ ] **Step 5: Implement output DTOs/schemas** exactly from `WIRE-CONTRACT.md`, every nested object closed and current fields required.
+- [ ] **Step 6: Implement success result factory:** structured object + one minified JSON TextContent semantic equality.
+- [ ] **Step 7: Implement error result factory:** isError=true + one safe TextContent + no structuredContent.
+- [ ] **Step 8: Implement four thin tools** mapping validation/context/Application/presentation only.
+- [ ] **Step 9: Add server instructions** with full first-512-character lifecycle/privacy semantics.
+- [ ] **Step 10: Generate contract snapshots** under `contracts/mcp/hp-mcp-2/` from actual registration.
+- [ ] **Step 11: Add stale-contract gate** for current_quest, LogicalQuestKey, start idempotent=true, human-only structured fallback, forbidden fields.
+- [ ] **Step 12: Commit.** `feat: implement exact hp-mcp2 contract`
 
 ---
 
-## Task 9 — CLI and doctor (`0.0.9`)
+### Task 12: MCP protocol/process compatibility (`0.0.12`)
 
-**Files**
+**Files:**
+- Add protocol compatibility tests in App/Contract test projects
+- Add process test harness
+- Add Inspector qualification notes/scripts if repository policy permits
 
-- `App/Program.cs`
-- `Hosting/ServiceRegistration.cs`
-- `Cli/RootCommandFactory.cs`
-- Commands for init/mcp/doctor/card/quest list/export/data path/version
-- process tests
-
-**Steps**
-
-- [ ] **1. Write parser/help tests** including `mcp --project-root` and `--hero`.
-- [ ] **2. Build Generic Host/DI composition** once; command handlers call Application/adapters, not DbContext directly.
-- [ ] **3. Implement `init`.**
-- [ ] **4. Implement `doctor` typed checks**: version/runtime/paths/config/hero/project binding when applicable/SQLite version/PRAGMAs/migrations/manifest/protocol policy.
-- [ ] **5. Implement `card`, `quest list --active`, `export`, `data path`.**
-- [ ] **6. Implement stable `--json` only for script-relevant commands and semantic HeroError representation.
-- [ ] **7. Process-test stdout/stderr and temp HOME.**
-- [ ] **8. Commit:** `feat: add cli and diagnostics`.
+- [ ] **Step 1: Create 2026-07-28 official SDK client path test.**
+- [ ] **Step 2: Create 2025-11-25 official SDK compatibility path test.** Both see equivalent four-tool semantics.
+- [ ] **Step 3: Assert ordinary production server never sets concrete ProtocolVersion.**
+- [ ] **Step 4: Process-test `hero-passport mcp --project-root <temp>` stdout for protocol framing only.**
+- [ ] **Step 5: Verify 2025-era consumer can parse JSON TextContent even when structured rendering is ignored.**
+- [ ] **Step 6: Run current official MCP Inspector lifecycle smoke** tools/list/start/list/finish/card/error.
+- [ ] **Step 7: Record Inspector/version/evidence in release fixture.**
+- [ ] **Step 8: Commit.** `test: qualify mcp protocol compatibility`
 
 ---
 
-## Task 10 — HP-MCP/2 stdio and generated contract snapshots (`0.0.10`)
+### Task 13: Codex reference E2E and AgentEvals (`0.0.13`)
 
-**Files**
+**Files:**
+- Create/update `tests/HeroPassport.AgentEvals/*`
+- Add isolated Codex E2E harness/docs
 
-- `App/Mcp/HeroPassportMcpManifest.cs`
-- `HeroPassportServerInstructions.cs`
-- `McpOperationContextResolver.cs`
-- four tool classes
-- Contract test generators/snapshots
-- App process tests
+- [ ] **Step 1: Verify current official Codex MCP config/CLI during implementation.** Do not copy stale syntax from memory.
+- [ ] **Step 2: Register project-bound Hero Passport in isolated Codex environment.**
+- [ ] **Step 3: Run lifecycle E2E** start -> work simulation -> list -> finish -> card -> restart -> durable read.
+- [ ] **Step 4: Run same-open-declaration retry scenario** expecting reuse.
+- [ ] **Step 5: Run same declaration after completed cycle scenario** expecting a new quest when new work is intentionally started.
+- [ ] **Step 6: Run parallel distinct work scenario** expecting two quests.
+- [ ] **Step 7: Build host-neutral AgentEval scenarios** meaningful work, trivial question, lost questId, privacy adversarial input, finish retry.
+- [ ] **Step 8: Keep evals non-blocking until signal quality is demonstrated; record baseline.**
+- [ ] **Step 9: Commit.** `test: add codex e2e and agent evals`
 
-**Interfaces/tools**
+---
 
-```text
-StartQuestTool
-FinishQuestTool
-ListActiveQuestsTool
-GetCardTool
+### Task 14: Cross-host qualification pack (`0.0.14`)
+
+**Files:**
+- Update `docs/integrations/*.md` with verified release evidence
+- Optional test scripts only if a host exposes practical automation
+
+- [ ] **Step 1: Re-check each host's current official MCP documentation** at RC time.
+- [ ] **Step 2: Smoke VS Code** local stdio/project binding/tool lifecycle.
+- [ ] **Step 3: Smoke JetBrains AI Assistant.**
+- [ ] **Step 4: Smoke Zed.**
+- [ ] **Step 5: Smoke Cursor.**
+- [ ] **Step 6: Smoke Claude Code.**
+- [ ] **Step 7: Record host/version/OS/transport/binding/results/date.**
+- [ ] **Step 8: Promote only evidence-backed hosts to Qualified; leave others Documented.**
+- [ ] **Step 9: Commit.** `docs: record host qualification matrix`
+
+---
+
+### Task 15: Architecture/privacy/dependency/package gates (`0.1.0-rc.1`)
+
+**Files:**
+- Expand `HeroPassport.Architecture.Tests`
+- Add package/publish smoke scripts/config
+- Update release docs
+
+- [ ] **Step 1: Add layer-reference tests.**
+- [ ] **Step 2: Add static gate against assembly-wide MCP discovery.**
+- [ ] **Step 3: Add stale-contract scan** for retired/current-incorrect terms from `TESTING-QUALITY.md`.
+- [ ] **Step 4: Add privacy schema/log/export deny-list tests.**
+- [ ] **Step 5: Add dependency gate** Central Package Management/locked restore/NuGet vulnerability audit/no MCP ASP.NET package.
+- [ ] **Step 6: Publish supported artifacts and run them on target OS/RID matrix.** Record actual `sqlite_version()` from each artifact.
+- [ ] **Step 7: Verify every normal artifact qualifies SQLite >=3.51.3.**
+- [ ] **Step 8: Run DB stress/crash/backup suite repeatedly enough to catch race regressions.**
+- [ ] **Step 9: Capture startup latency/RSS/tool schema/result size budgets as release evidence, not speculative hard claims.**
+- [ ] **Step 10: Commit.** `test: add release fitness gates`
+
+---
+
+### Task 16: `0.1.0` qualification and release
+
+**Files:**
+- Update `README.md`, `ROADMAP.md`, release notes/changelog if introduced
+- Tag/package metadata after all gates succeed
+
+- [ ] **Step 1: Clean locked restore.**
+
+```bash
+dotnet restore --locked-mode
 ```
 
-**Steps**
+- [ ] **Step 2: Release build.**
 
-- [ ] **1. Write failing manifest test** expecting exact names/order and exactly four tools.
-- [ ] **2. Configure official MCP SDK** with stdio and `ProtocolVersion` left null/unset. Do not reference ASP.NET MCP package.
-- [ ] **3. Register tool types explicitly** through official SDK type/generic APIs. No `WithToolsFromAssembly` catch-all.
-- [ ] **4. Register server instructions** whose first 512 chars contain complete lifecycle/privacy semantics.
-- [ ] **5. Implement strict input DTOs** and confirm generated schemas meet conservative profile/deny-list.
-- [ ] **6. Implement `McpOperationContextResolver`** from startup project/hero binding plus bounded SDK client metadata where available.
-- [ ] **7. Implement tool adapters**: map -> Application -> render -> structured/text MCP result; no EF/domain math in tools.
-- [ ] **8. Set accurate annotations.** Tasks unsupported.
-- [ ] **9. Set public list cache scope and initial 300000ms TTL through SDK-supported metadata only where protocol supports it. Do not hardcode behavior into HP-MCP DTOs.
-- [ ] **10. Generate canonical contract snapshots** into `contracts/mcp/hp-mcp-2/` from actual manifest/schema.
-- [ ] **11. Write stale/forbidden schema tests** including no `workspacePath`, `schemaVersion`, `heroId`, `projectId`, `agentHint`, generic metadata bags.
-- [ ] **12. Spawn executable and assert MCP stdout protocol purity.**
-- [ ] **13. Commit:** `feat: add hp-mcp-2 stdio contract`.
-
----
-
-## Task 11 — MCP revision compatibility and Inspector (`0.0.10` continued)
-
-**Files**
-
-- `HeroPassport.Contract.Tests/Protocol/*`
-- release/test scripts as appropriate
-
-**Steps**
-
-- [ ] **1. Build an official C# SDK client test path using protocol `2026-07-28`.** Verify tools/start/list/finish/card.
-- [ ] **2. Build/force a `2025-11-25` initialize-era compatibility path** using supported SDK test hooks/options and verify equivalent Hero Passport semantics.
-- [ ] **3. Add assertion that product server configuration never sets `ProtocolVersion` to a concrete value.
-- [ ] **4. Assert application outcome is unchanged across protocol eras for the same operation fixture.
-- [ ] **5. Run current MCP Inspector** against packaged/built stdio server; record command/script in `TESTING-QUALITY.md`/developer docs if needed.
-- [ ] **6. Verify 2026 cache metadata does not break older protocol serialization through SDK compatibility.
-- [ ] **7. Commit:** `test: qualify mcp revision compatibility`.
-
----
-
-## Task 12 — Codex qualification and host-neutral AgentEvals (`0.0.11`)
-
-**Files**
-
-- `tests/HeroPassport.AgentEvals/Scenarios/*`
-- Codex runner/harness
-- `docs/integrations/CODEX.md` evidence updates
-
-**Steps**
-
-- [ ] **1. Install/register built Hero Passport into current Codex using native config with explicit project binding.
-- [ ] **2. E2E exact four-tool discovery.**
-- [ ] **3. Run new start -> finish -> card scenario and assert DB/XP.
-- [ ] **4. Run same-task duplicate start -> same quest ID.
-- [ ] **5. Run distinct parallel tasks -> two IDs, list both.
-- [ ] **6. Restart server/agent context -> list recovery -> finish selected quest.
-- [ ] **7. Run finish retry -> exactly one XP event.
-- [ ] **8. Create host-neutral eval scenario definitions** for meaningful work, tiny factual no-op, parallel/reuse/recovery/privacy/card.
-- [ ] **9. Implement Codex runner** that captures tool sequence/args and DB outcome without depending on exact prose beyond bounded expected behavior.
-- [ ] **10. Record Codex version/OS/date and mark tested release candidate Qualified only after pass.
-- [ ] **11. Commit:** `test: qualify codex and agent lifecycle`.
-
----
-
-## Task 13 — Cross-host integration smoke pack (`0.0.12`)
-
-**Files**
-
-- update `docs/integrations/*.md` with evidence blocks
-- optional manual smoke checklist script/templates under `tests/HostSmoke/` or `docs/testing/`
-
-**Steps**
-
-- [ ] **1. Recheck current official docs** for VS Code, JetBrains, Zed, Cursor and Claude Code; update config examples if schemas changed.
-- [ ] **2. Smoke VS Code** project binding + four-tool lifecycle on an available supported OS.
-- [ ] **3. Smoke JetBrains** project-level Working directory + lifecycle.
-- [ ] **4. Smoke Zed** `--project-root` local configuration + lifecycle.
-- [ ] **5. Smoke Cursor** current documented local stdio config + lifecycle.
-- [ ] **6. Smoke Claude Code** current native MCP config/scope + lifecycle.
-- [ ] **7. Record failures/caveats honestly.** Only tested environments become Qualified; others stay Documented/protocol-compatible.
-- [ ] **8. Do not add host-specific packages/runtime branches to make a smoke pass; fix standard MCP interop or document host limitation.
-- [ ] **9. Commit:** `docs: record mcp host qualification evidence`.
-
----
-
-## Task 14 — Architecture/privacy/dependency fitness gates (`0.0.13`)
-
-**Files**
-
-- Architecture/Contract tests
-- CI workflow/config when repository CI is introduced
-
-**Steps**
-
-- [ ] **1. Layer-reference tests** for Domain/Application restrictions.
-- [ ] **2. Static/reference test for no assembly-wide MCP discovery.**
-- [ ] **3. Stale-v2 scan** rejects active `hero.current_quest`, `CurrentQuestTool`, `GetCurrentQuestHandler` and one-open-per-project constraint outside clearly historical docs.
-- [ ] **4. Protocol policy test** rejects concrete `ProtocolVersion` assignment in production server config.
-- [ ] **5. Privacy schema/log/export deny-list tests.
-- [ ] **6. Dependency gate** rejects unapproved direct package versions/out-of-CPM package refs and runs NuGet vulnerability audit.
-- [ ] **7. HTTP dependency gate** verifies no `ModelContextProtocol.AspNetCore` in 0.1 project graph.
-- [ ] **8. Native SQLite version/PRAGMA doctor fixture.
-- [ ] **9. Commit:** `test: enforce architecture and privacy contracts`.
-
----
-
-## Task 15 — `0.1.0-rc.1` release qualification
-
-**Files**
-
-- release notes/changelog if established
-- package metadata/tool packaging
-- CI/release scripts
-- qualification evidence docs
-
-**Steps**
-
-- [ ] **1. Pack/install the .NET tool into a clean isolated environment.
-- [ ] **2. Run locked restore/build/full tests + audit.
-- [ ] **3. Run fresh DB and previous-version/migration fixture suite.
-- [ ] **4. Run MCP 2026 + 2025 compatibility tests and contract snapshot check.
-- [ ] **5. Run MCP Inspector.
-- [ ] **6. Run Codex E2E and AgentEvals.
-- [ ] **7. Run packaging matrix on Windows/Linux/macOS; include paths with spaces/unicode and actual native SQLite load.
-- [ ] **8. Run/record other host smoke matrix according to available environments.
-- [ ] **9. Verify docs have no active contradictions/stale v2 normative references.
-- [ ] **10. Freeze feature scope; only fix release blockers after RC.
-- [ ] **11. Commit/tag RC following repository release policy.
-
----
-
-## Task 16 — `0.1.0` Portable Local MCP Core
-
-**Release definition**
-
-```text
-one portable dotnet tool
-local stdio HP-MCP/2
-four static tools
-multi-agent-safe quest lifecycle
-SQLite durable progression
-CLI/doctor
-Codex Qualified
-other hosts honestly tiered
-no source/diff/raw-log ingestion
-no own HTTP/public API
+```bash
+dotnet build --configuration Release --no-restore
 ```
 
-**Steps**
+- [ ] **Step 3: Deterministic test suites.**
 
-- [ ] **1. Resolve every RC-blocking defect without scope expansion.
-- [ ] **2. Re-run all release qualification gates.
-- [ ] **3. Confirm public docs/version axes: Product 0.1.0, HP-MCP/2, rule/key versions and negotiated MCP policy.
-- [ ] **4. Confirm NuGet package/readme metadata and installation instructions.
-- [ ] **5. Publish release only after artifact/install smoke succeeds from the published package.
-- [ ] **6. Record final host qualification matrix and known limitations.
+```bash
+dotnet test --configuration Release --no-build
+```
+
+- [ ] **Step 4: Run separate crash/concurrency/backup qualification suite** using real file DBs/child processes.
+- [ ] **Step 5: Run contract/protocol/Inspector/Codex E2E qualification.**
+- [ ] **Step 6: Review generated HP-MCP snapshots against `WIRE-CONTRACT.md`.**
+- [ ] **Step 7: Review project-identity golden evidence including linked worktrees.**
+- [ ] **Step 8: Verify published artifact SQLite versions/PRAGMAs/doctor.**
+- [ ] **Step 9: Verify privacy search on artifacts/docs/log fixtures.**
+- [ ] **Step 10: Record host qualification matrix and known caveats.**
+- [ ] **Step 11: Update docs from evidence only; do not claim unexecuted support/tests.**
+- [ ] **Step 12: Commit/tag release.** `chore: release hero passport 0.1.0`
 
 ---
 
-# Post-0.1 plans — not implementation tasks in this plan
+## Plan self-review checklist
 
-## 0.1.1 Integration/distribution polish
-
-Only evidence-driven:
+Before execution begins, verify:
 
 ```text
-integration show <host> snippet renderer
-broader automated host smoke
-MCP Registry publication if preview maturity/package identity are acceptable
-additional Qualified hosts
+No LogicalQuestKeyV1 implementation task
+No case-folded goal dedup
+No start idempotent=true
+No human-only TextContent success fallback
+No reliance on DataAnnotations for runtime validation
+No deferred read->write invariant transaction
+No active DB File.Copy backup
+No manual WAL/SHM deletion
+No remote URL/path project identity
+No SQLite runtime assumption without sqlite_version proof
+No model workspacePath/heroId/projectId reintroduction
 ```
 
-## 0.2.0 Blazor dashboard
-
-Separate design/spec/plan. Uses Application/read models; no DbContext in components.
-
-## Streamable HTTP
-
-Separate design/spec/plan only after `DEPLOYMENT-MODES.md` trigger. Add ASP.NET MCP package then, configure explicit stateless HTTP mode, project/auth binding and network security. Do not add legacy SSE.
-
-## Public/multi-tenant
-
-Separate product architecture: OAuth/principal authorization/tenant isolation/remote storage/backups/rate limits. Local SQLite schema is not assumed to be hosted tenancy architecture.
-
----
-
-# Final plan self-review checklist
-
-Before executing Task 1, verify these plan invariants against normative docs:
-
-```text
-[ ] no current_quest implementation task
-[ ] no single-open-quest constraint
-[ ] no ProtocolVersion=2026-07-28 pin
-[ ] no Roots dependency
-[ ] no workspacePath MCP input
-[ ] no ASP.NET MCP in 0.1 dependencies
-[ ] no per-host runtime adapter
-[ ] same-key start race tested
-[ ] active-cap race tested
-[ ] finish race/context mismatch tested
-[ ] contract snapshots generated from actual SDK
-[ ] both protocol eras tested
-[ ] Codex qualification distinct from other host support claims
-```
-
-If any implementation discovery contradicts an official stable SDK/spec behavior, stop that task, document the concrete discrepancy, update the relevant normative spec/ADR first, then resume with one coherent contract rather than adding a compatibility hack silently.
+This plan is subordinate to normative architecture/deep-dive specs. If official SDK/provider behavior differs during implementation, stop the affected task, reproduce the discrepancy with a focused test, update the normative spec/ADR, then continue.

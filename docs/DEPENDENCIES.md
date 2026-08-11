@@ -1,24 +1,22 @@
 # Hero Passport — Dependency Decisions
 
-**Status:** Accepted v3 baseline  
+**Status:** Accepted v3.1 baseline  
 **Snapshot:** 2026-08-11
 
 ## 1. Policy
 
-A dependency is added only when it provides a concrete capability that is materially better than .NET/BCL/direct code and its operational/security cost is understood.
-
-Requirements:
+Add a dependency only for a concrete capability materially better than BCL/framework/direct code.
 
 ```text
-stable release by default
+stable by default
 Central Package Management
 committed lock files
 vulnerability audit
-explicit package ownership in one project/layer
-no transitive reliance for critical native SQLite version
+one explicit owning layer/project
+critical native behavior verified, not assumed transitively
 ```
 
-Preview dependencies require an ADR with removal/upgrade plan.
+Preview dependencies require an ADR/removal plan.
 
 ---
 
@@ -35,48 +33,42 @@ Microsoft.EntityFrameworkCore.Design        10.0.10 private/dev
 SQLitePCLRaw.bundle_e_sqlite3               3.0.5
 System.CommandLine                           2.0.10
 xunit.v3                                     3.2.2
-xunit.runner.visualstudio                    3.1.5 private compatibility
+xunit.runner.visualstudio                    3.1.5 private compatibility if required
 ```
 
-Use current framework-provided/BCL capabilities where possible:
+BCL/framework first:
 
 ```text
-Generic Host
-Microsoft.Extensions.DependencyInjection
-Microsoft.Extensions.Logging
-Options
+Generic Host / DI / Logging / Options
 TimeProvider
 System.Text.Json
-Guid.CreateVersion7()
+Guid.CreateVersion7
+System.Text.Rune
 SHA256
+RandomNumberGenerator
+ProcessStartInfo.ArgumentList
+Directory.ResolveLinkTarget
 ```
-
-Actual native SQLite version must be verified at runtime/tests using `sqlite_version()`.
 
 ---
 
 ## 3. `ModelContextProtocol`
 
-**Decision:** ACCEPT.
+**Decision:** ACCEPT official stable 2.0.0.
 
-Reasons:
-
-- official C# SDK;
-- current stable 2.0 release implements MCP 2026-07-28 and compatibility paths;
-- typed server/tool abstractions;
-- stdio support;
-- future ASP.NET integration exists without requiring us to use it now.
-
-Implementation rules:
+Rules:
 
 ```text
-ordinary server ProtocolVersion unset/null
+ProtocolVersion unset/null
 explicit four-tool registration
-no assembly-wide scanning
-no SDK session state used as application state
+no session state as Application state
+exact CallToolResult success/error representation from WIRE-CONTRACT.md
+explicit runtime argument validation
 ```
 
-Do not fork/hand-roll JSON-RPC/MCP framing.
+Important: official C# SDK schema/DataAnnotations can shape advertised schema but **do not enforce runtime argument validation**. Do not add a validation library merely to compensate; current validation surface is small and explicit.
+
+No hand-rolled MCP/JSON-RPC.
 
 ---
 
@@ -84,17 +76,9 @@ Do not fork/hand-roll JSON-RPC/MCP framing.
 
 **Decision:** DEFER.
 
-Not a 0.1 dependency.
+Not a 0.1 package. Add only for an approved Streamable HTTP deployment profile.
 
-Add only when `DEPLOYMENT-MODES.md` Profile C or D is actually implemented.
-
-Why defer:
-
-- stdio covers local coding hosts;
-- OpenAI Secure MCP Tunnel can reach private stdio for that integration path;
-- HTTP introduces network/auth/project-binding/security concerns that are not solved by adding the package.
-
-When added, keep it in the HTTP host/composition boundary, not Domain/Application.
+HTTP brings auth/origin/project-binding/security work not solved by package installation.
 
 ---
 
@@ -102,174 +86,132 @@ When added, keep it in the HTTP host/composition boundary, not Domain/Applicatio
 
 **Decision:** ACCEPT.
 
-Why:
+Use:
 
-- mapping + migrations + projections in one supported stack;
-- local single-user data model is relational;
-- future Blazor reads can reuse Application/Infrastructure;
-- mature migration tooling.
+```text
+IDbContextFactory
+short-lived contexts
+EF migrations
+real file-backed integration tests
+```
 
-Use `IDbContextFactory` and short-lived contexts.
+Do not use EF InMemory as SQLite correctness evidence.
 
-Do not use EF InMemory for SQLite semantics.
+Selected Microsoft.Data.Sqlite 10.0.10 transaction behavior is explicitly qualified: non-deferred Serializable transaction uses immediate writer intent for our mutation use cases. Re-test on provider upgrade.
 
 ---
 
 ## 6. SQLitePCLRaw bundle
 
-**Decision:** ACCEPT direct pin.
+**Decision:** ACCEPT direct pin 3.0.5.
 
-Reason: native SQLite security/correctness version matters and should not be an opaque transitive detail.
+Native SQLite correctness/security version is an explicit release concern.
 
-Current baseline is 3.0.5 with a modern SQLite dependency. Build/release tests still query actual loaded `sqlite_version()`.
+Every normal published artifact queries actual:
+
+```sql
+SELECT sqlite_version();
+```
+
+v3.1 supported WAL floor:
+
+```text
+>=3.51.3
+```
+
+because upstream SQLite documents the WAL-reset corruption fix beginning there. NuGet package version is never accepted as proof of which native library actually loaded.
 
 ---
 
 ## 7. System.CommandLine
 
-**Decision:** ACCEPT.
+**Decision:** ACCEPT 2.0.10.
 
-CLI responsibilities are parsing/help/exit codes and clean adapters. This is preferable to maintaining a custom parser.
-
-Do not let CLI attributes/types leak into Application.
+Own parsing/help/exit codes only; no CLI types in Application.
 
 ---
 
 ## 8. xUnit.net v3
 
-**Decision:** ACCEPT.
+**Decision:** ACCEPT 3.2.2.
 
-Use for deterministic unit/integration/process/architecture tests. Keep `dotnet test` release flow and current Microsoft Testing Platform compatibility.
+Use for unit/integration/process/crash/architecture/contract suites. Long-running AgentEvals stay separately categorized.
 
 ---
 
 ## 9. MediatR
 
-**Decision:** REJECT baseline.
-
-Four core commands/queries do not justify an indirection bus. Direct typed handlers make call graphs clearer to humans and coding agents.
-
-Revisit only if there are many independent cross-cutting pipelines with demonstrated duplication that cannot be solved cleanly through ordinary composition.
-
----
+**Decision:** REJECT baseline.  
+Direct typed handlers are clearer for a four-operation core.
 
 ## 10. FluentValidation
 
-**Decision:** DEFER/REJECT baseline.
-
-We already have:
-
-```text
-JSON Schema boundary validation
-small semantic validators
-Options/config validation
-Domain invariants
-```
-
-Revisit if validation rules become numerous/reused enough to justify a dedicated DSL.
-
----
+**Decision:** REJECT/DEFER baseline.  
+SafeText/UUID/enums/metrics/config have small explicit validators. Revisit only if validation surface grows materially.
 
 ## 11. AutoMapper
 
-**Decision:** REJECT baseline.
-
-Explicit mapping is valuable at privacy/public-contract boundaries. We want code review to see exactly what crosses EF -> Application -> MCP.
-
----
+**Decision:** REJECT baseline.  
+Explicit mappings are a privacy/public-contract safeguard.
 
 ## 12. Dapper
 
-**Decision:** REJECT baseline.
-
-Do not create dual persistence stacks without a measured query problem. EF projections/raw SQL in localized Infrastructure code are sufficient initially.
-
-Revisit only after profiling a real hot query or unsupported mapping shape.
-
----
+**Decision:** REJECT baseline.  
+Avoid dual persistence stacks; localized EF/raw SQL is sufficient.
 
 ## 13. Polly
 
-**Decision:** REJECT baseline.
-
-No remote API dependency in MVP. SQLite already has busy/timeout behavior. Generic retries around write use cases can duplicate effects if applied incorrectly.
-
-Use explicit idempotency and narrowly scoped transient handling instead.
-
----
+**Decision:** REJECT baseline.  
+Microsoft.Data.Sqlite already applies busy/locked timeout retry behavior. Generic retries around writer transactions can extend stalls or duplicate effects.
 
 ## 14. Serilog/NLog
 
-**Decision:** REJECT baseline.
-
-`Microsoft.Extensions.Logging` covers stderr/optional local diagnostics. Add a richer sink stack only if structured rotation/sinks become a real requirement.
-
----
+**Decision:** REJECT baseline.  
+Built-in logging is enough for path/payload-safe local diagnostics initially.
 
 ## 15. Spectre.Console
 
-**Decision:** DEFER.
-
-Pretty CLI is secondary to predictable stdout/stderr/`--json` and strict MCP stdout isolation. Add only after baseline CLI is stable.
-
----
+**Decision:** DEFER.  
+Pretty CLI is secondary to stdout/stderr correctness.
 
 ## 16. OpenTelemetry exporters
 
-**Decision:** DEFER.
-
-Keep `System.Diagnostics` seams. A local single-user product does not need a remote telemetry exporter by default. Future hosted HTTP may revisit observability separately.
-
----
+**Decision:** DEFER.  
+Keep `System.Diagnostics` seams; no remote telemetry by default.
 
 ## 17. Testcontainers
 
-**Decision:** REJECT for SQLite integration tests.
-
-Use real file-backed SQLite on the host. Containers add indirection without improving fidelity for an embedded DB.
-
----
+**Decision:** REJECT for SQLite.  
+Real local file-backed SQLite has higher fidelity for the embedded DB.
 
 ## 18. REST/OpenAPI libraries
 
-**Decision:** REJECT baseline.
+**Decision:** REJECT baseline.  
+MCP is language-neutral agent integration; separate public REST needs a real consumer/design.
 
-Hero Passport does not add a REST API for hypothetical portability. MCP is the language-neutral agent integration; CLI/Web use their own adapter semantics.
+## 19. OAuth/server auth libraries
 
-If a real non-MCP remote consumer appears, design that API explicitly rather than leaking internal DTOs.
-
----
-
-## 19. OAuth libraries/server frameworks
-
-**Decision:** NOT 0.1.
-
-stdio does not use MCP HTTP authorization. Future remote HTTP should integrate standard ASP.NET/auth middleware and MCP authorization requirements rather than inventing a custom token protocol.
-
-Package selection belongs to the HTTP architecture review.
-
----
+**Decision:** NOT 0.1.  
+Future HTTP uses standard ASP.NET/MCP authorization design, not a custom token layer.
 
 ## 20. Host-specific SDKs
 
-**Decision:** REJECT by default.
-
-Do not add Codex/VS Code/Cursor/Claude/JetBrains/Zed SDK dependencies just to register the MCP server. Standard MCP + configuration is the portability mechanism.
-
-A host-specific SDK is justified only for a genuinely non-MCP capability that has explicit product value.
+**Decision:** REJECT by default.  
+Standard MCP + host config is the integration mechanism. Add a host SDK only for a concrete non-MCP product capability.
 
 ---
 
 ## 21. Dependency upgrade procedure
 
-For each upgrade:
+Every upgrade:
 
-1. inspect release notes/security/advisories;
+1. read official release/security notes;
 2. confirm stable status;
-3. update central version + lock files;
-4. run build/full impacted tests;
-5. for MCP SDK: run both protocol-era compatibility, manifest snapshots, Inspector and Codex E2E;
-6. for EF/SQLite: run fresh/upgrade DB, concurrency and native-version checks;
-7. update this document/reference snapshot when architecture-relevant behavior changes.
+3. update central version + locks;
+4. locked restore/build/impacted tests;
+5. MCP SDK upgrade: schemas/results/2026+2025/Inspector/Codex E2E;
+6. EF/Microsoft.Data.Sqlite upgrade: re-prove immediate-writer behavior, migrations, races, crash/backup;
+7. SQLite/native upgrade: verify actual loaded version and full WAL/concurrency suite;
+8. update ADR/spec when behavior changes.
 
-Do not perform blind “latest all packages” updates in the same change as domain/API behavior.
+Do not combine blind mass dependency upgrades with public contract/rule changes.

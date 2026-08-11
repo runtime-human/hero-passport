@@ -2,18 +2,18 @@
 
 > Portable local-first RPG passport for AI coding agents.
 
-Hero Passport turns meaningful agent work into persistent RPG progression without collecting source code or requiring a cloud account. The product is **MCP-portable, Codex-qualified first**: Codex is the reference client used for automated acceptance, while the MCP contract is intentionally host-neutral and designed for compatible local clients such as VS Code, JetBrains AI Assistant, Zed, Cursor and Claude Code.
+Hero Passport turns meaningful AI-agent work into persistent RPG progression without collecting source code or requiring a cloud account. Codex is the first Qualified reference host; HP-MCP/2 is host-neutral.
 
 ```text
 AI/MCP host
-   -> hero.start_quest
-   -> normal agent work
-   -> hero.finish_quest
-   -> compact RPG status
-   -> local SQLite history
+  -> hero.start_quest
+  -> normal agent work
+  -> hero.finish_quest
+  -> deterministic local RPG progression
+  -> SQLite history
 ```
 
-Example:
+Example presentation:
 
 ```text
 ✨ +95 XP · Nova ур.1 · XP 95/100 · Доверие 51 · Риск 19
@@ -25,36 +25,30 @@ Example:
 C# 14 / .NET 10 LTS
 .NET SDK 10.0.302
 official ModelContextProtocol C# SDK 2.0.0
-preferred MCP semantics: 2026-07-28
-protocol negotiation: unpinned / SDK compatibility negotiation
+preferred MCP semantics 2026-07-28; protocol unpinned for SDK compatibility
 EF Core SQLite 10.0.10
 SQLitePCLRaw.bundle_e_sqlite3 3.0.5
 System.CommandLine 2.0.10
 xUnit.net v3 3.2.2
 ```
 
-Hero Passport is a modular monolith:
-
 ```text
-HeroPassport.Domain
-        ^
-        |
-HeroPassport.Application
-        ^
-        |
-HeroPassport.Infrastructure
-        ^
-        |
-HeroPassport.App
+Domain
+  ^
+Application
+  ^
+Infrastructure
+  ^
+App (CLI + MCP stdio + presentation)
 
-HeroPassport.Web -> Application   # 0.2.0
+Web -> Application   # 0.2+
 ```
 
-MCP is an **adapter over the application**, not the architecture of the whole product.
+MCP is an adapter over transport-neutral Application semantics, not the architecture of the whole product.
 
 ## HP-MCP/2
 
-The 0.1.0 MCP surface is exactly four explicitly registered tools, in stable order:
+Exactly four explicitly registered tools:
 
 ```text
 hero.start_quest
@@ -63,141 +57,121 @@ hero.list_active_quests
 hero.get_card
 ```
 
-Key contract properties:
+Current exact wire behavior is specified in [`docs/WIRE-CONTRACT.md`](docs/WIRE-CONTRACT.md).
 
-- explicit `questId` carries workflow state across calls;
-- multiple distinct quests may be open for the same hero/project;
-- repeated starts for the same logical work item converge to the same open quest;
-- completed quests reward exactly once;
-- protocol/session state is never required for application correctness;
-- strict, shallow, bounded JSON Schema inputs;
-- `structuredContent` is canonical machine output;
-- concise text content is the human/compatibility representation;
-- tool inventory is static, deterministic and explicitly registered;
-- source code, diffs, raw logs, prompts, secrets, environment bags and workspace paths are absent from tool schemas.
+Important properties after the v3.1 deep dive:
 
-See [`docs/MCP-CONTRACT.md`](docs/MCP-CONTRACT.md) and [`docs/API-CONTRACTS.md`](docs/API-CONTRACTS.md).
+- `start_quest` is **not** advertised MCP-idempotent; it is only retry/dedup-safe while the same normalized declaration remains open;
+- multiple distinct quests may be open for one hero/project, capped at 16;
+- `QuestDedupKeyV1` hashes `questType + SafeTextV1(goal)` with **case preserved**;
+- successful MCP calls return typed `structuredContent` plus one minified JSON TextContent representing the same object for backward compatibility;
+- tool/business errors return `isError=true` + safe TextContent and no structuredContent;
+- runtime validators explicitly enforce bounds/UUID/text rules because C# SDK schema annotations do not validate arguments at runtime;
+- no source/diff/log/path/secret fields exist in tool contracts.
 
-## Portable local integration
+## Project identity
 
-The 0.1.0 runtime transport is stdio. A local host starts:
+Project binding is local launch state:
 
 ```text
-hero-passport mcp [--project-root <path>] [--hero <name-or-id>]
+hero-passport mcp [--project-root <path>] [--hero <selector>]
 ```
 
-Project binding is a **launch concern**, not model input:
+Git-aware identity is specified in [`docs/PROJECT-IDENTITY.md`](docs/PROJECT-IDENTITY.md):
+
+- linked Git worktrees share one project through canonical `git-common-dir`;
+- ordinary nested cwd maps to the whole Git repository;
+- explicit `--project-root` inside a monorepo creates a deliberate repo-relative scope;
+- submodules/nested repositories are separate by default;
+- Git safety failures never silently become standalone identities;
+- full paths and remote URLs are not persisted.
+
+## Persistence reliability
+
+SQLite is authoritative local state. [`docs/PERSISTENCE-RELIABILITY.md`](docs/PERSISTENCE-RELIABILITY.md) fixes the write protocol:
 
 ```text
-explicit --project-root
-    > host-provided process working directory
-    > Git root discovery from that directory
-    > working-directory fallback
+read-modify-write operation
+  -> short non-deferred Serializable transaction
+  -> selected Microsoft.Data.Sqlite 10.0.10 behavior: BEGIN IMMEDIATE
+  -> read/check/write
+  -> COMMIT
 ```
 
-`--project-root` exists because MCP host configuration formats differ and not every host provides the same working-directory primitive. Absolute workspace paths remain local process configuration and are not returned through MCP or persisted as project identity.
+This makes the 16-active-quest cap and finish idempotency race-safe without a custom mutex.
 
-Host configuration is intentionally thin. Hero Passport does not ship Codex-, Cursor-, JetBrains- or Claude-specific runtime adapters. See [`docs/integrations/README.md`](docs/integrations/README.md).
+Operational baseline:
 
-## Protocol compatibility
+```text
+WAL
+synchronous=FULL
+foreign_keys=ON
+Default Timeout=5
+local filesystem only for writable supported DB
+actual sqlite_version() qualification >= 3.51.3
+```
 
-Hero Passport targets the semantics of MCP `2026-07-28`, including explicit application state handles, deterministic/cacheable lists and stateless protocol design, but **does not pin the C# SDK server `ProtocolVersion` to `2026-07-28`**. Leaving protocol version negotiation unpinned lets the official SDK interoperate with supported initialize-era clients as well as 2026 clients.
-
-The application itself is transport/session independent. A future Streamable HTTP host will explicitly use the SDK's stateless transport mode.
+Live database backup never uses raw `File.Copy`; use SQLite's online backup API and verify the result. WAL/SHM recovery files are never manually deleted.
 
 ## Privacy
 
-Hero Passport does not intentionally request or persist:
+Hero Passport does not intentionally request/persist:
 
 ```text
-source code
-file contents
+source/file contents
 diffs/patches
-changed-file bodies
-raw terminal/build/test logs
+raw build/test/terminal logs
 full prompts/chat history
-API keys/secrets
+API keys/secrets/tokens
 environment dumps
 full workspace paths
+Git remote URLs
 arbitrary metadata/context bags
 ```
 
-It stores bounded quest metadata and game state locally.
-
-## Persistence
-
-SQLite is authoritative local state.
-
-Core guarantees:
-
-```text
-short-lived IDbContextFactory contexts
-short synchronous SQLite segments
-WAL + synchronous=FULL + foreign_keys=ON
-one atomic FinishQuest transaction
-UNIQUE xp_events.quest_id
-finished retry returns original stored result
-logical open-quest uniqueness per hero/project/work item
-EF migrations from migration 0001
-EF migration locking; no custom migration mutex
-```
-
-## Deployment boundaries
+## Deployment boundary
 
 ```text
 0.1.0  local stdio MCP + CLI
-0.1.1  integration/distribution polish and broader host qualification
+0.1.1  broader host qualification/distribution polish
 0.2.0  local Blazor dashboard
-later   Streamable HTTP only after a concrete deployment requirement
+later   own Streamable HTTP only after a concrete requirement
 ```
 
-Private OpenAI surfaces can already reach a private stdio server through OpenAI Secure MCP Tunnel, so Hero Passport does not need to rush an HTTP listener merely for remote ChatGPT/Codex access.
-
-Public/multi-tenant HTTP is a separate security/product architecture: principal identity, hero/project authorization, tenant isolation and remote persistence are not smuggled into the local MVP.
-
-## Development philosophy
-
-Modernity means current protocol semantics, strong contracts, portability and explicit boundaries—not maximum framework count.
-
-Not baseline dependencies:
-
-```text
-MediatR
-FluentValidation
-AutoMapper
-Dapper
-Polly
-Serilog/NLog
-OpenTelemetry exporters
-runtime plugin frameworks
-CQRS/event-bus frameworks
-```
-
-See [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md).
+Private OpenAI surfaces can use OpenAI Secure MCP Tunnel to the local server; public/multi-tenant HTTP remains a separate authorization/storage architecture.
 
 ## Documentation
 
 Start with [`docs/README.md`](docs/README.md).
 
-Primary normative documents:
+The three high-risk deep dives are:
+
+- [`docs/PROJECT-IDENTITY.md`](docs/PROJECT-IDENTITY.md)
+- [`docs/PERSISTENCE-RELIABILITY.md`](docs/PERSISTENCE-RELIABILITY.md)
+- [`docs/WIRE-CONTRACT.md`](docs/WIRE-CONTRACT.md)
+
+Other normative files:
 
 - [`docs/PRODUCT-SPEC.md`](docs/PRODUCT-SPEC.md)
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - [`docs/API-CONTRACTS.md`](docs/API-CONTRACTS.md)
 - [`docs/MCP-CONTRACT.md`](docs/MCP-CONTRACT.md)
-- [`docs/INTEROPERABILITY.md`](docs/INTEROPERABILITY.md)
+- [`docs/ENGINE-SPEC.md`](docs/ENGINE-SPEC.md)
 - [`docs/DATA-MODEL.md`](docs/DATA-MODEL.md)
 - [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
-- [`docs/DEPLOYMENT-MODES.md`](docs/DEPLOYMENT-MODES.md)
-- [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md)
 - [`docs/SECURITY-PRIVACY.md`](docs/SECURITY-PRIVACY.md)
 - [`docs/TESTING-QUALITY.md`](docs/TESTING-QUALITY.md)
-- [`docs/ROADMAP.md`](docs/ROADMAP.md)
+- [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md)
+- [`docs/DEPLOYMENT-MODES.md`](docs/DEPLOYMENT-MODES.md)
+- [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md)
 - [`docs/DECISION-LOG.md`](docs/DECISION-LOG.md)
+- [`docs/REFERENCES.md`](docs/REFERENCES.md)
+- [`docs/integrations/README.md`](docs/integrations/README.md)
+- [`docs/superpowers/plans/2026-08-10-hero-passport-implementation.md`](docs/superpowers/plans/2026-08-10-hero-passport-implementation.md)
 
-## Status
+## Current status
 
-Architecture/specification phase. Production implementation intentionally begins only from the reviewed contract and implementation plan.
+Architecture/specification phase. No product implementation is intentionally mixed into this documentation PR, so no product build/test claim is made yet.
 
 ## License
 

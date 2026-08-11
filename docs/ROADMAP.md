@@ -1,148 +1,155 @@
 # Hero Passport — Roadmap
 
-**Status:** Accepted architecture v3 roadmap  
+**Status:** Accepted architecture v3.1 roadmap  
 **Snapshot:** 2026-08-11
 
 ## Guiding rule
 
-Ship a correct portable local core before dashboard, HTTP, plugins or hosted features. Each milestone ends with executable evidence and a coherent public/internal contract.
+Ship a correct portable local core before dashboard, HTTP, plugins or hosted features. Every milestone ends with executable evidence and must conform to the three deep-dive contracts.
 
 ---
 
 ## 0.0.1 — Reproducible foundation
 
-Deliver:
-
 ```text
-net10.0 solution/projects
-global.json SDK 10.0.302
+net10.0 projects
+SDK 10.0.302
 Central Package Management
 lock files
-.editorconfig/analyzers
-xUnit v3 test projects
+xUnit v3 projects
 architecture test skeleton
 ```
 
-Gate: clean locked restore/build/test on supported dev OS.
+Gate: clean restore/build/test scaffold.
 
 ---
 
-## 0.0.2 — Domain vocabulary and v3 contract types
-
-Deliver:
+## 0.0.2 — Domain vocabulary
 
 ```text
-typed IDs
-quest/result/skill keys
-Hero/Project/Quest domain state
-HeroOperationContext Application type
-stable HeroError model
-LogicalQuestKeyV1 canonicalization + goldens
+typed Hero/Project/Quest IDs
+quest/result/status keys
+JSON-safe integer ceiling
+pure domain boundaries
 ```
 
-Gate: no infrastructure/MCP leakage; logical-key deterministic cross-platform tests.
+Gate: no MCP/EF/config leakage.
 
 ---
 
-## 0.0.3 — Reward/levels
-
-Deliver deterministic reward engine and 95-XP golden.
-
-Gate: all boundary/golden tests.
-
----
-
-## 0.0.4 — Skills, Trust/Risk, traits
-
-Deliver canonical normalization/allocation and initial trait progression.
-
-Gate: exact XP conservation and rule version tests.
-
----
-
-## 0.0.5 — Application lifecycle
-
-Deliver:
+## 0.0.3 — SafeText/dedup/context/error contracts
 
 ```text
-StartQuestHandler
-FinishQuestHandler
-ListActiveQuestsHandler
-GetHeroCardHandler
-binding ports
-read/result contracts
+SafeTextV1
+QuestDedupKeyV1 (case preserved)
+HeroOperationContext
+InvocationOrigin
+HeroError/HeroResult
+```
+
+Gate:
+
+```text
+Unicode scalar/bidi/control goldens
+case difference -> different dedup key
+NFC/whitespace equivalence -> same dedup key
+no active LogicalQuestKeyV1 type
+```
+
+---
+
+## 0.0.4 — Reward/levels
+
+Deterministic engine + 95-XP golden; checked numeric boundaries.
+
+---
+
+## 0.0.5 — Skills, Trust/Risk, traits
+
+Canonical skills, exact ordered allocation, rule versions and unlock monotonicity.
+
+---
+
+## 0.0.6 — Application lifecycle
+
+```text
+StartQuest
+FinishQuest
+ListActiveQuests
+GetHeroCard
 ```
 
 Semantic gates:
 
 ```text
-same logical task -> same open quest
-distinct task -> distinct open quest
-empty list -> success
-wrong context -> HP134
-finished retry -> stored result
+same normalized OPEN declaration -> same quest
+same arguments after finished quest -> new quest allowed
+case-different declaration -> distinct quest
+distinct active quests coexist
+16 active -> HP133
+wrong bound context -> HP134
+finished retry -> original persisted result
 ```
 
 ---
 
-## 0.0.6 — Configuration, paths and presentation
-
-Deliver:
+## 0.0.7 — Paths/config/project identity
 
 ```text
-platform app data paths
+platform app-data roots
 HERO_PASSPORT_HOME
 configVersion 1
---project-root binding model
---hero binding model
-HeroTextRenderer RU/EN
+project-identity/1
+Git common-dir anchor
+linked-worktree convergence
+explicit monorepo scope
+submodule/nested-repo separation
+Git trust/error handling
+--hero binding
 ```
 
-Gate: no path in MCP/Application public result, isolated test roots, presentation goldens.
+Gate: all `PROJECT-IDENTITY.md` vectors + no persisted path/remote URL.
 
 ---
 
-## 0.0.7 — SQLite schema/migrations
-
-Deliver migration 0001 matching architecture v3:
+## 0.0.8 — SQLite schema/migration 0001
 
 ```text
-heroes/projects/stats
-quest_sessions with logical_key + version
-partial open logical-key uniqueness
+projects identity version/fingerprint
+quest_sessions dedup_key + version
+partial open dedup uniqueness
 active query index
-reports/skills/traits/xp ledger
+reports/report skills/traits/xp ledger
+UNIQUE quest_reports.quest_id
 UNIQUE xp_events.quest_id
 ```
 
-Configure/verify WAL, FULL, FKs, native SQLite.
-
-Gate: fresh DB + constraints + query projection tests.
+Gate: real fresh SQLite schema/constraints/PRAGMAs.
 
 ---
 
-## 0.0.8 — Concurrency and idempotency hardening
+## 0.0.9 — Persistence reliability
 
-Real file-backed SQLite race tests:
+Implement `PERSISTENCE-RELIABILITY.md`:
 
 ```text
-same-key concurrent start convergence
-different-key concurrent starts at cap 15 -> <=16
-finish race -> one XP event
-context mismatch
-DB busy mapping
-rollback
+non-deferred Serializable write transaction before invariant reads
+qualified BEGIN IMMEDIATE provider behavior
+count=15 two-writer start race -> exactly 16
+finish race -> one reward
+busy/error mapping
+child-process crash before/after commit
+WAL recovery without manual file deletion
+BackupDatabase + verification
+actual SQLite >=3.51.3 qualification
+same-host local writable storage profile
 ```
 
-Choose SQLite transaction mode from evidence. No distributed/custom global mutex.
-
-Gate: deterministic race suite repeatedly passes.
+Gate: repeated real file-backed concurrency/crash/backup suite.
 
 ---
 
-## 0.0.9 — CLI/operator surface
-
-Deliver:
+## 0.0.10 — CLI/presentation/doctor
 
 ```text
 init
@@ -153,121 +160,84 @@ quest list --active
 export
 data path
 --version
+RU/EN renderer
 ```
 
-Gate: parser/help/exit-code/process/stdout/stderr tests.
+Doctor adds project/SQLite/WAL/migration/integrity qualification without destructive auto-repair.
 
 ---
 
-## 0.0.10 — HP-MCP/2 stdio
-
-Deliver exact four tools:
+## 0.0.11 — Exact HP-MCP/2 stdio
 
 ```text
-start
-finish
-list_active_quests
-get_card
-```
-
-Plus:
-
-```text
-explicit registration
+four explicit tools
+runtime validation
 ProtocolVersion unset/null
-session-independent app semantics
-server instructions
-strict interop schemas
-output schemas/structured content
-annotations
-public list cache scope
+start idempotent=false
+finish/list/card idempotent=true
+closed input/output schemas
+structuredContent + equivalent JSON TextContent success
+safe isError TextContent-only business errors
+server instructions/cache metadata
 contract snapshot generator
-stdout guard
 ```
 
-Gate:
+Gate: exhaustive `WIRE-CONTRACT.md` vectors.
+
+---
+
+## 0.0.12 — Protocol/process compatibility
 
 ```text
-2026-07-28 client path
-2025-11-25 compatibility path
+MCP 2026-07-28 path
+MCP 2025-11-25 path
+stdio stdout purity
 MCP Inspector
-schema snapshots
+compatibility JSON TextContent proof
 ```
 
 ---
 
-## 0.0.11 — Codex reference qualification + AgentEvals
+## 0.0.13 — Codex reference qualification + AgentEvals
 
-Deliver:
+Codex fresh/restart/parallel/retry E2E + host-neutral model behavior scenarios.
 
-```text
-Codex current official config example
-project binding via cwd/project config or --project-root
-exact enabled tool allow-list
-E2E fresh/restart/multi-quest/retry
-host-neutral eval scenarios with Codex runner
-```
-
-Gate: Codex becomes Qualified reference host for RC.
+Gate: Codex qualifies as reference host for RC.
 
 ---
 
-## 0.0.12 — Interoperability documentation pack
+## 0.0.14 — Cross-host qualification pack
 
-Document current configuration for:
+Current official-doc recheck + release smoke for:
 
 ```text
 VS Code
-JetBrains AI Assistant
+JetBrains
 Zed
 Cursor
 Claude Code
-ChatGPT private tunnel
+ChatGPT private tunnel profile
 ```
 
-Perform release smoke where environment access permits and record Qualified vs Documented status honestly.
-
-No host-specific runtime libraries.
+Record Qualified vs Documented honestly. No host-specific runtime SDKs.
 
 ---
 
-## 0.0.13 — Architecture/privacy/dependency gates
-
-Deliver fail-fast checks for:
+## 0.1.0-rc.1 — Fitness/packaging qualification
 
 ```text
-layer references
-forbidden MCP fields
-stale current_quest contract
-accidental ProtocolVersion pin
-assembly scanning
-session-dependent state
-one-open-quest stale constraint
-unapproved dependencies
-privacy/log leakage
-```
-
----
-
-## 0.1.0-rc.1 — Qualification
-
-Run:
-
-```text
-locked restore/build/full tests
+locked restore/build/full deterministic tests
 NuGet audit
-fresh + previous DB migration
-native SQLite check
-process MCP smoke
-Inspector
-Codex E2E
-AgentEvals
-pack/install/update tests
-OS matrix
-host smoke matrix documentation
+architecture/privacy/stale-contract gates
+fresh + previous DB migrations
+real concurrency/crash/backup suite
+actual sqlite_version per published artifact
+Inspector + Codex E2E + AgentEvals
+supported OS/RID smoke
+cross-host evidence matrix
 ```
 
-No new feature scope after RC unless required to fix a gate.
+No feature expansion after RC except required gate fixes.
 
 ---
 
@@ -276,108 +246,101 @@ No new feature scope after RC unless required to fix a gate.
 Definition:
 
 ```text
-local stdio MCP
-HP-MCP/2
-multi-agent-safe active quest model
+local stdio HP-MCP/2
 transport-neutral Application
-SQLite durability
-CLI/operator support
+project-identity/1
+multi-agent-safe retry/cap model
+crash/race-safe SQLite
+CLI/doctor
 Codex Qualified
-other host integration docs with evidence tier
+other hosts evidence-tiered
 ```
 
-No dashboard required.
+Dashboard not required.
 
 ---
 
 ## 0.1.1 — Integration/distribution polish
 
-Possible only from evidence after 0.1:
+Evidence-driven only:
 
 ```text
 integration show <host> snippet renderer
-broader automated host smoke where practical
+broader automated host smoke
 packaging ergonomics
-MCP Registry publication if preview maturity/identity are acceptable
+MCP Registry publication if appropriate
 additional Qualified hosts
 ```
 
-No API expansion merely to gain version number.
+No API expansion for version-number optics.
 
 ---
 
 ## 0.2.0 — Local Blazor dashboard
 
-Add `HeroPassport.Web` over Application/read models.
-
-Initial UI:
-
 ```text
 hero card
-XP progress
+XP
 Trust/Risk
-skills
-traits
-recent quests
-active quests
+skills/traits
+recent + active quests
 project stats
 ```
 
-No DbContext in Razor components. No separate duplicated business rules.
+Uses Application/read models, no duplicated RPG rules or DbContext in Razor components.
 
 ---
 
-## HTTP trigger milestone — not preassigned as automatic scope
+## HTTP trigger milestone
 
-Own Streamable HTTP enters roadmap only when a concrete requirement satisfies `DEPLOYMENT-MODES.md` trigger criteria.
+Own Streamable HTTP enters only after a concrete URL consumer/deployment requirement and a new security/project-binding design.
 
-Likely first form if needed:
+Likely first profile:
 
 ```text
-project-scoped stateless Streamable HTTP
-ModelContextProtocol.AspNetCore
+project-scoped Streamable HTTP
+official ASP.NET MCP package
+explicit stateless HTTP mode
 loopback/private security profile
 same HP-MCP semantics
 ```
 
-Do not implement legacy SSE.
+No new legacy SSE.
 
 ---
 
 ## Hosted/public phase — separate architecture
 
-If public ChatGPT/plugin/team SaaS becomes a goal, first design:
+Before public/team service, design:
 
 ```text
 identity/OAuth
 authorization
-multi-tenant data ownership
+multi-tenant ownership
 remote persistence
 backup/retention
 rate/abuse controls
-public HTTPS deployment
+public HTTPS
 ```
 
-Do not assume local SQLite/project-binding architecture can simply be exposed publicly.
+Do not expose local SQLite/binding architecture publicly as-is.
 
 ---
 
-## Post-MVP explicitly deferred
+## Post-MVP deferred
 
 ```text
-Achievements module
-items/artifacts
+Achievements/items/artifacts
 runtime plugin ABI
 self-evolution
 LLM judge
 continuous telemetry
-cloud sync
-team dashboards
-MCP Apps UI
-Tasks
-Resources/Prompts as required core behavior
-REST/GraphQL/gRPC public API
+cloud sync/team dashboards
+MCP Apps/Tasks
+required Resources/Prompts
+REST/GraphQL/gRPC
 ACP agent
+project relink/attempt model unless real usage demands it
 ```
 
-Every proposed deferred feature must identify which product problem it solves and which existing boundary it crosses before implementation begins.
+Every deferred feature identifies a product problem and boundary before implementation.

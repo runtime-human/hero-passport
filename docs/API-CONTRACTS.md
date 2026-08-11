@@ -1,12 +1,14 @@
 # Hero Passport — API Contracts
 
-**Status:** Accepted architecture v3  
+**Status:** Accepted architecture v3.1  
 **Snapshot:** 2026-08-11  
-**Scope:** transport-neutral application semantics and public contract rules
+**Scope:** transport-neutral application semantics, error/versioning conventions
+
+Exact project-binding behavior lives in `PROJECT-IDENTITY.md`. Exact SQLite transaction/recovery behavior lives in `PERSISTENCE-RELIABILITY.md`. Exact HP-MCP fields/validation/results live in `WIRE-CONTRACT.md`.
+
+---
 
 ## 1. Contract taxonomy
-
-Hero Passport has deliberately separate contract layers:
 
 ```text
 Domain model
@@ -19,29 +21,13 @@ Adapter contracts
     └── Web read models (0.2+)
 ```
 
-The layers may share concepts but must not share transport-specific types.
+Do not force one DTO across these layers.
 
-### 1.1 Domain contract
+Domain types contain game invariants only and never MCP/CLI/HTTP/EF/localization concerns.
 
-Domain types express game invariants only: IDs, quest/result keys, reward calculations, skills, traits, Trust/Risk and rule versions.
+Application commands/queries are the canonical meaning of product operations.
 
-They do not contain:
-
-```text
-MCP SDK attributes
-JSON-RPC concerns
-CLI parser types
-HTTP status codes
-localized text
-EF entities
-host/client configuration
-```
-
-### 1.2 Application semantic contract
-
-Application commands/queries are the canonical meaning of product operations. They are the interface that MCP, CLI and future Web call.
-
-Canonical operations for 0.1.0:
+0.1 semantic operations:
 
 ```text
 StartQuest
@@ -53,50 +39,13 @@ GetDiagnostics
 ExportData
 ```
 
-The first four map to MCP; administration/diagnostics/export do not.
-
-### 1.3 Adapter contract
-
-Each adapter optimizes for its consumer:
-
-- MCP: minimal model-facing schemas and bounded output;
-- CLI: human output plus stable `--json` where scripting is useful;
-- Web: typed read models, not parsed text.
-
-Do not force one universal DTO across all adapters.
+Only the first four map to MCP.
 
 ---
 
-## 2. Why MCP DTOs are not Application DTOs
+## 2. Application operation context
 
-A model should not choose stable local state on every call. Application operations need resolved hero/project context, but HP-MCP does not expose those identifiers as routine model inputs.
-
-Example semantic flow:
-
-```text
-MCP StartQuestTool
-  input: questType + goal
-        ↓
-McpOperationContextResolver
-  resolves HeroOperationContext
-        ↓
-StartQuestCommand
-  context + questType + goal
-        ↓
-StartQuestResult
-        ↓
-MCP output projection + text renderer
-```
-
-This keeps transport minimization and application correctness separate.
-
----
-
-## 3. `HeroOperationContext`
-
-Application handlers that operate on scoped hero/project state receive a transport-neutral context.
-
-Conceptual contract:
+Scoped operations receive:
 
 ```csharp
 public sealed record HeroOperationContext(
@@ -105,7 +54,7 @@ public sealed record HeroOperationContext(
     InvocationOrigin Origin);
 ```
 
-`InvocationOrigin` is diagnostic context, conceptually:
+Conceptual diagnostic origin:
 
 ```csharp
 public sealed record InvocationOrigin(
@@ -119,409 +68,472 @@ Initial surfaces:
 ```text
 mcp_stdio
 cli
-web          # 0.2+
-mcp_http     # future
+web
+future mcp_http
 ```
 
-Rules:
+Hard rules:
 
-1. Hero/project IDs are resolved by trusted local binding/application state, not model input.
-2. Client name/version is untrusted metadata.
-3. Client metadata is not authentication or authorization.
-4. Client metadata is not reward input.
-5. Raw MCP client metadata is not persisted by default.
-6. Domain never sees InvocationOrigin unless a future explicit domain requirement is approved; normal rules must remain client-neutral.
+```text
+client identity != hero identity
+client identity != authentication identity
+client metadata != authorization
+client metadata != reward input
+```
 
-Avoid naming this type `ExecutionContext` because .NET already has `System.Threading.ExecutionContext`.
+Raw client metadata is not persisted by default.
 
 ---
 
-## 4. Project binding contract
+## 3. Project binding contract
 
-`IProjectBindingResolver` turns launch/environment context into a project identity without exposing local path to the model.
+Application receives a resolved `ProjectId`; it does not resolve filesystem paths.
 
-Local stdio resolution order:
+Infrastructure implements `project-identity/1` exactly as specified in `PROJECT-IDENTITY.md`.
+
+Key semantics:
 
 ```text
-1. explicit --project-root <path>
-2. process working directory
-3. Git repository root discovered from that starting directory when available
-4. starting directory itself as fallback identity root
+--project-root else cwd
+Git default -> whole repository
+Git anchor -> canonical git-common-dir
+linked worktrees -> same project
+explicit monorepo subdirectory -> explicit repo-relative scope
+submodule/nested repository -> separate by default
+standalone directory -> path-based local identity
 ```
 
-Implementation detail: Git-root discovery may logically occur before persisting the final project identity even though `--project-root`/cwd defines the starting point.
+No full path appears in routine MCP DTOs or persistence.
 
-Persisted project identity remains:
-
-```text
-ProjectId
-DisplayName
-WorkspaceFingerprint
-ProjectIdentityVersion
-```
-
-Absolute path is transient local adapter input.
-
-### 4.1 Portable limitation
-
-MCP 2026 does not provide a mandatory cross-host current-workspace primitive, and Roots are deprecated. Therefore a single global process cannot reliably infer a different project for each stateless request.
-
-Supported local profile is **project-bound launch**. A host should either:
-
-- launch Hero Passport with an appropriate cwd; or
-- pass `--project-root` in server arguments.
-
-Do not reintroduce `workspacePath` into tool schemas to compensate for weak host configuration.
-
----
-
-## 5. Hero binding contract
-
-0.1.0 resolves one active/default hero from local product state. A host may optionally pin a hero through a local launch option such as:
+Errors:
 
 ```text
-hero-passport mcp --hero Nova
-```
-
-The model still does not send `heroId` on every call.
-
-Client and hero identity are independent:
-
-```text
-Codex != Nova
-Claude != a hero
-same hero may be used from several MCP clients
-one client may be configured against different heroes in different server entries
+HP310 invalid_project_binding
+HP311 git_repository_unavailable
+HP312 git_required_for_repository_binding
+HP313 bare_repository_unsupported
 ```
 
 ---
 
-## 6. Quest concurrency and logical identity
+## 4. Hero binding contract
 
-### 6.1 Multiple active quests
+Normal operations use locally resolved active/default hero state.
 
-Hero Passport permits several distinct open quests for the same hero/project. This is required for parallel agents, IDE + terminal workflows and deliberate workstream separation.
-
-Application policy v1:
+A local startup selector such as:
 
 ```text
-MaxOpenQuestsPerHeroProject = 16
+--hero <name-or-id>
 ```
 
-The cap is an operational/token-safety policy and may be changed by a future product version with explicit release notes; it is not a storage-engine limitation.
+may bind a process without asking the model to choose a hero each call.
 
-### 6.2 Logical quest key v1
+Ambiguous selector fails; it never chooses arbitrarily.
 
-A repeated start for the same logical work item converges intentionally to one open quest.
-
-Canonicalization for key calculation:
-
-```text
-quest type canonical key
-+
-Unicode NFC(goal)
--> trim leading/trailing whitespace
--> collapse Unicode whitespace runs to one ASCII space
--> invariant case normalization
-```
-
-Then:
-
-```text
-LogicalQuestKeyV1 = SHA-256(UTF-8(canonicalQuestType + "\n" + canonicalGoal))
-```
-
-Persist the key and key-version.
-
-Original bounded goal text is stored unchanged apart from validated normalization policy needed for persistence safety; it is not replaced by canonical lowercase text.
-
-### 6.3 Intentional convergence semantics
-
-Two clients that start the exact same logical work item for the same hero/project receive the same open `questId`. This is intentional handoff/deduplication behavior and prevents duplicate XP for duplicated agent starts.
-
-If a user truly wants two competing attempts on identical wording, 0.1.0 requires distinct goal wording. A dedicated Attempt model is deferred until there is evidence for it; do not add an `attemptId`/`startKey` to HP-MCP preemptively.
+Hero binding and MCP client name are independent concepts.
 
 ---
 
-## 7. StartQuest semantic contract
+## 5. Safe text boundary
 
-Conceptual input after context resolution:
+MCP `goal`/`summary` pass through `SafeTextV1` before Application persists/uses them. Exact algorithm is in `WIRE-CONTRACT.md`.
+
+Core guarantees:
 
 ```text
-HeroOperationContext context
-QuestType questType
-string goal
+valid Unicode scalars only
+NFC
+single-line normalized whitespace
+no dangerous control/bidi formatting characters
+scalar-aware length bounds
 ```
 
-Result:
+The stored value is the normalized safe form.
+
+Application reward summary length is measured over this normalized scalar sequence, not raw transport bytes or UTF-16 `string.Length`.
+
+---
+
+## 6. Quest start deduplication — v3.1 correction
+
+`LogicalQuestKeyV1` is retired before public release.
+
+Use:
 
 ```text
-QuestId
-AlreadyOpen
-HeroCardReadModel
+QuestDedupKeyV1
 ```
 
 Algorithm:
 
 ```text
-validate
-resolve context
-calculate LogicalQuestKeyV1
-read active matching logical key
-  -> found: return same quest, AlreadyOpen=true
-check active count
-  -> >=16: HP133
-insert new open quest atomically
-return projection
+SHA-256(UTF8(canonicalQuestType + "\n" + SafeTextV1(goal)))
 ```
 
-Concurrent starts for the same logical key must converge through a database uniqueness constraint, not only an in-memory pre-check.
+Case is preserved.
+
+Reason: a natural-language hash cannot establish semantic identity, and case folding can incorrectly merge case-sensitive code identifiers.
+
+The key means only:
+
+> same normalized start declaration while an equivalent quest is currently open.
+
+It is not fuzzy matching and not permanent global idempotency.
+
+Persistence uniqueness:
+
+```text
+(hero_id, project_id, dedup_key_version, dedup_key)
+WHERE status='open'
+```
+
+Multiple different declarations may be active simultaneously, up to 16 per hero/project.
+
+---
+
+## 7. StartQuest semantic contract
+
+Conceptual input:
+
+```csharp
+StartQuestCommand(
+    HeroOperationContext Context,
+    QuestType QuestType,
+    string Goal);
+```
+
+Application semantics:
+
+```text
+validate normalized goal/type
+compute dedup key
+immediate writer transaction
+matching open key -> same quest, AlreadyOpen=true
+else active count >=16 -> HP133
+else create new quest, AlreadyOpen=false
+```
+
+The same arguments may create a new quest after the previous one has been finished. Therefore Application provides open-request deduplication, not lifecycle-global idempotency.
 
 ---
 
 ## 8. FinishQuest semantic contract
 
-Input:
+Conceptual input:
 
-```text
-HeroOperationContext context
-QuestId
-Result
-Summary
-QuestMetrics
-SkillsUsed
+```csharp
+FinishQuestCommand(
+    HeroOperationContext Context,
+    QuestId QuestId,
+    QuestResult Result,
+    string Summary,
+    QuestMetrics Metrics,
+    IReadOnlyList<SkillKey> SkillsUsed);
 ```
 
-Before reward calculation:
+Semantics:
 
 ```text
-load quest
-quest exists?                     else HP130
-quest hero/project == context?    else HP134
-already finished?                 return original persisted outcome
+immediate writer transaction
+quest missing -> HP130
+hero/project mismatch -> HP134
+already finished -> return original persisted outcome
+otherwise calculate deterministic rule versions
+persist report + XP event + aggregate changes atomically
+commit
 ```
 
-Finish is one atomic transaction and creates at most one XP ledger event per quest.
-
-Retry semantics are immutable: never rerun current reward rules for an already-completed quest.
+A retry for the same finished `questId` never reruns current reward rules.
 
 ---
 
 ## 9. ListActiveQuests semantic contract
 
-Input: `HeroOperationContext` only.
+Input is operation context only.
 
-Result contains active quests for that exact hero/project.
-
-Ordering is deterministic:
+Output:
 
 ```text
-StartedAtUtc descending
-then QuestId ascending
+0..16 active quests for exact HeroId+ProjectId
+deterministic order: StartedAtUtc DESC, QuestId ASC
 ```
 
-Maximum returned count is the same application cap (16), so the operation is always bounded.
+Empty is success.
 
-No active quest is a successful empty result, not `HP131`.
+This is the recovery/handoff operation when an agent/process lost or did not inherit an explicit `questId`.
 
-The former singular `GetCurrentQuest/current_quest` contract is superseded before public release.
+Do not add fuzzy search to recover a quest in 0.1.
 
 ---
 
-## 10. Hero card semantic contract
+## 10. GetHeroCard semantic contract
 
-`GetHeroCard` is a read operation over locally resolved hero/project context. It returns typed hero progress. Presentation text is rendered in App.
+Returns:
 
-No client/transport-specific game state is included.
+```text
+global hero progression
+current bound project's compact projection
+```
+
+It does not return:
+
+```text
+workspace path
+workspace fingerprint
+project internal ID
+raw history
+source/log data
+```
+
+Detailed history is CLI/Web scope.
 
 ---
 
 ## 11. Error model
 
-Application expected failures use a stable semantic error:
+Expected failures use typed values rather than exceptions as normal control flow.
+
+Conceptual model:
 
 ```csharp
 public sealed record HeroError(
     string Code,
-    HeroErrorCategory Category,
-    HeroRetryability Retryability,
+    ErrorCategory Category,
+    Retryability Retryability,
     string MessageKey,
     IReadOnlyDictionary<string, string>? SafeDetails = null);
 ```
 
-This is conceptual; implementation may use allocation-efficient concrete types while preserving semantics.
+Do not put paths, SQL, request bodies or secrets in `SafeDetails`.
 
-Categories:
-
-```text
-validation
-not_found
-conflict
-storage
-configuration
-internal
-```
-
-Retryability:
-
-```text
-never
-same_request
-transient
-after_user_action
-```
-
-Stable code families:
-
-```text
-HP100..199 application/contract/domain
-HP200..299 storage/filesystem
-HP300..399 configuration/binding
-HP900 internal_error
-```
-
-Core relevant codes:
+Current important codes:
 
 ```text
 HP100 invalid_request
-HP101 unsupported_contract_input
-HP120 project_not_resolved
+HP110 invalid_quest_type
+HP111 invalid_result
+HP112 invalid_skill
+HP120 invalid_metrics
 HP130 quest_not_found
 HP133 active_quest_limit
 HP134 quest_context_mismatch
-HP140 unsupported_quest_type
-HP141 unsupported_result
+
 HP200 storage_unavailable
-HP201 migration_failed
 HP202 database_busy
+HP203 storage_full
+HP204 storage_read_only
+HP205 storage_io_error
+HP206 database_corrupt
+HP207 storage_constraint
+HP208 unsupported_sqlite_version
 HP210 app_data_unavailable
+HP211 unsupported_storage_location
+
 HP300 invalid_configuration
 HP310 invalid_project_binding
+HP311 git_repository_unavailable
+HP312 git_required_for_repository_binding
+HP313 bare_repository_unsupported
+
 HP900 internal_error
 ```
 
-`HP131 no_open_quest` and `HP132 quest_conflict` from architecture v2 are not required by HP-MCP/2 normal flow and are retired before public release. Empty active lists are success; different logical quests may coexist.
-
-Adapters may add transport-level metadata but may not redefine semantic meaning of a code.
-
----
-
-## 12. External JSON conventions
-
-For all JSON-producing adapters unless a specific protocol mandates otherwise:
+Retired before public release:
 
 ```text
-property names: lowerCamelCase
-canonical enum keys: lower_snake_case
-UUID: canonical lowercase hyphenated form
-UTC timestamp: RFC3339 / ISO 8601 with Z
-numbers: integer where domain value is integer
-absent optional property: omit unless null has distinct semantic meaning
+HP131 no_open_quest
+HP132 quest_conflict
 ```
 
-No polymorphic type discriminators are introduced without a demonstrated need.
-
-Arrays with semantic order define it explicitly. Sets are serialized in canonical order.
+Different active quests are normal; empty active list is normal.
 
 ---
 
-## 13. Version axes
+## 12. Error adapter mapping
 
-Never conflate:
+### MCP
+
+Valid tool invocation with bad field/business state:
 
 ```text
-Hero Passport release        0.1.0
-MCP wire revision            negotiated (preferred semantics 2026-07-28)
-Hero MCP contract epoch      HP-MCP/2
-configuration schema         configVersion 1
-EF migrations                migration IDs
-reward rules                 RewardRules 1.0.0
-Trust/Risk rules             TrustRiskRules 1.0.0
-trait rules                  TraitRules 1.0.0
-logical quest key            LogicalQuestKey V1
-project identity             ProjectIdentity V1
+CallToolResult.IsError = true
+one safe TextContent
+no structuredContent
 ```
 
-No per-call generic `schemaVersion` field.
+Malformed protocol request/unknown tool remains MCP protocol error.
+
+### CLI
+
+Human mode:
+
+```text
+stderr + nonzero exit
+```
+
+Script mode where supported:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "HP133",
+    "category": "conflict",
+    "retryability": "after_user_action"
+  }
+}
+```
+
+### Web
+
+Typed Application error -> typed UI state. Razor does not parse MCP error strings.
 
 ---
 
-## 14. HP-MCP breaking-change rules
+## 13. IDs
 
-Breaking before/after release is judged by observable model/client contract, not internal class refactoring.
+Internal IDs use typed wrappers and UUIDv7 generation (`Guid.CreateVersion7()`).
 
-Breaking examples:
+HP-MCP wire requirements are exact in `WIRE-CONTRACT.md`: lowercase canonical UUIDv7 text and explicit runtime validation.
+
+No prefixed string IDs in 0.1.
+
+---
+
+## 14. Time
+
+Application uses injected .NET `TimeProvider`.
+
+Persistence stores UTC values.
+
+HP-MCP producer formatting is fixed by `WIRE-CONTRACT.md` to millisecond UTC `...fffZ` for deterministic interoperability.
+
+Domain does not call `DateTime.UtcNow`.
+
+---
+
+## 15. Numeric range
+
+Long-lived integers exposed to HP-MCP must remain within JSON's widely interoperable exact-integer range:
 
 ```text
-tool removal/rename
+0 .. 9_007_199_254_740_991
+```
+
+Use checked arithmetic and fail safely rather than overflow/wrap.
+
+Quest-local counters keep tighter documented limits.
+
+---
+
+## 16. Application DTOs are not MCP DTOs
+
+MCP intentionally omits stable local state such as:
+
+```text
+HeroId
+ProjectId
+workspacePath
+locale
+presentation mode
+clientName/clientVersion as routine input
+```
+
+Example flow:
+
+```text
+MCP StartQuestTool
+  questType + goal
+      ↓
+McpOperationContextResolver
+      ↓
+HeroOperationContext
+      ↓
+StartQuestCommand
+      ↓
+StartQuestResult
+      ↓
+MCP output projection
+```
+
+CLI and Web may expose different data according to their consumer needs.
+
+No `HeroPassport.Contracts` assembly is required until a real separately versioned .NET consumer appears.
+
+---
+
+## 17. Public machine contract version axes
+
+Keep separate:
+
+```text
+Hero Passport 0.1.0        product version
+MCP 2026-07-28             negotiated protocol revision
+HP-MCP/2                   model-facing tool contract epoch
+configVersion 1            config schema
+EF migration id            persistence schema
+project-identity/1         local project identity
+QuestDedupKey V1           retry/dedup algorithm
+SafeTextV1                 model text normalization
+reward/1.0.0               XP rules
+trust-risk/1.0.0           Trust/Risk rules
+traits/1.0.0               trait rules
+```
+
+Do not send a caller-chosen `schemaVersion` in each MCP request.
+
+---
+
+## 18. Contract evolution
+
+Breaking changes include:
+
+```text
+tool rename/removal
 new required input
-removing an accepted enum value
-changing semantics of an existing field
-changing retry/idempotency meaning
-making a previously successful ordinary case an error
-changing explicit identifier format
+semantic meaning change
+identifier format change
+removing accepted enum value
+new side effect
+changing success/error meaning
+incompatible bound narrowing
 ```
 
-Normally additive:
+Potentially additive machine changes still require snapshot + interop review because HP-MCP advertises closed schemas.
 
-```text
-new optional output field
-new safe error code for a previously unspecified failure
-clearer tool description with same semantics
-new host configuration documentation
-new local presentation format
-```
+New tool inventory always requires tool-selection/eval review even if “additive”.
 
-Adding a new MCP tool is technically additive but still requires an explicit API/eval review because it changes the model's tool-selection surface and list-cache contract.
+RPG rule version changes are different from transport contract changes and never rewrite persisted historical rewards.
 
 ---
 
-## 15. Contract snapshots
+## 19. Contract snapshots
 
-Once implementation exists, actual SDK-generated MCP schemas are the executable source of truth and committed snapshots guard drift.
-
-Planned generated artifacts:
+Actual registered implementation generates authoritative snapshots under:
 
 ```text
 contracts/mcp/hp-mcp-2/
-  tools-list.snapshot.json
-  start-quest.input.schema.json
-  start-quest.output.schema.json
-  finish-quest.input.schema.json
-  finish-quest.output.schema.json
-  list-active-quests.input.schema.json
-  list-active-quests.output.schema.json
-  get-card.input.schema.json
-  get-card.output.schema.json
 ```
 
-Do not hand-maintain duplicate schema files before the generator/manifest test exists. The first MCP implementation task generates them and the build compares canonicalized output thereafter.
+Tests compare:
 
-Contract snapshot changes require review of:
+- exact tool inventory/order;
+- schemas/annotations;
+- field bounds/enums;
+- success structured/text semantic equivalence;
+- error result shape;
+- forbidden field absence.
 
-```text
-backward compatibility
-privacy fields
-model token impact
-host interoperability
-agent evals
-release notes / HP-MCP epoch when applicable
-```
+Do not maintain a second hand-written schema implementation.
 
 ---
 
-## 16. Explicit non-goals
+## 20. Normative references
 
-0.1.0 does not create a generic public REST API, GraphQL API, gRPC service, ACP agent interface or language-agnostic SDK merely for hypothetical integrations.
-
-Use:
-
-```text
-AI agents/hosts       -> MCP
-shell/CI automation   -> CLI / --json
-Hero Passport Web     -> Application in-process
-future .NET consumer  -> consider Contracts/Client package only when real
-future remote service -> Streamable HTTP MCP deployment profile first
-```
-
-A second public service API requires a separate consumer, ADR and versioning/security model.
+- `PROJECT-IDENTITY.md`
+- `PERSISTENCE-RELIABILITY.md`
+- `WIRE-CONTRACT.md`
+- `MCP-CONTRACT.md`
+- `DATA-MODEL.md`
+- `ENGINE-SPEC.md`
+- `TESTING-QUALITY.md`

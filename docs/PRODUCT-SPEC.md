@@ -1,15 +1,17 @@
 # Hero Passport — Product Specification
 
-**Status:** Accepted v3 product contract  
+**Status:** Accepted v3.1 product contract  
 **Snapshot:** 2026-08-11  
 **Target:** 0.1.0 Portable Local MCP Core
 
+---
+
 ## 1. Product definition
 
-Hero Passport is a local-first RPG passport for AI agents. It turns meaningful agent work into persistent progression:
+Hero Passport is a local-first RPG passport for AI coding agents.
 
 ```text
-start logical quest
+start quest
 -> agent works normally
 -> finish explicit quest
 -> deterministic XP/skills/traits/Trust/Risk
@@ -17,87 +19,87 @@ start logical quest
 -> durable local history
 ```
 
-The product is entertainment/companion-first, not employee monitoring, code surveillance or an LLM quality judge.
+It is entertainment/companion-first, not employee monitoring, code surveillance, LLM quality judging or an agent orchestration platform.
 
 ---
 
-## 2. Positioning after architecture v3
+## 2. Positioning
 
-Hero Passport is **not Codex-only**. Codex remains the first automated qualification host, but the product contract is portable MCP-first.
+Hero Passport is MCP-portable, not Codex-only.
 
 ```text
-reference qualification: Codex
-portable integration standard: MCP
-local transport for 0.1.0: stdio
+reference Qualified host: Codex
+portable model integration: MCP
+0.1 transport: local stdio
 ```
 
-A compatible host should not require Hero Passport business-code changes. Host differences belong to process/configuration adapters and documentation.
+Host config syntax never defines product semantics.
 
 ---
 
-## 3. Primary user experience
-
-A developer installs Hero Passport once and connects the local server to an MCP-capable coding host.
-
-Example:
+## 3. Primary experience
 
 ```text
-User asks an agent to implement a feature.
+User asks an agent to implement/review/debug/research/document meaningful work.
 Agent calls hero.start_quest.
 Hero Passport returns questId.
 Agent works normally.
 Agent calls hero.finish_quest(questId,...).
-Agent shows compact Hero Passport result.
+Agent surfaces Hero Passport displayText/result.
 ```
 
-If another agent works on a different task in the same repository, it may have a separate active quest. If an agent repeats the same logical task, Hero Passport returns the already-open quest rather than creating duplicate progression.
+Another agent may concurrently work on a different quest in the same project.
+
+A repeated **same normalized start declaration while its quest remains open** reuses that open quest. This is conservative retry deduplication, not fuzzy semantic matching.
+
+After the previous quest has finished, the same start arguments may correctly create a new quest for a new work cycle.
 
 ---
 
 ## 4. Product principles
 
-### 4.1 Local-first
+### Local-first
 
-No account, cloud database or backend is required for 0.1.0.
+No account/cloud backend required for 0.1.
 
-### 4.2 Portable semantics
+### Portable semantics
 
-MCP contract is independent of Codex/VS Code/JetBrains/Zed/Cursor/Claude configuration syntax.
+The same HP-MCP/2 semantics apply across compatible hosts.
 
-### 4.3 Status-first
+### Status-first
 
-The compact completion result is the primary UI for 0.1.0. Dashboard follows after the core loop.
+Compact completion result is the primary 0.1 UI; dashboard follows in 0.2.
 
-### 4.4 Deterministic progression
+### Deterministic progression
 
-The model reports bounded descriptive metrics; deterministic local rules calculate reward.
+The agent reports bounded metrics; local versioned rules calculate progression.
 
-### 4.5 Agent-context efficiency
+### Agent-context efficiency
 
-Normal work requires approximately:
+Normal lifecycle is approximately:
 
 ```text
 one start
 one finish
 ```
 
-List/card are recovery/inspection calls, not telemetry loops.
+List/card are recovery/inspection, not telemetry loops.
 
-### 4.6 Privacy/data minimization
+### Data minimization
 
-Code is unnecessary for gamification. Tool schemas do not provide a place for source/diff/raw logs.
+No need to ingest source, diffs or raw logs to provide RPG progression.
 
-### 4.7 Explicit state handles
+### Explicit state handle
 
-Quest state crosses calls via `questId`, not hidden MCP sessions.
+`questId` carries workflow state across calls; no hidden MCP session state.
 
-### 4.8 Multi-agent safe
+### Multi-agent safe
 
-Multiple distinct active quests are supported for one hero/project, bounded by product policy.
+Distinct active quests coexist up to a bounded local policy.
 
 ---
 
-## 5. 0.1.0 MCP capability
+## 5. MCP surface
 
 Exactly:
 
@@ -108,13 +110,13 @@ hero.list_active_quests
 hero.get_card
 ```
 
-No additional administration MCP surface.
+No MCP administration mirror.
+
+Exact field/result semantics: `WIRE-CONTRACT.md`.
 
 ---
 
-## 6. CLI capability
-
-Minimum operator surface:
+## 6. CLI surface
 
 ```text
 hero-passport init
@@ -127,13 +129,13 @@ hero-passport data path
 hero-passport --version
 ```
 
-CLI administration may later include explicit hero/project reset/delete commands; such commands do not imply new MCP tools.
+CLI data-management commands may expand without expanding MCP.
 
 ---
 
 ## 7. Quest model
 
-Quest types:
+Quest type:
 
 ```text
 planning
@@ -145,7 +147,7 @@ documentation
 maintenance
 ```
 
-Quest result:
+Result:
 
 ```text
 success
@@ -155,80 +157,103 @@ blocked
 abandoned
 ```
 
-A quest belongs to one `HeroId + ProjectId` context and carries one versioned logical key.
+Each quest belongs to one resolved HeroId + ProjectId context.
 
-Application policy:
+Application cap:
 
 ```text
-max simultaneous open quests per hero/project = 16
+max 16 open quests per hero/project
 ```
 
-Same logical task converges to the same open quest. Different logical tasks may coexist.
+Open retry dedup uses `QuestDedupKeyV1` from the normalized `questType + SafeTextV1(goal)` with case preserved.
+
+This key does not claim semantic natural-language equivalence.
 
 ---
 
-## 8. What an agent sends
+## 8. What the agent sends
 
-At start:
+Start:
 
 ```text
 questType
-goal <= 500 chars
+goal: SafeTextV1, 1..500 Unicode scalar values
 ```
 
-At finish:
+Finish:
 
 ```text
-questId
+questId: canonical UUIDv7
 result
-summary <= 2000 chars
-bounded quality metrics
-1..3 known/canonical skills
+summary: SafeTextV1, 1..2000 scalars
+bounded metrics
+1..3 canonical ordered skills
 ```
 
-It does not send:
+The model does not routinely send:
 
 ```text
-heroId/projectId as routine model choices
+heroId/projectId
 workspace path
-source code
-file contents
+source/file content
 diffs
 raw logs
-full chat/prompt
+full prompt/chat
 secrets/environment
-arbitrary metadata
+arbitrary metadata bags
 ```
 
 ---
 
-## 9. Local context resolution
+## 9. Result behavior
+
+For MCP success:
+
+```text
+canonical structuredContent object
++ equivalent minified JSON TextContent for compatibility
++ displayText inside result object
+```
+
+For validation/business error:
+
+```text
+isError=true
+safe TextContent
+no structuredContent
+```
+
+Machine consumers use typed fields, not parse `displayText`.
+
+---
+
+## 10. Local context resolution
 
 Hero Passport resolves locally:
 
 ```text
-hero binding
-project binding
+hero
+project
 locale
-presentation mode
+presentation
 data paths
 rule versions
 ```
 
-For stdio project binding:
+Project launch starts from:
 
 ```text
---project-root if provided
-otherwise host cwd / Git-root resolution
+--project-root if explicit
+else host/process cwd
 ```
 
-The supported profile is project-bound launch. A single globally launched process with no reliable project binding is not promised to infer the caller workspace.
+`project-identity/1` then performs Git-aware identity according to `PROJECT-IDENTITY.md`.
 
 ---
 
-## 10. Hero
+## 11. Hero
 
-Fresh data initializes default hero:
+Fresh state creates default hero:
 
 ```text
 Nova
@@ -238,15 +263,13 @@ Trust 50
 Risk 20
 ```
 
-Hero is global across projects; project statistics are projections.
+Hero is global across projects; project stats are separate projections.
 
-MCP does not make the model choose the hero every call. Optional host startup binding can select a hero locally.
+MCP does not choose a hero each call. Optional process startup binding can select one locally.
 
 ---
 
-## 11. Project identity
-
-Project identity is local and privacy-preserving.
+## 12. Project identity
 
 Persist:
 
@@ -254,18 +277,28 @@ Persist:
 ProjectId
 DisplayName
 WorkspaceFingerprint
-ProjectIdentityVersion
+IdentityVersion=project-identity/1
 ```
 
-Do not persist full path by default.
+No full workspace path/remote URL.
 
-The same physical project opened through different normalized paths should resolve consistently when the identity algorithm can detect a common Git root.
+Key behavior:
+
+```text
+linked Git worktrees -> same project
+normal nested cwd -> whole repo
+explicit monorepo --project-root scope -> separate scoped project
+submodule/nested repo -> separate project
+non-Git -> standalone local path identity
+```
+
+Repository move/fresh clone may produce a new v1 identity; this is documented rather than hidden behind unreliable remote heuristics.
 
 ---
 
-## 12. Core RPG acceptance
+## 13. RPG acceptance
 
-The clean successful coding golden remains:
+Clean successful coding golden:
 
 ```text
 60 base
@@ -276,129 +309,150 @@ The clean successful coding golden remains:
 =95 XP
 ```
 
-Full rule definitions live in `ENGINE-SPEC.md`.
+Full rules: `ENGINE-SPEC.md`.
 
 ---
 
-## 13. Idempotency acceptance
+## 14. Retry/concurrency acceptance
 
 ### Start
 
-Two concurrent/matching starts for the same hero/project/logical key result in one open quest ID.
+While a matching normalized declaration is open:
+
+```text
+concurrent/repeated starts -> one questId
+```
+
+Case-different/code-sensitive declaration is distinct.
+
+After that quest finishes, the same arguments may start a new quest.
+
+### Active cap
+
+```text
+15 existing + two concurrent distinct starts -> final exactly 16; one HP133
+```
 
 ### Finish
 
-Any number of repeated/concurrent finish calls for one quest result in:
+Repeated/concurrent finish for one quest:
 
 ```text
 one quest report
-one XP ledger event
-one set of aggregate mutations
-same persisted original outcome returned on retries
+one XP event
+one aggregate mutation
+same original persisted outcome on retries
 ```
 
-### Context safety
+### Context
 
-A quest ID from another bound hero/project cannot be used to bypass local context; return `HP134`.
+Wrong locally bound hero/project for a valid questId -> HP134 without revealing the alternate owner.
 
 ---
 
-## 14. Presentation
+## 15. Persistence reliability acceptance
 
-0.1.0:
+```text
+same-host local writable SQLite/WAL
+non-deferred Serializable writer transaction before mutation invariant reads
+WAL + synchronous=FULL + foreign_keys=ON
+actual sqlite_version >=3.51.3 qualified
+crash before commit -> no partial progression
+crash after commit-before-response -> safe retry
+no manual WAL/SHM deletion
+live physical backup uses SQLite backup API, not File.Copy
+```
+
+---
+
+## 16. Presentation
 
 ```text
 RU + EN
 compact default
-normal optional local setting
+normal optional
 ```
 
-Localized text is presentation, not persisted canonical rule state.
+`displayText` stays bounded and does not echo arbitrary goal/summary by default.
 
-The list-active human text avoids echoing arbitrary goal text by default; structured output carries bounded stored goals for recovery.
+Localized labels are not persisted domain keys.
 
 ---
 
-## 15. Supported integration claim
-
-Hero Passport separates:
+## 17. Support claims
 
 ```text
 Qualified
-Documented / protocol-compatible
-Unsupported
+Documented/protocol-compatible
+Unsupported/unknown
 ```
 
-Codex CLI is the first release-blocking Qualified host. Other hosts are not advertised as fully qualified until their smoke checklist is recorded for the release.
-
-See `integrations/README.md`.
+Codex is first release-blocking Qualified host. Other hosts require recorded release smoke evidence.
 
 ---
 
-## 16. Deployment scope
+## 18. Deployment scope
 
-0.1.0:
+0.1:
 
 ```text
-local stdio process
-local SQLite
+local stdio
+local same-host SQLite
 single OS-user trust boundary
 ```
 
-0.2.0:
+0.2:
 
 ```text
-local Blazor dashboard over same application/storage core
+local Blazor dashboard over same Application/store
 ```
 
-Future Streamable HTTP is trigger-based. Public/multi-tenant hosting requires separate identity/authorization/storage architecture.
-
-OpenAI Secure MCP Tunnel is an optional external deployment mechanism that can expose the private local stdio server to supported OpenAI surfaces without Hero Passport owning an HTTP listener.
+Future own Streamable HTTP is trigger-based. Public/multi-tenant HTTP requires separate authentication/authorization/storage design.
 
 ---
 
-## 17. Explicit exclusions for 0.1.0
+## 19. Explicit exclusions through 0.1
 
 ```text
-achievements module
-items/artifacts
+achievements/items
 runtime plugins
 source/diff ingestion
 continuous telemetry
 LLM judge
-cloud sync
-team/multi-tenant mode
-our own HTTP/OAuth server
+cloud/team mode
+own HTTP/OAuth
 REST/GraphQL/gRPC public API
-MCP Resources/Prompts as required behavior
-MCP Apps
-MCP Tasks
-ACP agent implementation
-legacy SSE server
+required MCP Resources/Prompts
+MCP Apps/Tasks
+ACP agent
+legacy SSE
 ```
 
 ---
 
-## 18. 0.1.0 acceptance criteria
+## 20. Release acceptance
 
-A release candidate is acceptable only when:
+0.1 requires:
 
-1. fresh local install initializes deterministically;
-2. stdio MCP stdout is protocol-pure;
-3. exact HP-MCP/2 manifest/schema snapshots match;
-4. 2026 and 2025-11-25 compatibility paths pass;
-5. Codex E2E passes start/list/finish/card;
-6. same-task concurrent starts converge;
-7. distinct parallel quests coexist;
-8. finish race grants exactly one reward;
-9. context mismatch is rejected;
-10. SQLite migration/WAL/native version tests pass;
-11. privacy/forbidden schema/log scans pass;
-12. packaged dotnet tool runs on supported OS matrix;
-13. AgentEvals do not regress the core lifecycle.
+1. deterministic fresh initialization;
+2. protocol-pure stdio;
+3. exact HP-MCP/2 generated contract snapshots;
+4. 2026-07-28 + 2025-11-25 compatibility paths;
+5. success structured/TextContent semantic equality;
+6. explicit runtime input validation;
+7. ProjectIdentity linked-worktree/monorepo/submodule/privacy vectors;
+8. same-dedup start race convergence;
+9. count-15 distinct race ends exactly 16;
+10. finish race awards once;
+11. child-process crash-before/after-commit evidence;
+12. backup verification;
+13. actual SQLite version/PRAGMA/migration evidence;
+14. Codex E2E + host-neutral AgentEvals;
+15. privacy/forbidden schema/log scans;
+16. packaged artifact smoke on supported OS matrix.
 
 ---
 
-## 19. Success definition
+## 21. Success definition
 
-Hero Passport 0.1.0 succeeds when a developer can install one local command, bind it to a project in a compatible MCP host, and reliably feel persistent RPG progression across agent sessions and even across different clients without exposing code or maintaining a cloud service.
+A developer can install one local command, bind it predictably to a project in a compatible MCP host, and receive persistent deterministic RPG progression across sessions/clients without exposing code or maintaining cloud infrastructure.

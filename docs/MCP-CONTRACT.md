@@ -1,16 +1,18 @@
 # Hero Passport — MCP Contract
 
-**Status:** Accepted HP-MCP/2 design  
+**Status:** Accepted HP-MCP/2 v3.1 overview  
 **Snapshot:** 2026-08-11  
 **SDK baseline:** official C# `ModelContextProtocol 2.0.0`  
 **Preferred semantics:** MCP `2026-07-28`  
 **0.1.0 transport:** stdio
 
-## 1. Contract objective
+Exact field/validation/result rules are normative in [`WIRE-CONTRACT.md`](WIRE-CONTRACT.md). This file describes the compact protocol surface and workflow.
 
-HP-MCP/2 is a deliberately small, portable model-facing contract. It is designed to work through any conforming host that can run a local stdio MCP server and honor the basic tools feature.
+---
 
-Canonical tool inventory and order:
+## 1. Tool inventory
+
+Exactly four explicitly registered tools in this stable order:
 
 ```text
 hero.start_quest
@@ -19,74 +21,52 @@ hero.list_active_quests
 hero.get_card
 ```
 
-The inventory is compile-time explicit and static in 0.1.0.
+No assembly-wide scanning, dynamic toolsets or host-specific aliases.
 
-No assembly-wide discovery. No dynamic toolsets. No host-specific tool names.
+Tool list is static in 0.1.0 and deterministic. Public cache scope is appropriate for the local unprivileged inventory; TTL remains implementation freshness policy and must be tested rather than treated as HP-MCP semantics.
 
 ---
 
-## 2. Protocol revision strategy
+## 2. Protocol revision policy
 
-Hero Passport is designed against the current `2026-07-28` MCP semantics but does not hard-pin the server to that single revision.
-
-Implementation policy:
+Design against MCP `2026-07-28` semantics while leaving:
 
 ```text
 McpServerOptions.ProtocolVersion = null / unset
 ```
 
-Rationale: official C# SDK v2 can negotiate its supported initialize-era protocol revisions and the `2026-07-28` per-request metadata era. Pinning the server to `2026-07-28` would deliberately reject initialize-era clients; pinning an older version would reject 2026-style requests.
+so the official SDK can negotiate its supported revisions.
 
-Tests must exercise at least:
+Release tests cover:
 
 ```text
 2026-07-28
 2025-11-25 compatibility path
 ```
 
-### 2.1 Application state is protocol-session independent
-
-Hero Passport correctness never depends on:
+Application correctness never depends on:
 
 ```text
 Mcp-Session-Id
-client connection identity
+connection identity
 McpServer instance lifetime
-in-memory per-client dictionaries
 initialize-session state
+in-memory per-client workflow state
 ```
 
-Stateful workflow uses an explicit `questId` handle:
-
-```text
-start_quest -> questId
-                 ↓
-            finish_quest
-```
-
-This remains correct across process reconnects because SQLite is authoritative.
-
-### 2.2 `Stateless` terminology
-
-Do not write code that assumes a generic `Stateless` property exists on every transport configuration.
-
-For the 0.1.0 stdio process, the invariant is simply: **no application correctness depends on protocol sessions**.
-
-When Streamable HTTP is implemented later, configure the C# SDK HTTP transport explicitly in stateless mode rather than relying on defaults.
+SQLite plus explicit `questId` is the state model.
 
 ---
 
-## 3. MCP feature profile
+## 3. Required/unused MCP features
 
-Required baseline capability:
+Required core feature:
 
 ```text
 Tools
 ```
 
-Optional client features are not required for the core lifecycle.
-
-0.1.0 does not depend on:
+0.1 does not depend on:
 
 ```text
 Resources
@@ -101,62 +81,38 @@ subscriptions
 notifications/tools/list_changed
 ```
 
-Roots, Sampling and MCP Logging are deprecated in the 2026 protocol line; project binding is therefore not designed around Roots.
-
-Tasks are inappropriate because all Hero Passport tools are short local operations.
+Roots/Sampling/Logging are not project/product correctness mechanisms. Tasks are unnecessary for short local calls.
 
 ---
 
-## 4. Tool-list behavior and caching
+## 4. Tool annotations — v3.1
 
-Tool order is deterministic and identical for every 0.1 local invocation.
+| Tool | readOnly | destructive | idempotent | openWorld |
+|---|---:|---:|---:|---:|
+| `hero.start_quest` | false | false | **false** | false |
+| `hero.finish_quest` | false | false | true | false |
+| `hero.list_active_quests` | true | false | true | false |
+| `hero.get_card` | true | false | true | false |
 
-For 2026-era `tools/list` responses:
+`hero.start_quest` is deliberately not annotated idempotent. While a matching normalized start declaration remains open, a retry returns that quest. After it has been finished, the same arguments may correctly create a new quest/history row.
 
-```text
-cacheScope = public
-```
+`hero.finish_quest` is idempotent because a specific `questId` can be completed only once and every retry returns the original persisted outcome.
 
-The initial implementation may use a five-minute `ttlMs` (300000) to match a conservative static-list policy, but **TTL is implementation freshness policy, not an HP-MCP semantic guarantee**. It may be tuned after interoperability evidence without changing HP-MCP/2.
-
-Do not advertise dynamic list changes while the inventory is static.
-
-If future authorization makes tool visibility user-specific, `cacheScope=public` must be re-reviewed before such behavior ships.
+Annotations are hints, not authorization/security controls.
 
 ---
 
-## 5. Interoperable JSON Schema profile
+## 5. Input schemas
 
-The protocol supports full JSON Schema 2020-12, but Hero Passport intentionally uses a conservative subset to maximize host/tool-parser compatibility.
+All input roots are objects and every object layer sets:
 
-Use:
-
-```text
-object root
-properties
-required
-additionalProperties:false
-string minLength/maxLength
-enum
-integer minimum/maximum
-boolean
-array minItems/maxItems/uniqueItems
-small nested objects
+```json
+"additionalProperties": false
 ```
 
-Avoid unless a real requirement appears:
+Schemas stay shallow and use a conservative JSON Schema subset.
 
-```text
-oneOf/anyOf/allOf
-if/then/else
-recursive schemas
-external $ref
-patternProperties
-very deep nesting
-non-object input roots
-```
-
-No-param tools use an empty closed object:
+No-param tools use:
 
 ```json
 {
@@ -165,67 +121,77 @@ No-param tools use an empty closed object:
 }
 ```
 
-Output schemas remain object-root even though 2026 structured content can represent any JSON value.
+The official SDK-generated schema is **not runtime validation**. Tool boundaries validate explicitly according to `WIRE-CONTRACT.md`.
 
----
-
-## 6. Common result representation
-
-Successful tools return:
-
-1. canonical typed machine data in `structuredContent`;
-2. one concise human/legacy text representation rendered by App presentation.
-
-Do not duplicate the entire structured JSON into text.
-
-Do not create redundant fields such as:
+Forbidden routine MCP input concepts:
 
 ```text
-statusText + displayText + message + summaryText
+heroId
+projectId
+workspacePath
+locale
+outputMode
+schemaVersion
+clientName/clientVersion
+source/file contents
+diff/patch
+raw logs
+prompts/chat history
+secrets/tokens
+environment bags
+arbitrary metadata/context/payload bags
 ```
 
-The wire DTO may expose `displayText` inside structured content if useful to clients, but it has exactly one canonical human-facing value.
-
-All human text is bounded.
-
 ---
 
-## 7. Tool annotations
+## 6. Result representation — v3.1 correction
 
-Annotations are truthful hints, not security controls.
-
-| Tool | readOnly | destructive | idempotent | openWorld | Tasks |
-|---|---:|---:|---:|---:|---|
-| `hero.start_quest` | false | false | true* | false | unsupported |
-| `hero.finish_quest` | false | false | true | false | unsupported |
-| `hero.list_active_quests` | true | false | true | false | unsupported |
-| `hero.get_card` | true | false | true | false | unsupported |
-
-`start_quest` is idempotent with respect to one open logical work item: matching hero/project/LogicalQuestKey returns the same open quest.
-
----
-
-## 8. Server instructions
-
-Server-wide instructions contain the cross-tool lifecycle, not each tool response.
-
-The first 512 characters must remain self-contained for Codex interoperability and should convey approximately:
+Successful tool result:
 
 ```text
-Use Hero Passport for meaningful coding, debugging, review, planning, research or documentation work. Start one quest for each logical work item, keep its questId, and finish that quest once. Several distinct quests may be active in one project. If you lose a questId, list active quests. Never send source code, diffs, raw logs, prompts, secrets, environment values or workspace paths.
+structuredContent = canonical result object
+content            = exactly one TextContent containing minified JSON
+                     semantically equal to structuredContent
+displayText        = required human-facing field inside that object
 ```
 
-Instructions are model guidance, not a security boundary.
+This follows MCP's backward-compatibility guidance for tools that return structured content.
+
+Do not return only a compact status string in TextContent while returning a different structured object.
+
+Tool execution/validation/business error:
+
+```text
+isError=true
+content = one safe actionable TextContent
+structuredContent absent
+```
+
+Protocol/framing/unknown-tool errors remain SDK-level MCP protocol errors.
 
 ---
 
-# 9. `hero.start_quest`
+## 7. Server instructions
+
+First 512 characters remain self-contained for the reference Codex path.
+
+Canonical semantics:
+
+```text
+Use Hero Passport for meaningful coding, debugging, review, planning, research or documentation work. Start one quest for each work item, keep its questId, and finish that quest once. Several distinct quests may be active in one project. If you lose a questId, list active quests. Never send source code, diffs, raw logs, prompts, secrets, environment values or workspace paths.
+```
+
+Instructions are guidance, not a security boundary.
+
+---
+
+# 8. `hero.start_quest`
 
 ## Purpose
 
-Create one open quest for the current logical work item, or return the already-open matching quest.
+Start one quest for one normalized local work declaration.
 
-## Input
+Input:
 
 ```json
 {
@@ -234,88 +200,49 @@ Create one open quest for the current logical work item, or return the already-o
 }
 ```
 
-## Input schema
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "questType": {
-      "type": "string",
-      "enum": [
-        "planning",
-        "research",
-        "coding",
-        "review",
-        "debugging",
-        "documentation",
-        "maintenance"
-      ]
-    },
-    "goal": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 500
-    }
-  },
-  "required": ["questType", "goal"]
-}
-```
-
-Whitespace-only goal is rejected semantically.
-
-## Success structured content
-
-```json
-{
-  "questId": "0198f2c8-8b61-7aa1-8c14-18a1e860a31a",
-  "alreadyOpen": false,
-  "hero": {
-    "name": "Nova",
-    "level": 1,
-    "levelXp": 0,
-    "levelXpRequired": 100,
-    "trust": 50,
-    "risk": 20
-  },
-  "displayText": "🧭 Квест начат · Nova ур.1 · XP 0/100"
-}
-```
-
-## Semantics
+Boundary rules:
 
 ```text
-resolve HeroOperationContext
-validate
-calculate LogicalQuestKeyV1
-matching open key exists -> return it, alreadyOpen=true
-active quest count >= 16 -> HP133
-otherwise insert open quest
+questType -> canonical closed enum
+goal      -> SafeTextV1, 1..500 Unicode scalar values
 ```
 
-A different goal/type no longer conflicts merely because another quest is open.
+Semantics:
 
-Concurrent identical starts converge through the database partial uniqueness rule.
+```text
+resolve local HeroOperationContext
+normalize SafeTextV1 goal
+compute QuestDedupKeyV1 (case preserved)
+enter immediate writer transaction
+same open dedup declaration -> existing quest, alreadyOpen=true
+otherwise active count >=16 -> HP133
+otherwise create quest -> alreadyOpen=false
+```
 
-Tool description should mention that repeated same-work starts return the open quest and that forbidden payloads must not be sent. Keep description concise.
+A different declaration may coexist. The same arguments after the old quest is completed may create a new quest.
+
+Success fields:
+
+```text
+questId
+alreadyOpen
+hero { name, level, levelXp, levelXpRequired, trust, risk }
+displayText
+```
+
+Goal is not echoed in the start result.
 
 ---
 
-# 10. `hero.finish_quest`
+# 9. `hero.finish_quest`
 
-## Purpose
-
-Complete an explicit quest, award deterministic progression exactly once and persist the entire outcome atomically.
-
-## Input
+Input:
 
 ```json
 {
-  "questId": "0198f2c8-8b61-7aa1-8c14-18a1e860a31a",
+  "questId": "0198c123-4567-7abc-8def-0123456789ab",
   "result": "success",
-  "summary": "Implemented XP calculation and tests.",
+  "summary": "Implemented XP calculation and deterministic tests.",
   "metrics": {
     "testsMentioned": true,
     "scopeViolations": 0,
@@ -327,212 +254,158 @@ Complete an explicit quest, award deterministic progression exactly once and per
 }
 ```
 
-## Schema constraints
+Boundary highlights:
 
 ```text
-questId: canonical UUID text, exact validated parse
-result: success | partial | failed | blocked | abandoned
-summary: 1..2000 chars, non-whitespace
-scopeViolations: 0..20
-userCorrections: 0..20
-buildStatus/testsStatus: not_run | passed | failed | unknown
-skillsUsed: 1..3 unique strings, each <=64 chars, canonical/known alias only
-additionalProperties:false at every object level
+questId      canonical lowercase UUIDv7
+summary      SafeTextV1, 1..2000 scalars
+counters     0..20
+skillsUsed   1..3 canonical skills only, ordered primary->secondary->tertiary
+testsStatus != not_run requires testsMentioned=true
 ```
 
-## Success structured content
-
-```json
-{
-  "questId": "0198f2c8-8b61-7aa1-8c14-18a1e860a31a",
-  "alreadyFinished": false,
-  "reward": {
-    "xpGained": 95,
-    "levelBefore": 1,
-    "levelAfter": 1,
-    "leveledUp": false,
-    "totalXp": 95,
-    "levelXp": 95,
-    "levelXpRequired": 100
-  },
-  "trust": 51,
-  "risk": 19,
-  "skillXp": [
-    {"skill": "coding", "xpGained": 47},
-    {"skill": "testing_awareness", "xpGained": 29},
-    {"skill": "scope_control", "xpGained": 19}
-  ],
-  "traitsUnlocked": [],
-  "displayText": "✨ +95 XP · Nova ур.1 · XP 95/100 · Доверие 51 · Риск 19"
-}
-```
-
-## Context safety
-
-Before finishing:
+Before reward:
 
 ```text
-quest exists?                         else HP130
-quest HeroId == resolved HeroId?      else HP134
-quest ProjectId == resolved ProjectId? else HP134
+unknown quest -> HP130
+wrong bound hero/project -> HP134
+already finished -> original persisted outcome, alreadyFinished=true
 ```
 
-`questId` is not an authentication secret and cannot override local project/hero binding.
+New finish is one immediate writer transaction that atomically commits report, XP ledger, hero/skill/trait/project updates and finished state.
 
-## Retry semantics
-
-If already finished:
+Success fields:
 
 ```text
-alreadyFinished=true
-return original persisted outcome
-never rerun reward rules
-never insert another xp_event
-never mutate skills/traits/trust/risk again
+questId
+alreadyFinished
+reward { xpGained, levelBefore, levelAfter, leveledUp, totalXp, levelXp, levelXpRequired }
+trust
+risk
+skillXp[]
+traitsUnlocked[]
+displayText
 ```
 
 ---
 
-# 11. `hero.list_active_quests`
+# 10. `hero.list_active_quests`
 
-## Purpose
-
-Recover active work for the locally bound hero/project after reconnect, handoff or parallel-agent work.
-
-## Input
+Input:
 
 ```json
 {}
 ```
 
-## Success structured content
+Returns only the locally bound hero/project's active quests.
 
-```json
-{
-  "quests": [
-    {
-      "questId": "0198f2c8-8b61-7aa1-8c14-18a1e860a31a",
-      "questType": "coding",
-      "goal": "Implement XpCalculator",
-      "startedAtUtc": "2026-08-11T02:12:30Z"
-    }
-  ],
-  "displayText": "🧭 Активных квестов: 1"
-}
+Success fields:
+
+```text
+quests[] { questId, questType, goal, startedAtUtc }
+displayText
 ```
 
-Semantics:
+Rules:
 
-- returns only current HeroOperationContext hero/project;
-- empty list is success;
-- max 16 entries;
-- deterministic ordering: `startedAtUtc DESC`, then `questId ASC`;
-- `displayText` does not echo arbitrary goal text by default;
-- structured goal is the previously stored bounded quest goal and must be treated as untrusted data by presentation layers.
+```text
+0..16 entries
+startedAtUtc DESC
+QuestId ASC tie-break
+empty list is success
+displayText does not echo arbitrary goal text
+```
 
-This supersedes architecture-v2 `hero.current_quest` before the first public contract release.
+This is the explicit recovery/handoff path after restart or lost `questId`; do not use fuzzy semantic matching.
 
 ---
 
-# 12. `hero.get_card`
+# 11. `hero.get_card`
 
-## Purpose
-
-Read current hero progression for the locally resolved context.
-
-## Input
+Input:
 
 ```json
 {}
 ```
 
-## Success structured content
+Returns global hero progression plus a bounded projection of the currently bound project.
 
-Conceptually:
+Success shape:
 
-```json
-{
-  "hero": {
-    "name": "Nova",
-    "level": 1,
-    "totalXp": 95,
-    "levelXp": 95,
-    "levelXpRequired": 100,
-    "trust": 51,
-    "risk": 19,
-    "topSkills": [],
-    "traits": []
-  },
-  "displayText": "Nova · ур.1 · XP 95/100 · Доверие 51 · Риск 19"
+```text
+hero {
+  name, level, totalXp, levelXp, levelXpRequired,
+  trust, risk,
+  topSkills[], traits[]
 }
+project {
+  displayName,
+  questsFinished,
+  questsSucceeded,
+  totalXpEarned
+}
+displayText
 ```
 
-Read-only and bounded. Detailed history belongs to CLI/Web, not this tool.
+No project internal ID, fingerprint or path is exposed.
+
+---
+
+## 12. Wire canonicalization
+
+Exact rules are in `WIRE-CONTRACT.md`.
+
+Important summary:
+
+```text
+SafeTextV1       NFC + safe single-line whitespace + scalar-aware bounds
+QuestDedupKeyV1  quest type + case-preserved SafeText goal
+UUID             canonical lowercase UUIDv7
+Timestamp        YYYY-MM-DDTHH:mm:ss.fffZ
+Long JSON int    <= 9_007_199_254_740_991
+Enums            lower_snake_case closed keys
+Current nulls    none
+```
 
 ---
 
 ## 13. Error mapping
 
-Valid `tools/call` requests that fail semantically return MCP tool-error semantics with a concise safe text representation and, when supported cleanly by SDK contract, structured safe error data.
-
 Examples:
 
 ```text
+[HP100] Invalid Hero Passport tool input.
 [HP130] Quest not found.
-[HP133] Active quest limit reached. Finish an existing quest before starting another.
-[HP134] Quest belongs to a different locally bound hero/project context.
-[HP202] Local database is busy. Retry after the competing local operation finishes.
+[HP133] Active quest limit reached. Finish an active quest and retry.
+[HP134] Quest belongs to a different locally bound hero/project.
+[HP202] Local database is busy. Retry shortly.
+[HP203] Hero Passport storage is full. Free local disk space and retry.
+[HP206] Hero Passport database failed an integrity check. Run doctor.
 ```
 
-Do not expose:
-
-```text
-stack trace
-raw SQL
-connection string
-absolute workspace/database path
-request dump
-secrets
-```
-
-Protocol/framing/unknown-tool errors remain protocol errors handled by the MCP SDK.
+Never expose stack traces, raw SQL, connection strings, absolute paths, request dumps or secrets.
 
 ---
 
-## 14. Privacy/schema deny-list
+## 14. Snapshots and compatibility evidence
 
-Contract tests fail if any MCP input/output schema introduces a property whose normalized name matches or semantically represents:
-
-```text
-workspacePath
-sourceCode
-fileContent
-diff
-patch
-rawLog
-prompt
-chatHistory
-env/environment
-secret/apiKey/token
-metadata/context/payload/extra generic bag
-```
-
-Necessary typed fields must be reviewed explicitly rather than bypassing the deny-list through vague names.
-
----
-
-## 15. Compatibility and contract snapshots
-
-After tool registration exists, tests generate canonical snapshots from the actual SDK tool manifest/schemas. Documentation examples are explanatory; generated snapshots are executable drift gates.
-
-Minimum compatibility matrix:
+Implementation generates canonical snapshots under:
 
 ```text
-MCP 2026-07-28      required qualified path
-MCP 2025-11-25      required SDK compatibility path
-MCP Inspector       required protocol smoke
-Codex               required reference-host E2E
-other hosts         release smoke according to integrations/README.md
+contracts/mcp/hp-mcp-2/
 ```
 
-A public tool rename after release requires compatibility strategy. The `current_quest -> list_active_quests` rename occurs now specifically because no public 0.1.0 contract exists yet.
+They cover exact tools, order, annotations, input/output schemas, success/error result goldens and deterministic serialization.
+
+Required release evidence:
+
+```text
+2026-07-28 protocol path
+2025-11-25 compatibility path
+MCP Inspector
+Codex E2E
+host smoke matrix from integrations/README.md
+structuredContent == parsed compatibility JSON TextContent
+```
+
+`WIRE-CONTRACT.md` contains the exhaustive validation vectors.
