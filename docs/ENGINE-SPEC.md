@@ -1,6 +1,6 @@
 # Hero Passport — Deterministic RPG Engine Specification
 
-**Status:** Accepted v3.2 game contract  
+**Status:** Accepted v3.2.1 game contract  
 **Snapshot:** 2026-08-11
 
 Rule versions:
@@ -20,9 +20,11 @@ rank/1.0.0
 
 The engine is a pure deterministic Domain component. It receives canonical typed data and returns numeric/semantic changes.
 
-It does not read SQLite/config/Git/files, call MCP/LLMs/network, inspect source/diffs/logs, localize strings, or read the system clock.
+It does not read SQLite/config/Git/files, call MCP/LLMs/network, inspect source/diffs/logs, localize strings, select presentation flavor or read the system clock.
 
-Historical completed outcomes are immutable and keep the exact rule versions that produced them.
+Historical completed outcomes keep the exact rule versions/deltas that produced them.
+
+The engine is deterministic **given validated bounded attestations**. It does not claim those agent-supplied signals were independently verified.
 
 ## 2. Quest types and base XP
 
@@ -50,9 +52,9 @@ Use integer permille only:
 | `failed` | 100 |
 | `abandoned` | 0 |
 
-## 4. Quality facts
+## 4. Bounded attestations
 
-Canonical input:
+Canonical validated input:
 
 ```text
 testsMentioned: bool
@@ -65,7 +67,9 @@ testsEvidence: observed | reported | none
 summaryScalarLength: derived after SafeText
 ```
 
-Cross-field validation is performed before the engine. Raw logs/source/diffs are never engine input.
+`observed` means the agent asserts it directly ran/saw the relevant result. It is not independent Core verification.
+
+Cross-field validation occurs before the engine. Raw logs/source/diffs are never engine input.
 
 Derived flags:
 
@@ -94,7 +98,7 @@ scope violations  -5 each, maximum magnitude 15
 user corrections  -5 each, maximum magnitude 15
 ```
 
-Absence of a bonus is not an extra penalty. There is no separate “short summary” subtraction.
+Absence of a bonus is not an extra penalty.
 
 ## 6. XP formula
 
@@ -107,7 +111,7 @@ rawXp       = max(0, baseXp + bonusXp - penaltyXp)
 questXp     = floor(rawXp * outcomePermille / 1000)
 ```
 
-No floating-point arithmetic is required.
+No floating point.
 
 No reward term uses elapsed time, tokens, files, lines, diff size, agent identity or model-reported complexity.
 
@@ -126,27 +130,17 @@ Clean successful coding:
 =95 XP
 ```
 
-Same quality, `partial`:
+Same quality:
 
 ```text
-95 × 0.60 = 57 XP
+partial  95 × .60 = 57 XP
+blocked  95 × .30 = 28 XP
+failed   95 × .10 = 9 XP
 ```
 
-Same quality, `blocked`:
+`abandoned` always yields zero XP.
 
-```text
-95 × 0.30 = 28 XP
-```
-
-Same quality, `failed`:
-
-```text
-95 × 0.10 = 9 XP
-```
-
-`abandoned` always yields zero XP regardless of quality fields.
-
-Two scope violations + one user correction on successful coding with clear summary and no observed tests:
+Two scope violations + one user correction on successful coding with clear summary/no observed tests:
 
 ```text
 60 + 10 summary - 10 scope - 5 correction = 55 XP
@@ -169,13 +163,13 @@ review
 maintenance
 ```
 
-MCP accepts canonical keys only. Non-MCP human/import adapters may normalize a small documented alias list before Application.
+MCP accepts canonical keys only.
 
 Calling Hero Passport itself does not justify `tool_use`.
 
 ## 9. Skill XP allocation — `skill-allocation/1.0.0`
 
-Input skills are ordered primary -> secondary -> tertiary.
+Input skills are primary -> secondary -> tertiary.
 
 ```text
 1 skill  = 100
@@ -183,26 +177,22 @@ Input skills are ordered primary -> secondary -> tertiary.
 3 skills = 50 / 30 / 20
 ```
 
-Use cumulative-floor boundaries so integer allocation is conserved exactly.
+Use cumulative-floor boundaries so allocation sums exactly to Quest XP.
 
-For 95 XP / three skills:
-
-```text
-first boundary  floor(95*50/100)  = 47 -> first 47
-second boundary floor(95*80/100)  = 76 -> second 29
-final boundary  floor(95*100/100) = 95 -> third 19
-47+29+19 = 95
-```
-
-Invariant:
+95 XP / 3 skills:
 
 ```text
-sum(skillXpDelta) == questXp
+floor(95*50/100)=47 -> first 47
+floor(95*80/100)=76 -> second 29
+remainder            -> third 19
+47+29+19=95
 ```
+
+Invariant: `sum(skillXpDelta) == questXp`.
 
 ## 10. Hero level thresholds — `hero-progression/2.0.0`
 
-`totalXp` is authoritative. Level is derived by the following static threshold table. Threshold means minimum total XP for that level.
+`totalXp` is authoritative; Level is derived.
 
 | Lv | XP | Lv | XP | Lv | XP | Lv | XP | Lv | XP |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -217,13 +207,11 @@ sum(skillXpDelta) == questXp
 |9|2200|19|8950|29|16000|39|23500|49|31000|
 |10|2700|20|9700|30|16750|40|24250|50|31750|
 
-Level 50 is the 0.1 display cap. XP continues accumulating at the JSON-safe integer ceiling; a later rule version may extend the table without changing historical earned XP.
+Level 50 is the 0.1 display cap. XP continues accumulating up to the JSON-safe ceiling.
 
-This table is game content, not recomputed from a hidden adaptive formula.
+At cap, wire/presentation uses `isLevelCapped=true` and has no next-level requirement. The engine itself does not invent a threshold above the table.
 
 ## 11. Skill level thresholds — `skill-progression/2.0.0`
-
-Each Skill has independent cumulative XP and level:
 
 | Skill Lv | XP threshold |
 |---:|---:|
@@ -253,9 +241,9 @@ Rank is derived from Hero Level and is cosmetic only.
 |35–49|`principal_warlord`|Principal Warlord|
 |50|`legendary_architect`|Legendary Architect|
 
-Localized labels/flavor do not change the rank rule version.
+Localized labels/flavor do not change rank rule version.
 
-## 13. Trust and Strain initial state
+## 13. Trust/Strain initial state
 
 New Hero:
 
@@ -264,20 +252,20 @@ Trust  = 50
 Strain = 20
 ```
 
-Both clamp once after all per-Quest components to `0..100`.
+Both clamp once after all Quest components to `0..100`.
+
+These are RPG stats derived from bounded signals, not objective productivity/reliability telemetry.
 
 ## 14. Trust/Strain — `trust-strain/1.0.0`
 
-`abandoned` is completely neutral:
+`abandoned` is neutral:
 
 ```text
-Trust delta  = 0
-Strain delta = 0
+Trust 0
+Strain 0
 ```
 
-For other results, compose these components:
-
-### Outcome components
+Outcome components:
 
 ```text
 success  -> Trust +1, Strain -1
@@ -286,7 +274,7 @@ blocked  -> Trust +0, Strain +0
 failed   -> Trust +0, Strain +2
 ```
 
-### Positive quality components
+Positive quality components:
 
 ```text
 success && scopeViolations==0 && userCorrections==0
@@ -296,9 +284,9 @@ observed tests passed
   -> Trust +1
 ```
 
-Positive Trust components are capped at `+2` per Quest before negative correction/violation components. Strain recovery components are capped at `-2` per Quest.
+Positive Trust components cap at +2/Quest before negative components. Strain recovery components cap at -2/Quest.
 
-### Negative behavior components
+Negative components:
 
 ```text
 scope violation -> Trust -1, Strain +1 each, count capped at 3
@@ -312,10 +300,10 @@ clean success + observed tests -> Trust +2, Strain -2
 partial, clean                 -> Trust  0, Strain +1
 failed + 1 correction          -> Trust -1, Strain +3
 blocked with no issue          -> Trust  0, Strain  0
-abandoned with any facts       -> Trust  0, Strain  0
+abandoned                      -> Trust  0, Strain  0
 ```
 
-Trust/Strain never multiply XP and never lock product functions in 0.1.
+Trust/Strain never multiply XP or lock features in 0.1.
 
 ## 15. Success Streak — `streak/1.0.0`
 
@@ -324,11 +312,11 @@ success -> previous streak + 1
 partial | blocked | failed | abandoned -> 0
 ```
 
-Streak is cosmetic/milestone input only. It grants no XP multiplier and losing it creates no Trust/Strain penalty.
+Streak grants no XP multiplier and losing it creates no Trust/Strain penalty.
 
-## 16. Traits and Titles — `unlock/2.0.0`
+## 16. Traits/Titles — `unlock/2.0.0`
 
-Traits and Titles are monotonic cosmetic unlocks. An unlocked key never relocks under this rule version.
+Traits/Titles are monotonic cosmetic unlocks.
 
 Initial Traits:
 
@@ -350,7 +338,9 @@ Initial Titles:
 |`unbroken_builder`|Success Streak reaches 10|
 |`master_of_many_tools`|5 distinct canonical Skills reach Level 5|
 
-One active Title is derived deterministically: select the unlocked title with highest `(priority, unlockedAtUtc, titleKey)` where priority is fixed by the rule catalog. Initial priority order, highest first:
+Active Title is the unlocked title with highest `(priority, unlockedAtUtc, titleKey)` under fixed catalog priority.
+
+Initial priority high -> low:
 
 ```text
 master_of_many_tools
@@ -360,17 +350,19 @@ veteran_of_the_merge
 rising_adventurer
 ```
 
-Manual title equipment is deferred.
+Manual equipment is deferred.
 
-## 17. Milestone flavor
+## 17. Milestone events and flavor boundary
 
-Rank/level/trait/title/streak milestone events may carry a curated `flavorKey` selected deterministically from a bounded catalog. Presentation may lightly contextualize the phrase but cannot change the event.
+The engine emits semantic milestone events/keys for level/rank/trait/title/streak changes.
 
-Flavor selection uses a deterministic stable selector such as `(eventId hash mod availableLineCount)`; it never affects progression.
+It does **not** choose a flavor line and does not use a hash/mod selector.
+
+Curated/localized flavor belongs to presentation. Wording may evolve between releases without changing historical game facts or rule versions.
 
 ## 18. Result model
 
-Conceptual semantic outputs include:
+Conceptual semantic engine output:
 
 ```text
 RewardBreakdown
@@ -383,11 +375,11 @@ StreakDelta
 TraitsUnlocked[]
 TitlesUnlocked[]
 activeTitle
-MilestoneEvent[]
+MilestoneEvent[]   # semantic keys only
 ruleVersions
 ```
 
-No localized text is authoritative engine data.
+No localized text/flavor is authoritative engine data.
 
 ## 19. Historical immutability
 
@@ -396,30 +388,30 @@ Once a Quest commits:
 ```text
 reward outcome immutable
 rule versions immutable
-progression delta immutable
+progression deltas immutable
+finalization fingerprint immutable
 retry returns stored result
 ```
 
-A future balance version affects only new Quests unless an explicit non-authoritative projection feature is designed.
+New balance versions affect only new Quests unless a separately designed non-authoritative projection is added.
 
 ## 20. Required engine tests
 
-At minimum:
-
 ```text
-same canonical input + rule versions -> same output
-all XP goldens above
-questXp >= 0
-skill allocations conserve exact XP
-Hero/Skill threshold edges exact
-Rank boundaries exact
-Trust/Strain clamp 0..100
-positive Trust cap exact
+same canonical input + versions -> same semantic/numeric output
+all XP goldens
+questXp >=0
+Skill allocation exact conservation
+Hero/Skill threshold edges
+cap handling has no invented next threshold
+Rank boundaries
+Trust/Strain clamp and positive caps
 abandoned neutral
-streak transitions exact
-unlock exact-at-threshold and monotonicity
-active title priority deterministic
+streak transitions
+unlock exact threshold + monotonicity
+active Title priority
+semantic milestone keys only
 historical retry never invokes current rules
 unknown keys rejected
-checked arithmetic prevents JSON-safe integer overflow
+checked JSON-safe overflow
 ```
