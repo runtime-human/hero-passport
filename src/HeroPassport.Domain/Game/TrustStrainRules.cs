@@ -99,7 +99,7 @@ public static class TrustStrainRules
             components);
     }
 
-    private static void AddOutcomeComponent(QuestOutcome outcome, ICollection<TrustStrainComponent> components)
+    private static void AddOutcomeComponent(QuestOutcome outcome, List<TrustStrainComponent> components)
     {
         switch (outcome)
         {
@@ -121,7 +121,7 @@ public static class TrustStrainRules
         }
     }
 
-    private static void ApplyPositiveCaps(ICollection<TrustStrainComponent> components)
+    private static void ApplyPositiveCaps(List<TrustStrainComponent> components)
     {
         var positiveTrust = components.Sum(static component => Math.Max(component.TrustDelta, 0));
         if (positiveTrust > 2)
