@@ -65,6 +65,8 @@ public sealed record McpFinishMetricsInput(
     string TestsStatus,
     string TestsEvidence);
 
+public sealed record McpRewardComponent(string Key, int XpDelta);
+
 public sealed record McpReward(
     int BaseXp,
     int BonusXp,
@@ -72,7 +74,8 @@ public sealed record McpReward(
     int RawXp,
     int OutcomePermille,
     int XpGained,
-    string RewardRuleVersion);
+    string RewardRuleVersion,
+    IReadOnlyList<McpRewardComponent> Components);
 
 public sealed record McpHeroProgress(
     string HeroId,
@@ -80,8 +83,34 @@ public sealed record McpHeroProgress(
     long TotalXpAfter,
     int LevelBefore,
     int LevelAfter,
+    bool IsLevelCapped,
+    long LevelXp,
+    long? NextLevelXpRequired,
     string RankBefore,
     string RankAfter);
+
+public sealed record McpTrustStrainComponent(string Key, int TrustDelta, int StrainDelta);
+
+public sealed record McpTrustStrain(
+    int TrustBefore,
+    int TrustAfter,
+    int StrainBefore,
+    int StrainAfter,
+    IReadOnlyList<McpTrustStrainComponent> Components,
+    string RuleVersion);
+
+public sealed record McpStreak(int Before, int After, string RuleVersion);
+
+public sealed record McpSkillProgress(
+    string SkillKey,
+    int XpGained,
+    long XpAfter,
+    int LevelBefore,
+    int LevelAfter,
+    bool IsLevelCapped,
+    long? NextLevelXpRequired);
+
+public sealed record McpMilestone(string EventKey, string SemanticKey);
 
 public sealed record McpFinishQuestResult(
     string QuestId,
@@ -90,9 +119,16 @@ public sealed record McpFinishQuestResult(
     bool AlreadyFinalized,
     McpReward Reward,
     McpHeroProgress HeroProgress,
+    McpTrustStrain TrustStrain,
+    McpStreak Streak,
+    IReadOnlyList<McpSkillProgress> SkillProgress,
+    IReadOnlyList<string> TraitsUnlocked,
+    IReadOnlyList<string> TitlesUnlocked,
+    string? ActiveTitle,
+    IReadOnlyList<McpMilestone> Milestones,
     string DisplayText);
 
-public sealed record McpHeroCardSkill(string SkillKey, long Xp, int Level, bool IsLevelCapped, int? NextLevelXpRequired);
+public sealed record McpHeroCardSkill(string SkillKey, long Xp, int Level, bool IsLevelCapped, long? NextLevelXpRequired);
 public sealed record McpHeroCardHero(
     string HeroId,
     string Name,
@@ -100,9 +136,9 @@ public sealed record McpHeroCardHero(
     int Level,
     bool IsLevelCapped,
     long LevelXp,
-    int? NextLevelXpRequired,
+    long? NextLevelXpRequired,
     string RankKey,
-    string ActiveTitle,
+    string? ActiveTitle,
     int Trust,
     int Strain,
     int SuccessStreak,
