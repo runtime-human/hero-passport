@@ -245,7 +245,7 @@ public sealed partial class SqliteHeroPassportStateStore
         return Convert.ToInt32(value, CultureInfo.InvariantCulture);
     }
 
-    private static IReadOnlyList<MilestoneSummary> BuildMilestones(
+    private static List<MilestoneSummary> BuildMilestones(
         ProgressionState heroBefore,
         ProgressionState heroAfter,
         string rankBefore,
