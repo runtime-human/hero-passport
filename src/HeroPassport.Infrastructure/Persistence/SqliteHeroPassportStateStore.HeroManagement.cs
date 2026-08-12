@@ -1,4 +1,5 @@
 using HeroPassport.Application.Runtime;
+using HeroPassport.Domain.Game;
 using HeroPassport.Domain.Primitives;
 using Microsoft.Data.Sqlite;
 using System.Data;
@@ -36,14 +37,16 @@ public sealed partial class SqliteHeroPassportStateStore
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             var heroId = HeroId.Parse(reader.GetString(0));
+            var totalXp = reader.GetInt64(2);
+            var progression = HeroProgressionRules.GetState(totalXp);
             heroes.Add(new HeroListItem(
                 heroId,
                 reader.GetString(1),
                 !reader.IsDBNull(5),
                 string.Equals(settings.ActiveHeroId, heroId.ToString(), StringComparison.Ordinal),
-                reader.GetInt64(2),
-                1,
-                "code_squire",
+                totalXp,
+                progression.Level,
+                RankRules.GetRankKey(progression.Level),
                 reader.GetInt32(3),
                 reader.GetInt32(4)));
         }
@@ -166,6 +169,7 @@ public sealed partial class SqliteHeroPassportStateStore
         var successStreak = heroReader.GetInt32(4);
         await heroReader.DisposeAsync().ConfigureAwait(false);
 
+        var heroProgression = HeroProgressionRules.GetState(totalXp);
         var heroSkills = await GetHeroTopSkillsAsync(connection, heroId, cancellationToken).ConfigureAwait(false);
         var traits = await GetStringKeysAsync(
             connection,
@@ -195,11 +199,11 @@ public sealed partial class SqliteHeroPassportStateStore
                 heroId,
                 heroName,
                 totalXp,
-                1,
-                false,
-                totalXp,
-                100,
-                "code_squire",
+                heroProgression.Level,
+                heroProgression.IsLevelCapped,
+                heroProgression.LevelXp,
+                heroProgression.NextLevelXpRequired,
+                RankRules.GetRankKey(heroProgression.Level),
                 activeTitle,
                 trust,
                 strain,
@@ -253,7 +257,13 @@ public sealed partial class SqliteHeroPassportStateStore
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             var xp = reader.GetInt64(1);
-            result.Add(new HeroCardSkill(reader.GetString(0), xp, 1, false, 50));
+            var progression = SkillProgressionRules.GetState(xp);
+            result.Add(new HeroCardSkill(
+                reader.GetString(0),
+                xp,
+                progression.Level,
+                progression.IsLevelCapped,
+                progression.NextLevelXpRequired));
         }
 
         return result;
@@ -285,7 +295,13 @@ public sealed partial class SqliteHeroPassportStateStore
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             var xp = reader.GetInt64(1);
-            result.Add(new HeroCardSkill(reader.GetString(0), xp, 1, false, 50));
+            var progression = SkillProgressionRules.GetState(xp);
+            result.Add(new HeroCardSkill(
+                reader.GetString(0),
+                xp,
+                progression.Level,
+                progression.IsLevelCapped,
+                progression.NextLevelXpRequired));
         }
 
         return result;
