@@ -5,18 +5,16 @@ namespace HeroPassport.App.Mcp;
 
 public sealed class OrderedMcpServerToolCollection : McpServerPrimitiveCollection<McpServerTool>
 {
-    private readonly IReadOnlyList<McpServerTool> _orderedTools;
+    private readonly McpServerTool[] _orderedTools;
 
     public OrderedMcpServerToolCollection(IEnumerable<McpServerTool> tools)
     {
         ArgumentNullException.ThrowIfNull(tools);
-        var ordered = tools.ToArray();
-        foreach (var tool in ordered)
+        _orderedTools = tools.ToArray();
+        foreach (var tool in _orderedTools)
         {
             Add(tool);
         }
-
-        _orderedTools = ordered;
     }
 
     public override ICollection<string> PrimitiveNames =>
@@ -27,12 +25,12 @@ public sealed class OrderedMcpServerToolCollection : McpServerPrimitiveCollectio
     public override void CopyTo(McpServerTool[] array, int arrayIndex)
     {
         ArgumentNullException.ThrowIfNull(array);
-        for (var index = 0; index < _orderedTools.Count; index++)
+        for (var index = 0; index < _orderedTools.Length; index++)
         {
             array[arrayIndex + index] = _orderedTools[index];
         }
     }
 
     public override IEnumerator<McpServerTool> GetEnumerator() =>
-        _orderedTools.GetEnumerator();
+        ((IEnumerable<McpServerTool>)_orderedTools).GetEnumerator();
 }
