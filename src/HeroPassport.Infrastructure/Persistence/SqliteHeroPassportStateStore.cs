@@ -1,4 +1,5 @@
 using HeroPassport.Application.Runtime;
+using HeroPassport.Domain.Game;
 using HeroPassport.Domain.Primitives;
 using Microsoft.Data.Sqlite;
 using System.Globalization;
@@ -143,12 +144,14 @@ public sealed partial class SqliteHeroPassportStateStore(string databasePath) : 
             return null;
         }
 
+        var totalXp = reader.GetInt64(2);
+        var progression = HeroProgressionRules.GetState(totalXp);
         return new HeroSummary(
             HeroId.Parse(reader.GetString(0)),
             reader.GetString(1),
-            reader.GetInt64(2),
-            1,
-            "code_squire",
+            totalXp,
+            progression.Level,
+            RankRules.GetRankKey(progression.Level),
             reader.GetInt32(3),
             reader.GetInt32(4),
             !reader.IsDBNull(5));
