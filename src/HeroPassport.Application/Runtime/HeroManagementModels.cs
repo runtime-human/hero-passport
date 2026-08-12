@@ -22,7 +22,7 @@ public sealed record HeroCardSkill(
     long Xp,
     int Level,
     bool IsLevelCapped,
-    int? NextLevelXpRequired);
+    long? NextLevelXpRequired);
 
 public sealed record HeroCardHero(
     HeroId HeroId,
@@ -31,7 +31,7 @@ public sealed record HeroCardHero(
     int Level,
     bool IsLevelCapped,
     long LevelXp,
-    int? NextLevelXpRequired,
+    long? NextLevelXpRequired,
     string RankKey,
     string? ActiveTitle,
     int Trust,
