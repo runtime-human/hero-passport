@@ -59,6 +59,8 @@ For finalization:
 4. on ambiguous transport failure retry the same ID and identical payload;
 5. never recalculate XP, Skills, levels, Rank, Trust/Strain, streaks, Traits, Titles, or milestones.
 
+For provenance, `reported` means the result came from the user or another source and `observed` means the agent asserts it directly invoked or saw the result. Never promote `reported` to `observed`.
+
 If Core returns `HP136`, another distinct finalization already won. Do not overwrite or invent replacement facts; rehydrate and honor persisted state.
 
 ## Presentation
