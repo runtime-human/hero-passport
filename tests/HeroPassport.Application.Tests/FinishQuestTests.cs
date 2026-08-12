@@ -30,12 +30,14 @@ public sealed class FinishQuestTests
             Assert.True(replay.Replayed);
             Assert.True(replay.AlreadyFinalized);
             Assert.Equal(60, first.Reward.BaseXp);
-            Assert.Equal(60, first.Reward.RawXp);
+            Assert.Equal(25, first.Reward.BonusXp);
+            Assert.Equal(85, first.Reward.RawXp);
             Assert.Equal(1000, first.Reward.OutcomePermille);
-            Assert.Equal(60, first.Reward.XpGained);
+            Assert.Equal(85, first.Reward.XpGained);
             Assert.Equal(0L, first.HeroProgress.TotalXpBefore);
-            Assert.Equal(60L, first.HeroProgress.TotalXpAfter);
+            Assert.Equal(85L, first.HeroProgress.TotalXpAfter);
             Assert.Equal(hero.HeroId, first.HeroProgress.HeroId);
+            Assert.Equal(first, replay with { Replayed = false });
 
             var changed = request with { Summary = "Different finalization payload." };
             var mismatch = await Assert.ThrowsAsync<HeroPassportException>(() => application.FinishQuestAsync(changed, project, cancellationToken));
@@ -66,7 +68,7 @@ public sealed class FinishQuestTests
             var equivalent = first with { FinishRequestId = MutationRequestId.New() };
             var accepted = await application.FinishQuestAsync(equivalent, project, cancellationToken);
 
-            Assert.Equal(36, committed.Reward.XpGained);
+            Assert.Equal(51, committed.Reward.XpGained);
             Assert.False(accepted.Replayed);
             Assert.True(accepted.AlreadyFinalized);
             Assert.Equal(committed.Reward.XpGained, accepted.Reward.XpGained);
@@ -104,7 +106,7 @@ public sealed class FinishQuestTests
                 project,
                 cancellationToken);
 
-            Assert.Equal(60L, await HeroXpAsync(path, hero.HeroId, cancellationToken));
+            Assert.Equal(85L, await HeroXpAsync(path, hero.HeroId, cancellationToken));
             Assert.Equal(0L, await HeroXpAsync(path, other.Hero.HeroId, cancellationToken));
         }
         finally
