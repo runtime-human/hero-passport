@@ -79,6 +79,11 @@ public interface IHeroPassportStateStore
         DateTimeOffset now,
         CancellationToken cancellationToken = default);
 
+    Task<string> GetQuestLocaleAsync(
+        QuestId questId,
+        ProjectBindingContext project,
+        CancellationToken cancellationToken = default);
+
     Task<FinishQuestResult> FinishQuestAsync(
         FinishQuestStoreCommand command,
         ProjectBindingContext project,
