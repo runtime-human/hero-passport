@@ -1,3 +1,4 @@
+using HeroPassport.App.Localization;
 using HeroPassport.Application.Runtime;
 using HeroPassport.Domain.Primitives;
 using ModelContextProtocol;
@@ -37,12 +38,15 @@ public sealed class HeroPassportMcpEndpoint
             var result = await Application.BootstrapAsync(
                 new BootstrapRequest(ParseRequestId(bootstrapRequestId), locale, heroName, presentationStyle, autoStartQuest, autoFinishQuest),
                 cancellationToken).ConfigureAwait(false);
+            var displayText = result.Replayed
+                ? HeroPassportTextCatalog.Get(result.Settings.Locale, "setup.replayed")
+                : HeroPassportTextCatalog.Format(result.Settings.Locale, "setup.created", result.Hero.Name);
             return new McpBootstrapResult(
                 result.SetupCompleted,
                 Hero(result.Hero),
                 Settings(result.Settings),
                 result.Replayed,
-                result.Replayed ? "Hero Passport setup already committed; replayed the original result." : $"Hero {result.Hero.Name} created.");
+                displayText);
         });
 
     [Description("Update Hero Passport locale, presentation, and automatic Quest preferences after setup.")]
@@ -56,13 +60,19 @@ public sealed class HeroPassportMcpEndpoint
             var result = await Application.ConfigureAsync(
                 new ConfigureRequest(locale, presentationStyle, autoStartQuest, autoFinishQuest),
                 cancellationToken).ConfigureAwait(false);
-            return new McpConfigureResult(Settings(result.Settings), result.Changed, result.Changed ? "Hero Passport preferences updated." : "Hero Passport preferences already match.");
+            return new McpConfigureResult(
+                Settings(result.Settings),
+                result.Changed,
+                HeroPassportTextCatalog.Get(
+                    result.Settings.Locale,
+                    result.Changed ? "preferences.updated" : "preferences.unchanged"));
         });
 
     [Description("Read current Hero Passport settings, active Hero, project context, open Quests, and compatibility versions without mutating state.")]
     public Task<McpRuntimeContextResult> GetContextAsync(CancellationToken cancellationToken) => ExecuteAsync(async () =>
     {
         var result = await Application.GetRuntimeContextAsync(_project, cancellationToken).ConfigureAwait(false);
+        var locale = result.Settings?.Locale ?? "en-US";
         return new McpRuntimeContextResult(
             result.ProductVersion,
             result.ContractVersion,
@@ -74,24 +84,31 @@ public sealed class HeroPassportMcpEndpoint
             result.OpenQuests.Select(static quest => new McpOpenQuest(
                 quest.QuestId.ToString(), quest.HeroId.ToString(), quest.HeroName, quest.QuestType, quest.Title, quest.Goal, FormatTime(quest.StartedAtUtc), quest.Locale)).ToArray(),
             result.RuleVersions,
-            result.SetupCompleted ? "Hero Passport context loaded." : "Hero Passport setup is required.");
+            HeroPassportTextCatalog.Get(locale, result.SetupCompleted ? "context.loaded" : "context.setup_required"));
     });
 
     [Description("Create an additional Hero without changing the active Hero.")]
     public Task<McpCreateHeroResult> CreateHeroAsync(string createRequestId, string name, CancellationToken cancellationToken) => ExecuteAsync(async () =>
     {
         var result = await Application.CreateHeroAsync(new CreateHeroRequest(ParseRequestId(createRequestId), name), cancellationToken).ConfigureAwait(false);
-        return new McpCreateHeroResult(Hero(result.Hero), result.Replayed, result.Replayed ? "Hero creation replayed." : $"Hero {result.Hero.Name} created.");
+        var locale = await GetCurrentLocaleAsync(cancellationToken).ConfigureAwait(false);
+        return new McpCreateHeroResult(
+            Hero(result.Hero),
+            result.Replayed,
+            result.Replayed
+                ? HeroPassportTextCatalog.Get(locale, "hero.creation_replayed")
+                : HeroPassportTextCatalog.Format(locale, "hero.created", result.Hero.Name));
     });
 
     [Description("List all Hero Passport heroes in stable order.")]
     public Task<McpListHeroesResult> ListHeroesAsync(CancellationToken cancellationToken) => ExecuteAsync(async () =>
     {
         var result = await Application.ListHeroesAsync(cancellationToken).ConfigureAwait(false);
+        var locale = await GetCurrentLocaleAsync(cancellationToken).ConfigureAwait(false);
         return new McpListHeroesResult(
             result.Heroes.Select(static hero => new McpHeroListItem(
                 hero.HeroId.ToString(), hero.Name, hero.Archived, hero.Active, hero.TotalXp, hero.Level, hero.RankKey, hero.Trust, hero.Strain)).ToArray(),
-            $"{result.Heroes.Count.ToString(CultureInfo.InvariantCulture)} hero(s).");
+            HeroPassportTextCatalog.Format(locale, "heroes.count", result.Heroes.Count));
     });
 
     [Description("Make an existing non-archived Hero the default for future Quest formation.")]
@@ -99,21 +116,30 @@ public sealed class HeroPassportMcpEndpoint
     {
         var parsed = ParseHeroId(heroId);
         await Application.ActivateHeroAsync(parsed, cancellationToken).ConfigureAwait(false);
-        return new McpActivationResult(parsed.ToString(), true, "Active Hero updated.");
+        var locale = await GetCurrentLocaleAsync(cancellationToken).ConfigureAwait(false);
+        return new McpActivationResult(parsed.ToString(), true, HeroPassportTextCatalog.Get(locale, "hero.active_updated"));
     });
 
     [Description("Archive a non-active Hero that has no open Quest.")]
     public Task<McpLifecycleResult> ArchiveHeroAsync(string heroId, CancellationToken cancellationToken) => ExecuteAsync(async () =>
     {
         var result = await Application.ArchiveHeroAsync(ParseHeroId(heroId), cancellationToken).ConfigureAwait(false);
-        return new McpLifecycleResult(Hero(result.Hero), result.AlreadyInRequestedState, result.AlreadyInRequestedState ? "Hero was already archived." : "Hero archived.");
+        var locale = await GetCurrentLocaleAsync(cancellationToken).ConfigureAwait(false);
+        return new McpLifecycleResult(
+            Hero(result.Hero),
+            result.AlreadyInRequestedState,
+            HeroPassportTextCatalog.Get(locale, result.AlreadyInRequestedState ? "hero.already_archived" : "hero.archived"));
     });
 
     [Description("Restore an archived Hero without activating it.")]
     public Task<McpLifecycleResult> RestoreHeroAsync(string heroId, CancellationToken cancellationToken) => ExecuteAsync(async () =>
     {
         var result = await Application.RestoreHeroAsync(ParseHeroId(heroId), cancellationToken).ConfigureAwait(false);
-        return new McpLifecycleResult(Hero(result.Hero), result.AlreadyInRequestedState, result.AlreadyInRequestedState ? "Hero was already restored." : "Hero restored.");
+        var locale = await GetCurrentLocaleAsync(cancellationToken).ConfigureAwait(false);
+        return new McpLifecycleResult(
+            Hero(result.Hero),
+            result.AlreadyInRequestedState,
+            HeroPassportTextCatalog.Get(locale, result.AlreadyInRequestedState ? "hero.already_restored" : "hero.restored"));
     });
 
     [Description("Start one durable Quest for an explicit Hero in the current project with caller-generated retry identity.")]
@@ -133,7 +159,10 @@ public sealed class HeroPassportMcpEndpoint
                 Quest(result.Quest),
                 Hero(result.Hero),
                 result.Replayed,
-                result.Replayed ? $"↻ {result.Quest.Title}" : $"⚔ {result.Quest.Title}");
+                HeroPassportTextCatalog.Format(
+                    result.Quest.Locale,
+                    result.Replayed ? "quest.resumed" : "quest.started",
+                    result.Quest.Title));
         });
 
     [Description("Finalize a durable Quest once using bounded agent attestations; conflicting finalizations are rejected.")]
@@ -148,10 +177,12 @@ public sealed class HeroPassportMcpEndpoint
         {
             ArgumentNullException.ThrowIfNull(metrics);
             ArgumentNullException.ThrowIfNull(skillsUsed);
+            var parsedQuestId = ParseQuestId(questId);
+            var questLocale = await Application.GetQuestLocaleAsync(parsedQuestId, _project, cancellationToken).ConfigureAwait(false);
             var finished = await Application.FinishQuestAsync(
                 new FinishQuestRequest(
                     ParseRequestId(finishRequestId),
-                    ParseQuestId(questId),
+                    parsedQuestId,
                     result,
                     summary,
                     new FinishMetrics(metrics.TestsMentioned, metrics.ScopeViolations, metrics.UserCorrections, metrics.BuildStatus, metrics.BuildEvidence, metrics.TestsStatus, metrics.TestsEvidence),
@@ -203,13 +234,14 @@ public sealed class HeroPassportMcpEndpoint
                 finished.TitlesUnlocked,
                 finished.ActiveTitle,
                 finished.Milestones.Select(static milestone => new McpMilestone(milestone.EventKey, milestone.SemanticKey)).ToArray(),
-                $"✓ Quest completed · +{finished.Reward.XpGained.ToString(CultureInfo.InvariantCulture)} XP");
+                HeroPassportTextCatalog.Format(questLocale, "quest.finished", finished.Reward.XpGained));
         });
 
     [Description("Read a Hero card and current-project statistics without mutating state.")]
     public Task<McpHeroCardResult> GetCardAsync(string heroId, CancellationToken cancellationToken) => ExecuteAsync(async () =>
     {
         var result = await Application.GetHeroCardAsync(ParseHeroId(heroId), _project, cancellationToken).ConfigureAwait(false);
+        var locale = await GetCurrentLocaleAsync(cancellationToken).ConfigureAwait(false);
         return new McpHeroCardResult(
             new McpHeroCardHero(
                 result.Hero.HeroId.ToString(), result.Hero.Name, result.Hero.TotalXp, result.Hero.Level, result.Hero.IsLevelCapped,
@@ -219,10 +251,16 @@ public sealed class HeroPassportMcpEndpoint
             new McpHeroCardProject(
                 result.Project.DisplayName, result.Project.QuestsStarted, result.Project.QuestsFinished, result.Project.QuestsSucceeded,
                 result.Project.TotalXpEarned, result.Project.SuccessRatePermille, result.Project.TopSkills.Select(Skill).ToArray()),
-            $"{result.Hero.Name} · Level {result.Hero.Level.ToString(CultureInfo.InvariantCulture)} · {result.Hero.TotalXp.ToString(CultureInfo.InvariantCulture)} XP");
+            HeroPassportTextCatalog.Format(locale, "card.summary", result.Hero.Name, result.Hero.Level, result.Hero.TotalXp));
     });
 
     private HeroPassportApplication Application => _application ?? throw new InvalidOperationException("Metadata-only MCP endpoint cannot be invoked.");
+
+    private async Task<string> GetCurrentLocaleAsync(CancellationToken cancellationToken)
+    {
+        var context = await Application.GetRuntimeContextAsync(_project, cancellationToken).ConfigureAwait(false);
+        return context.Settings?.Locale ?? "en-US";
+    }
 
     private static async Task<T> ExecuteAsync<T>(Func<Task<T>> action)
     {
