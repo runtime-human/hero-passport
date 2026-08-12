@@ -1,6 +1,8 @@
+using Microsoft.Extensions.AI;
 using ModelContextProtocol.Server;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
@@ -12,6 +14,11 @@ public static class HeroPassportMcpToolCatalog
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+    };
+
+    private static readonly AIJsonSchemaCreateOptions SchemaCreateOptions = new()
+    {
+        TransformSchemaNode = static (_, node) => CloseObjectSchema(node),
     };
 
     public static IReadOnlyList<McpServerTool> Create(HeroPassportMcpEndpoint endpoint)
@@ -43,11 +50,45 @@ public static class HeroPassportMcpToolCatalog
             Name = toolName,
             Title = toolName,
             SerializerOptions = SerializerOptions,
+            SchemaCreateOptions = SchemaCreateOptions,
             UseStructuredContent = true,
             ReadOnly = readOnly,
             Destructive = false,
             Idempotent = true,
             OpenWorld = false,
         });
+    }
+
+    private static JsonNode CloseObjectSchema(JsonNode node)
+    {
+        if (node is JsonObject schema && IsObjectType(schema["type"]))
+        {
+            schema["additionalProperties"] = false;
+        }
+
+        return node;
+    }
+
+    private static bool IsObjectType(JsonNode? typeNode)
+    {
+        if (typeNode is JsonValue value && value.TryGetValue<string>(out var type))
+        {
+            return string.Equals(type, "object", StringComparison.Ordinal);
+        }
+
+        if (typeNode is JsonArray array)
+        {
+            foreach (var item in array)
+            {
+                if (item is JsonValue itemValue &&
+                    itemValue.TryGetValue<string>(out var itemType) &&
+                    string.Equals(itemType, "object", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }
