@@ -159,10 +159,7 @@ public static class SkillAllocationRules
     public static IReadOnlyList<SkillXpAllocation> Allocate(int questXp, IReadOnlyList<string> skills)
     {
         ArgumentNullException.ThrowIfNull(skills);
-        if (questXp < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(questXp));
-        }
+        ArgumentOutOfRangeException.ThrowIfNegative(questXp);
 
         if (skills.Count is < 1 or > 3)
         {
