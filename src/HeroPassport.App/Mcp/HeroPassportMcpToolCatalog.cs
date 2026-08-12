@@ -1,4 +1,3 @@
-using Microsoft.Extensions.AI;
 using ModelContextProtocol.Server;
 using System.Reflection;
 using System.Text.Json;
@@ -14,11 +13,6 @@ public static class HeroPassportMcpToolCatalog
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-    };
-
-    private static readonly AIJsonSchemaCreateOptions SchemaCreateOptions = new()
-    {
-        TransformSchemaNode = static (_, node) => CloseObjectSchema(node),
     };
 
     public static IReadOnlyList<McpServerTool> Create(HeroPassportMcpEndpoint endpoint)
@@ -45,28 +39,63 @@ public static class HeroPassportMcpToolCatalog
         var method = typeof(HeroPassportMcpEndpoint).GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance)
             ?? throw new InvalidOperationException($"MCP endpoint method '{methodName}' was not found.");
 
-        return McpServerTool.Create(method, endpoint, new McpServerToolCreateOptions
+        var tool = McpServerTool.Create(method, endpoint, new McpServerToolCreateOptions
         {
             Name = toolName,
             Title = toolName,
             SerializerOptions = SerializerOptions,
-            SchemaCreateOptions = SchemaCreateOptions,
             UseStructuredContent = true,
             ReadOnly = readOnly,
             Destructive = false,
             Idempotent = true,
             OpenWorld = false,
         });
-    }
 
-    private static JsonNode CloseObjectSchema(JsonNode node)
-    {
-        if (node is JsonObject schema && IsObjectType(schema["type"]))
+        tool.ProtocolTool.InputSchema = ClosePublishedSchema(tool.ProtocolTool.InputSchema);
+        if (tool.ProtocolTool.OutputSchema is { } outputSchema)
         {
-            schema["additionalProperties"] = false;
+            tool.ProtocolTool.OutputSchema = ClosePublishedSchema(outputSchema);
         }
 
-        return node;
+        return tool;
+    }
+
+    private static JsonElement ClosePublishedSchema(JsonElement schema)
+    {
+        var node = JsonNode.Parse(schema.GetRawText())
+            ?? throw new InvalidOperationException("MCP schema could not be materialized.");
+        CloseObjectSchemas(node);
+        using var document = JsonDocument.Parse(node.ToJsonString());
+        return document.RootElement.Clone();
+    }
+
+    private static void CloseObjectSchemas(JsonNode node)
+    {
+        if (node is JsonObject schema)
+        {
+            if (IsObjectType(schema["type"]))
+            {
+                schema["additionalProperties"] = false;
+            }
+
+            foreach (var property in schema.ToArray())
+            {
+                if (property.Value is not null)
+                {
+                    CloseObjectSchemas(property.Value);
+                }
+            }
+        }
+        else if (node is JsonArray array)
+        {
+            foreach (var item in array)
+            {
+                if (item is not null)
+                {
+                    CloseObjectSchemas(item);
+                }
+            }
+        }
     }
 
     private static bool IsObjectType(JsonNode? typeNode)
