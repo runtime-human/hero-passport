@@ -37,7 +37,7 @@ public sealed class FinishQuestTests
             Assert.Equal(0L, first.HeroProgress.TotalXpBefore);
             Assert.Equal(85L, first.HeroProgress.TotalXpAfter);
             Assert.Equal(hero.HeroId, first.HeroProgress.HeroId);
-            Assert.Equal(first, replay with { Replayed = false });
+            FinishResultAssertions.EqualPersisted(first, replay);
 
             var changed = request with { Summary = "Different finalization payload." };
             var mismatch = await Assert.ThrowsAsync<HeroPassportException>(() => application.FinishQuestAsync(changed, project, cancellationToken));
@@ -72,6 +72,7 @@ public sealed class FinishQuestTests
             Assert.False(accepted.Replayed);
             Assert.True(accepted.AlreadyFinalized);
             Assert.Equal(committed.Reward.XpGained, accepted.Reward.XpGained);
+            FinishResultAssertions.EqualPersisted(committed, accepted);
 
             var different = equivalent with
             {
