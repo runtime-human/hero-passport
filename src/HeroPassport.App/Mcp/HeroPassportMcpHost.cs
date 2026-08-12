@@ -34,9 +34,11 @@ public static class HeroPassportMcpHost
 
         var builder = Host.CreateApplicationBuilder([]);
         builder.Logging.ClearProviders();
-        builder.Services.AddMcpServer()
-            .WithStdioServerTransport()
-            .WithTools(tools);
+        builder.Services.AddMcpServer(options =>
+            {
+                options.ToolCollection = new OrderedMcpServerToolCollection(tools);
+            })
+            .WithStdioServerTransport();
 
         using var host = builder.Build();
         await host.RunAsync(cancellationToken).ConfigureAwait(false);
