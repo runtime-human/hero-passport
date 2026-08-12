@@ -26,6 +26,22 @@ public static class HeroPassportDatabase
         await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public static async Task<byte[]> ReadProjectIdentitySaltAsync(
+        string databasePath,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenConnectionAsync(databasePath, cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT project_identity_salt_v1 FROM app_settings WHERE id=1;";
+        var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        if (value is not byte[] { Length: 32 } salt)
+        {
+            throw new InvalidOperationException("Hero Passport project identity salt is unavailable.");
+        }
+
+        return salt;
+    }
+
     public static async Task<SqliteConnection> OpenConnectionAsync(
         string databasePath,
         CancellationToken cancellationToken = default)
