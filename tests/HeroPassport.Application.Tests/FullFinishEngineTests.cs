@@ -71,7 +71,7 @@ public sealed class FullFinishEngineTests
 
             Assert.Equal(5L, await CountRowsAsync(path, "quest_reward_components", cancellationToken));
             Assert.Equal(3L, await CountRowsAsync(path, "quest_report_skills", cancellationToken));
-            Assert.Equal(2L, await CountRowsAsync(path, "quest_trust_strain_components", cancellationToken));
+            Assert.Equal(4L, await CountRowsAsync(path, "quest_trust_strain_components", cancellationToken));
             Assert.Equal(1L, await CountRowsAsync(path, "xp_events", cancellationToken));
 
             var card = await application.GetHeroCardAsync(bootstrap.Hero.HeroId, project, cancellationToken);
