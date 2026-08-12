@@ -2,6 +2,7 @@ using ModelContextProtocol.Server;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace HeroPassport.App.Mcp;
 
@@ -10,6 +11,7 @@ public static class HeroPassportMcpToolCatalog
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
     };
 
     public static IReadOnlyList<McpServerTool> Create(HeroPassportMcpEndpoint endpoint)
