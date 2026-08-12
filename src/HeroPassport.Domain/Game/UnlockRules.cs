@@ -59,8 +59,8 @@ public static class UnlockRules
         "master_of_many_tools",
     ];
 
-    private static readonly IReadOnlyDictionary<string, int> TitlePriority =
-        new Dictionary<string, int>(StringComparer.Ordinal)
+    private static readonly Dictionary<string, int> TitlePriority =
+        new(StringComparer.Ordinal)
         {
             ["rising_adventurer"] = 1,
             ["veteran_of_the_merge"] = 2,
@@ -169,8 +169,8 @@ public static class UnlockRules
     private static void TryUnlockTrait(
         string key,
         bool condition,
-        ISet<string> allTraits,
-        ICollection<string> newlyUnlocked)
+        HashSet<string> allTraits,
+        List<string> newlyUnlocked)
     {
         if (condition && allTraits.Add(key))
         {
@@ -182,8 +182,8 @@ public static class UnlockRules
         string key,
         bool condition,
         DateTimeOffset unlockedAtUtc,
-        IDictionary<string, UnlockedTitle> allTitles,
-        ICollection<UnlockedTitle> newlyUnlocked)
+        Dictionary<string, UnlockedTitle> allTitles,
+        List<UnlockedTitle> newlyUnlocked)
     {
         if (!condition || allTitles.ContainsKey(key))
         {
