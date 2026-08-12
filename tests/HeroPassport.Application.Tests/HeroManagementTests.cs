@@ -133,11 +133,17 @@ public sealed class HeroManagementTests
             var card = await application.GetHeroCardAsync(initial.Hero.HeroId, project, cancellationToken);
 
             Assert.Equal(initial.Hero.HeroId, card.Hero.HeroId);
-            Assert.Equal(60L, card.Hero.TotalXp);
+            Assert.Equal(85L, card.Hero.TotalXp);
+            Assert.Equal(1, card.Hero.Level);
+            Assert.Equal(85L, card.Hero.LevelXp);
+            Assert.Equal(100L, card.Hero.NextLevelXpRequired);
+            Assert.Equal(52, card.Hero.Trust);
+            Assert.Equal(18, card.Hero.Strain);
+            Assert.Equal(1, card.Hero.SuccessStreak);
             Assert.Equal(1, card.Project.QuestsStarted);
             Assert.Equal(1, card.Project.QuestsFinished);
             Assert.Equal(1, card.Project.QuestsSucceeded);
-            Assert.Equal(60L, card.Project.TotalXpEarned);
+            Assert.Equal(85L, card.Project.TotalXpEarned);
             Assert.Equal(1000, card.Project.SuccessRatePermille);
             Assert.Equal("Project", card.Project.DisplayName);
         }
