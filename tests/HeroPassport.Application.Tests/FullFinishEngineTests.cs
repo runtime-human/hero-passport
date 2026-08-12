@@ -119,7 +119,9 @@ public sealed class FullFinishEngineTests
             Assert.Contains(result.Milestones, static milestone => milestone.EventKey == "hero.level_up" && milestone.SemanticKey == "hero.level.2");
             Assert.Contains(result.SkillProgress, static skill => skill.SkillKey == "coding" && skill.LevelBefore == 1 && skill.LevelAfter == 2);
             Assert.Contains(result.SkillProgress, static skill => skill.SkillKey == "testing_awareness" && skill.LevelBefore == 1 && skill.LevelAfter == 2);
-            Assert.Equal(result with { Replayed = true, AlreadyFinalized = true }, replay);
+            Assert.True(replay.Replayed);
+            Assert.True(replay.AlreadyFinalized);
+            FinishResultAssertions.EqualPersisted(result, replay);
         }
         finally
         {
