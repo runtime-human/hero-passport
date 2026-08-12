@@ -91,7 +91,7 @@ public sealed class HeroPassportMcpEndpoint
         return new McpListHeroesResult(
             result.Heroes.Select(static hero => new McpHeroListItem(
                 hero.HeroId.ToString(), hero.Name, hero.Archived, hero.Active, hero.TotalXp, hero.Level, hero.RankKey, hero.Trust, hero.Strain)).ToArray(),
-            $"{result.Heroes.Count.ToString(CultureInfo.InvariantCulture)} hero(s)." );
+            $"{result.Heroes.Count.ToString(CultureInfo.InvariantCulture)} hero(s).");
     });
 
     [Description("Make an existing non-archived Hero the default for future Quest formation.")]
@@ -163,15 +163,46 @@ public sealed class HeroPassportMcpEndpoint
                 finished.Result,
                 finished.Replayed,
                 finished.AlreadyFinalized,
-                new McpReward(finished.Reward.BaseXp, finished.Reward.BonusXp, finished.Reward.PenaltyXp, finished.Reward.RawXp, finished.Reward.OutcomePermille, finished.Reward.XpGained, finished.Reward.RewardRuleVersion),
+                new McpReward(
+                    finished.Reward.BaseXp,
+                    finished.Reward.BonusXp,
+                    finished.Reward.PenaltyXp,
+                    finished.Reward.RawXp,
+                    finished.Reward.OutcomePermille,
+                    finished.Reward.XpGained,
+                    finished.Reward.RewardRuleVersion,
+                    finished.Reward.Components.Select(static component => new McpRewardComponent(component.Key, component.XpDelta)).ToArray()),
                 new McpHeroProgress(
                     finished.HeroProgress.HeroId.ToString(),
                     finished.HeroProgress.TotalXpBefore,
                     finished.HeroProgress.TotalXpAfter,
                     finished.HeroProgress.LevelBefore,
                     finished.HeroProgress.LevelAfter,
+                    finished.HeroProgress.IsLevelCapped,
+                    finished.HeroProgress.LevelXp,
+                    finished.HeroProgress.NextLevelXpRequired,
                     finished.HeroProgress.RankBefore,
                     finished.HeroProgress.RankAfter),
+                new McpTrustStrain(
+                    finished.TrustStrain.TrustBefore,
+                    finished.TrustStrain.TrustAfter,
+                    finished.TrustStrain.StrainBefore,
+                    finished.TrustStrain.StrainAfter,
+                    finished.TrustStrain.Components.Select(static component => new McpTrustStrainComponent(component.Key, component.TrustDelta, component.StrainDelta)).ToArray(),
+                    finished.TrustStrain.RuleVersion),
+                new McpStreak(finished.Streak.Before, finished.Streak.After, finished.Streak.RuleVersion),
+                finished.SkillProgress.Select(static skill => new McpSkillProgress(
+                    skill.SkillKey,
+                    skill.XpGained,
+                    skill.XpAfter,
+                    skill.LevelBefore,
+                    skill.LevelAfter,
+                    skill.IsLevelCapped,
+                    skill.NextLevelXpRequired)).ToArray(),
+                finished.TraitsUnlocked,
+                finished.TitlesUnlocked,
+                finished.ActiveTitle,
+                finished.Milestones.Select(static milestone => new McpMilestone(milestone.EventKey, milestone.SemanticKey)).ToArray(),
                 $"✓ Quest completed · +{finished.Reward.XpGained.ToString(CultureInfo.InvariantCulture)} XP");
         });
 
@@ -182,7 +213,7 @@ public sealed class HeroPassportMcpEndpoint
         return new McpHeroCardResult(
             new McpHeroCardHero(
                 result.Hero.HeroId.ToString(), result.Hero.Name, result.Hero.TotalXp, result.Hero.Level, result.Hero.IsLevelCapped,
-                result.Hero.LevelXp, result.Hero.NextLevelXpRequired, result.Hero.RankKey, result.Hero.ActiveTitle ?? string.Empty,
+                result.Hero.LevelXp, result.Hero.NextLevelXpRequired, result.Hero.RankKey, result.Hero.ActiveTitle,
                 result.Hero.Trust, result.Hero.Strain, result.Hero.SuccessStreak,
                 result.Hero.TopSkills.Select(Skill).ToArray(), result.Hero.Traits, result.Hero.Titles),
             new McpHeroCardProject(
