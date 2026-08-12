@@ -1,5 +1,6 @@
 using HeroPassport.App.Mcp;
 using ModelContextProtocol.Server;
+using System.Text.Json;
 using Xunit;
 
 namespace HeroPassport.App.Tests;
@@ -34,6 +35,8 @@ public sealed class McpSurfaceTests
             Assert.False(tool.ProtocolTool.Annotations?.DestructiveHint ?? true);
             Assert.True(tool.ProtocolTool.Annotations?.IdempotentHint ?? false);
             Assert.NotNull(tool.ProtocolTool.OutputSchema);
+            AssertClosedObjects(tool.ProtocolTool.InputSchema);
+            AssertClosedObjects(tool.ProtocolTool.OutputSchema.Value);
         });
 
         var readOnlyNames = tools
@@ -42,5 +45,34 @@ public sealed class McpSurfaceTests
             .ToArray();
 
         Assert.Equal(["hero.get_context", "hero.list", "hero.get_card"], readOnlyNames);
+    }
+
+    private static void AssertClosedObjects(JsonElement schema)
+    {
+        if (schema.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        if (schema.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String && type.GetString() == "object")
+        {
+            Assert.True(schema.TryGetProperty("additionalProperties", out var additionalProperties));
+            Assert.Equal(JsonValueKind.False, additionalProperties.ValueKind);
+        }
+
+        foreach (var property in schema.EnumerateObject())
+        {
+            if (property.NameEquals("properties") && property.Value.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var nested in property.Value.EnumerateObject())
+                {
+                    AssertClosedObjects(nested.Value);
+                }
+            }
+            else if (property.NameEquals("items"))
+            {
+                AssertClosedObjects(property.Value);
+            }
+        }
     }
 }
