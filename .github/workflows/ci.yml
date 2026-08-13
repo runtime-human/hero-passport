@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - agent/sqlite-foundation
   pull_request:
 
 permissions:
@@ -29,13 +28,15 @@ jobs:
         run: dotnet test tests/HeroPassport.Architecture.Tests/HeroPassport.Architecture.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
 
   ef-codegen:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/agent/sqlite-foundation'
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/sqlite-foundation'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/sqlite-foundation
       - name: Skip when migration is already committed
         id: migration
         run: |
