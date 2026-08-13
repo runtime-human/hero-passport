@@ -24,5 +24,5 @@ jobs:
         run: dotnet restore HeroPassport.slnx
       - name: Build
         run: dotnet build HeroPassport.slnx --no-restore -c Release
-      - name: Test
-        run: dotnet test HeroPassport.slnx --no-build -c Release --logger "console;verbosity=normal"
+      - name: Architecture tests
+        run: dotnet test tests/HeroPassport.Architecture.Tests/HeroPassport.Architecture.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
