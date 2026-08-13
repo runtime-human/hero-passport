@@ -1,7 +1,7 @@
 # Hero Passport Documentation
 
 **Current architecture:** v3.2.1  
-**Snapshot:** 2026-08-11
+**Snapshot:** 2026-08-13
 
 ## Start here
 
@@ -41,10 +41,11 @@ The v3.2 consolidated design and implementation plan are superseded by v3.2.1. O
 - [`SECURITY-PRIVACY.md`](SECURITY-PRIVACY.md)
 - [`TESTING-QUALITY.md`](TESTING-QUALITY.md)
 
-## Current design and plan
+## Current design and execution plans
 
 - `superpowers/specs/2026-08-11-hero-passport-v3.2.1-design.md`
 - `superpowers/plans/2026-08-11-hero-passport-v3.2.1-implementation.md`
+- [`MVP-PR-PLAN.md`](MVP-PR-PLAN.md) — reviewable PR sequence and merge discipline for 0.1
 
 ## Key v3.2.1 corrections
 
