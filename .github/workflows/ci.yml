@@ -3,7 +3,7 @@ name: ci
 on:
   push:
     branches:
-      - agent/architecture-spec-roadmap-2026-08
+      - main
   pull_request:
 
 permissions:
