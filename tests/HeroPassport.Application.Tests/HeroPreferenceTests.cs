@@ -32,4 +32,33 @@ public sealed class HeroPreferenceTests
         }
         finally { TestRuntime.DeleteDatabase(path); }
     }
+
+    [Fact]
+    public async Task ActivatingCurrentHeroDoesNotMutateSettingsVersion()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var path = TestRuntime.CreateDatabasePath();
+        try
+        {
+            await HeroPassportDatabase.InitializeAsync(path, token);
+            var app = TestRuntime.CreateApplication(path);
+            var initial = await app.BootstrapAsync(
+                new BootstrapRequest(MutationRequestId.New(), "en-US", "Nova", "rpg_engineering", true, true),
+                token);
+            var before = await ReadConfigVersionAsync(path, token);
+
+            await app.ActivateHeroAsync(initial.Hero.HeroId, token);
+
+            Assert.Equal(before, await ReadConfigVersionAsync(path, token));
+        }
+        finally { TestRuntime.DeleteDatabase(path); }
+    }
+
+    private static async Task<long> ReadConfigVersionAsync(string path, CancellationToken token)
+    {
+        await using var connection = await HeroPassportDatabase.OpenConnectionAsync(path, token);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT config_version FROM app_settings WHERE id=1;";
+        return (long)(await command.ExecuteScalarAsync(token) ?? 0L);
+    }
 }
