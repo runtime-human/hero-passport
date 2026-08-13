@@ -72,7 +72,7 @@ internal static class StorageModelV1
     {
         modelBuilder.Entity(Settings, entity =>
         {
-            entity.Property<int>("id").HasColumnType("INTEGER");
+            entity.Property<int>("id").HasColumnType("INTEGER").ValueGeneratedNever();
             entity.Property<int>("setup_completed").HasColumnType("INTEGER");
             entity.Property<string?>("active_hero_id").HasColumnType("TEXT");
             entity.Property<string>("locale").HasColumnType("TEXT").IsRequired();
