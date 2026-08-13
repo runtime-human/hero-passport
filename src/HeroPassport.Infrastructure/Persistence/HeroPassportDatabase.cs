@@ -22,8 +22,12 @@ public static class HeroPassportDatabase
         }
 
         var factory = new HeroPassportDbContextFactory(fullPath);
-        await using var context = factory.CreateDbContext();
-        await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
+        await using (var context = factory.CreateDbContext())
+        {
+            await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await AppSettingsInitializer.EnsureCreatedAsync(fullPath, cancellationToken).ConfigureAwait(false);
     }
 
     public static async Task<byte[]> ReadProjectIdentitySaltAsync(
