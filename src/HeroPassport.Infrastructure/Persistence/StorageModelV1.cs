@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace HeroPassport.Infrastructure.Persistence;
 
-internal static class StorageModelV1
+internal static class HeroPassportStorageModel
 {
     private const string Hero = "HeroPassport.Storage.Hero";
     private const string Project = "HeroPassport.Storage.Project";
