@@ -162,6 +162,32 @@ Use real file-backed SQLite for persistence/concurrency/crash claims.
 
 Do not claim build/tests pass without executing and observing the exact commands.
 
+## Code comments
+
+Keep production code self-explanatory through names, types, small methods and explicit invariants. Add a comment only when a competent maintainer would otherwise miss an important reason, constraint, workaround, security property or non-obvious trade-off.
+
+Comments must be written in English and should answer **why this code or constraint exists**. Do not write comments that merely restate what the next line, method or type already says. Remove stale comments when the reason no longer applies.
+
+Good comment subjects include:
+
+```text
+protocol/provider behavior that forces an unusual implementation
+security or privacy constraints that are easy to accidentally weaken
+persistence ordering required for crash or concurrency correctness
+intentional compatibility workarounds with a clear removal condition
+non-obvious algorithmic choices where a simpler-looking alternative is incorrect
+```
+
+Avoid narrative step-by-step comments, commented-out code, change-log comments and comments that duplicate tests or documentation.
+
+## Pull request discipline
+
+The architecture/documentation baseline is merged before product implementation.
+
+After that, split implementation into independently reviewable PRs by coherent behavior and risk, not by arbitrary file count. A PR should be small enough that a reviewer can understand its invariants and reject it without rejecting unrelated work, but complete enough to leave the repository in a valid, testable state.
+
+Do not combine unrelated concerns such as SQLite reliability, MCP wire changes, CLI administration and RPG rule changes in one PR. Each product PR follows TDD, receives a focused review, and is merged only after its required checks and review findings are resolved.
+
 ## Pre-code checkpoint
 
 Before full RPG expansion, prove the real vertical loop:
