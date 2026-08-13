@@ -28,5 +28,7 @@ jobs:
         run: dotnet test tests/HeroPassport.Architecture.Tests/HeroPassport.Architecture.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
       - name: Domain tests
         run: dotnet test tests/HeroPassport.Domain.Tests/HeroPassport.Domain.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
+      - name: Application tests
+        run: dotnet test tests/HeroPassport.Application.Tests/HeroPassport.Application.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
       - name: Infrastructure tests
         run: dotnet test tests/HeroPassport.Infrastructure.Tests/HeroPassport.Infrastructure.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
