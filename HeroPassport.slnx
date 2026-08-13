@@ -1,0 +1,13 @@
+<Solution>
+  <Project Path="src/HeroPassport.Domain/HeroPassport.Domain.csproj" />
+  <Project Path="src/HeroPassport.Application/HeroPassport.Application.csproj" />
+  <Project Path="src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj" />
+  <Project Path="src/HeroPassport.App/HeroPassport.App.csproj" />
+  <Project Path="tests/HeroPassport.Domain.Tests/HeroPassport.Domain.Tests.csproj" />
+  <Project Path="tests/HeroPassport.Application.Tests/HeroPassport.Application.Tests.csproj" />
+  <Project Path="tests/HeroPassport.Infrastructure.Tests/HeroPassport.Infrastructure.Tests.csproj" />
+  <Project Path="tests/HeroPassport.App.Tests/HeroPassport.App.Tests.csproj" />
+  <Project Path="tests/HeroPassport.Architecture.Tests/HeroPassport.Architecture.Tests.csproj" />
+  <Project Path="tests/HeroPassport.Contract.Tests/HeroPassport.Contract.Tests.csproj" />
+  <Project Path="tests/HeroPassport.AgentEvals/HeroPassport.AgentEvals.csproj" />
+</Solution>
