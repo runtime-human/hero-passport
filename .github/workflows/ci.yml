@@ -28,7 +28,10 @@ jobs:
         run: dotnet tool restore
       - name: Generate migration metadata
         run: dotnet ef migrations add InitialFoundation --project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --startup-project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --context HeroPassportDbContext --output-dir Persistence/GeneratedMigrations --configuration Release --no-build
-      - name: Print generated migration metadata
-        run: find src/HeroPassport.Infrastructure/Persistence/GeneratedMigrations -type f -name '*.cs' -print -exec cat {} \;
+      - name: Upload generated migration metadata
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ef-migration
+          path: src/HeroPassport.Infrastructure/Persistence/GeneratedMigrations
       - name: Architecture tests
         run: dotnet test tests/HeroPassport.Architecture.Tests/HeroPassport.Architecture.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
