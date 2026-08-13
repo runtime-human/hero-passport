@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../HeroPassport.Application/HeroPassport.Application.csproj" />
+    <ProjectReference Include="../HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
