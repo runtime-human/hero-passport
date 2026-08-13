@@ -85,7 +85,8 @@ public sealed class ProjectIdentityResolver
 
         var anchor = Path.TrimEndingDirectorySeparator(Path.GetFullPath(commonDirectory));
         var scope = isExplicit ? NormalizeScope(prefix) : ".";
-        var displayName = NormalizeDisplayName(Path.GetFileName(Path.TrimEndingDirectorySeparator(topLevel)));
+        var displayNameSource = isExplicit ? bindingStart : topLevel;
+        var displayName = NormalizeDisplayName(Path.GetFileName(Path.TrimEndingDirectorySeparator(displayNameSource)));
         var fingerprint = CreateFingerprint(installationSalt.Span, $"{IdentityVersion}\0git\0{anchor}\0{scope}");
 
         return new ResolvedProjectIdentity("git", scope, displayName, fingerprint, IdentityVersion);
