@@ -27,7 +27,7 @@ jobs:
       - name: Restore local tools
         run: dotnet tool restore
       - name: Generate migration metadata
-        run: dotnet ef migrations add InitialFoundation --project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --startup-project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --context HeroPassportDbContext --output-dir Persistence/GeneratedMigrations --no-build
+        run: dotnet ef migrations add InitialFoundation --project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --startup-project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --context HeroPassportDbContext --output-dir Persistence/GeneratedMigrations --configuration Release --no-build
       - name: Print generated migration metadata
         run: find src/HeroPassport.Infrastructure/Persistence/GeneratedMigrations -type f -name '*.cs' -print -exec cat {} \;
       - name: Architecture tests
