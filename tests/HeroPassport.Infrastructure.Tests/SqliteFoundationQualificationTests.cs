@@ -16,7 +16,6 @@ public sealed class SqliteFoundationQualificationTests
         {
             var factory = new HeroPassportDbContextFactory(path);
             await using var context = factory.CreateDbContext();
-
             Assert.False(context.Database.HasPendingModelChanges());
         }
         finally
@@ -34,14 +33,16 @@ public sealed class SqliteFoundationQualificationTests
         {
             await HeroPassportDatabase.InitializeAsync(path, cancellationToken);
             var firstSalt = await HeroPassportDatabase.ReadProjectIdentitySaltAsync(path, cancellationToken);
-
             await HeroPassportDatabase.InitializeAsync(path, cancellationToken);
             var secondSalt = await HeroPassportDatabase.ReadProjectIdentitySaltAsync(path, cancellationToken);
 
             Assert.Equal(firstSalt, secondSalt);
             await using var connection = await HeroPassportDatabase.OpenConnectionAsync(path, cancellationToken);
             Assert.Equal(1L, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM app_settings;", cancellationToken));
-            Assert.Equal(1L, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory;", cancellationToken));
+
+            var factory = new HeroPassportDbContextFactory(path);
+            await using var context = factory.CreateDbContext();
+            Assert.Empty(await context.Database.GetPendingMigrationsAsync(cancellationToken));
         }
         finally
         {
@@ -57,10 +58,8 @@ public sealed class SqliteFoundationQualificationTests
         try
         {
             await HeroPassportDatabase.InitializeAsync(path, cancellationToken);
-
             await AssertConnectionPolicyAsync(path, cancellationToken);
             await AssertConnectionPolicyAsync(path, cancellationToken);
-
             SqliteConnection.ClearAllPools();
             await AssertConnectionPolicyAsync(path, cancellationToken);
         }
@@ -78,34 +77,77 @@ public sealed class SqliteFoundationQualificationTests
         try
         {
             await HeroPassportDatabase.InitializeAsync(path, cancellationToken);
-            await using var connection = await HeroPassportDatabase.OpenConnectionAsync(path, cancellationToken);
+            var factory = new HeroPassportDbContextFactory(path);
 
-            await Assert.ThrowsAsync<SqliteException>(() => ExecuteAsync(
-                connection,
-                "INSERT INTO quest_sessions(id,hero_id,project_id,quest_type,title,goal,locale,status,started_at_utc,finished_at_utc,created_at_utc) " +
-                "VALUES('01900000-0000-7000-8000-000000000010','01900000-0000-7000-8000-000000000011','01900000-0000-7000-8000-000000000012','coding','Quest','Goal','en-US','open','2026-08-13T00:00:00.000Z',NULL,'2026-08-13T00:00:00.000Z');",
-                cancellationToken));
+            await using (var context = factory.CreateDbContext())
+            {
+                context.Set<Dictionary<string, object>>("HeroPassport.Storage.QuestSession").Add(NewQuest(
+                    "01900000-0000-7000-8000-000000000010",
+                    "01900000-0000-7000-8000-000000000011",
+                    "01900000-0000-7000-8000-000000000012",
+                    "open",
+                    null));
+                await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync(cancellationToken));
+            }
 
             const string heroId = "01900000-0000-7000-8000-000000000021";
             const string projectId = "01900000-0000-7000-8000-000000000022";
-            await ExecuteAsync(
-                connection,
-                $"INSERT INTO heroes(id,name,total_xp,trust,strain,success_streak,created_at_utc,updated_at_utc) VALUES('{heroId}','Hero',0,50,20,0,'2026-08-13T00:00:00.000Z','2026-08-13T00:00:00.000Z');",
-                cancellationToken);
-            await ExecuteAsync(
-                connection,
-                $"INSERT INTO projects(id,display_name,workspace_fingerprint,identity_version,created_at_utc) VALUES('{projectId}','Project','{new string('b', 64)}','project-identity/1','2026-08-13T00:00:00.000Z');",
-                cancellationToken);
-
-            await Assert.ThrowsAsync<SqliteException>(() => ExecuteAsync(
-                connection,
-                $"INSERT INTO quest_sessions(id,hero_id,project_id,quest_type,title,goal,locale,status,started_at_utc,finished_at_utc,created_at_utc) VALUES('01900000-0000-7000-8000-000000000023','{heroId}','{projectId}','coding','Quest','Goal','en-US','finished','2026-08-13T00:00:00.000Z',NULL,'2026-08-13T00:00:00.000Z');",
-                cancellationToken));
+            await using (var context = factory.CreateDbContext())
+            {
+                context.Set<Dictionary<string, object>>("HeroPassport.Storage.Hero").Add(new()
+                {
+                    ["id"] = heroId,
+                    ["name"] = "Hero",
+                    ["total_xp"] = 0L,
+                    ["trust"] = 50,
+                    ["strain"] = 20,
+                    ["success_streak"] = 0L,
+                    ["created_at_utc"] = "2026-08-13T00:00:00.000Z",
+                    ["updated_at_utc"] = "2026-08-13T00:00:00.000Z",
+                });
+                context.Set<Dictionary<string, object>>("HeroPassport.Storage.Project").Add(new()
+                {
+                    ["id"] = projectId,
+                    ["display_name"] = "Project",
+                    ["workspace_fingerprint"] = new string('b', 64),
+                    ["identity_version"] = "project-identity/1",
+                    ["created_at_utc"] = "2026-08-13T00:00:00.000Z",
+                });
+                context.Set<Dictionary<string, object>>("HeroPassport.Storage.QuestSession").Add(NewQuest(
+                    "01900000-0000-7000-8000-000000000023",
+                    heroId,
+                    projectId,
+                    "finished",
+                    null));
+                await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync(cancellationToken));
+            }
         }
         finally
         {
             DeleteDatabase(path);
         }
+    }
+
+    private static Dictionary<string, object> NewQuest(string id, string heroId, string projectId, string status, string? finishedAt)
+    {
+        var values = new Dictionary<string, object>
+        {
+            ["id"] = id,
+            ["hero_id"] = heroId,
+            ["project_id"] = projectId,
+            ["quest_type"] = "coding",
+            ["title"] = "Quest",
+            ["goal"] = "Goal",
+            ["locale"] = "en-US",
+            ["status"] = status,
+            ["started_at_utc"] = "2026-08-13T00:00:00.000Z",
+            ["created_at_utc"] = "2026-08-13T00:00:00.000Z",
+        };
+        if (finishedAt is not null)
+        {
+            values["finished_at_utc"] = finishedAt;
+        }
+        return values;
     }
 
     private static async Task AssertConnectionPolicyAsync(string path, CancellationToken cancellationToken)
@@ -114,13 +156,6 @@ public sealed class SqliteFoundationQualificationTests
         Assert.Equal(2L, await ScalarLongAsync(connection, "PRAGMA synchronous;", cancellationToken));
         Assert.Equal(1L, await ScalarLongAsync(connection, "PRAGMA foreign_keys;", cancellationToken));
         Assert.Equal(0L, await ScalarLongAsync(connection, "PRAGMA trusted_schema;", cancellationToken));
-    }
-
-    private static async Task ExecuteAsync(SqliteConnection connection, string sql, CancellationToken cancellationToken)
-    {
-        await using var command = connection.CreateCommand();
-        command.CommandText = sql;
-        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task<long> ScalarLongAsync(SqliteConnection connection, string sql, CancellationToken cancellationToken)
