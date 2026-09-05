@@ -139,7 +139,7 @@ public sealed class HpMcpStdioIntegrationTests
                 cancellationToken: token);
             var finishJson = Structured(finish);
             Assert.Equal(60, finishJson.GetProperty("reward").GetProperty("xpGained").GetInt64());
-            Assert.Equal(JsonValueKind.Null, finishJson.GetProperty("activeTitle").ValueKind);
+            Assert.False(finishJson.TryGetProperty("activeTitle", out _));
             AssertStructuredTextEquality(finish);
 
             var card = await client.CallToolAsync(
@@ -150,6 +150,7 @@ public sealed class HpMcpStdioIntegrationTests
             Assert.Equal(60, cardHero.GetProperty("totalXp").GetInt64());
             Assert.Equal(60, cardHero.GetProperty("levelXp").GetInt64());
             Assert.Equal(100, cardHero.GetProperty("nextLevelXpRequired").GetInt64());
+            Assert.False(cardHero.TryGetProperty("activeTitle", out _));
             AssertStructuredTextEquality(card);
         }
         finally
