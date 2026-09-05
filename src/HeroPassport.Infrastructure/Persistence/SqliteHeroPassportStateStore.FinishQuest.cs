@@ -299,12 +299,13 @@ public sealed partial class SqliteHeroPassportStateStore
             connection,
             transaction,
             """
-            SELECT result,finalization_args_encoding_version,finalization_args_hash,
-                   reward_rule_version,base_xp,bonus_xp,penalty_xp,raw_xp,outcome_permille,xp_gained,
-                   hero_progression_version,rank_rule_version,hero_id,
-                   hero_total_xp_before,hero_total_xp_after,hero_level_before,hero_level_after,rank_before,rank_after
-            FROM quest_reports
-            WHERE quest_id=$quest;
+            SELECT r.result,r.finalization_args_encoding_version,r.finalization_args_hash,
+                   r.reward_rule_version,r.base_xp,r.bonus_xp,r.penalty_xp,r.raw_xp,r.outcome_permille,r.xp_gained,
+                   r.hero_progression_version,r.rank_rule_version,q.hero_id,
+                   r.hero_total_xp_before,r.hero_total_xp_after,r.hero_level_before,r.hero_level_after,r.rank_before,r.rank_after
+            FROM quest_reports AS r
+            INNER JOIN quest_sessions AS q ON q.id=r.quest_id
+            WHERE r.quest_id=$quest;
             """,
             ("$quest", questId.ToString()));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
