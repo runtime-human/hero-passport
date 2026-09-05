@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../HeroPassport.Application/HeroPassport.Application.csproj" />
     <ProjectReference Include="../HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj" />
