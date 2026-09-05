@@ -11,6 +11,13 @@ namespace HeroPassport.App;
 
 public static class HeroPassportProgram
 {
+    private const string McpServerInstructions =
+        "Use the installed Hero Passport Agent Skill for ambient lifecycle policy.\n" +
+        "Call hero.get_context to hydrate/recover uncertain state.\n" +
+        "Pass explicit heroId when starting a Quest and carry returned questId.\n" +
+        "Reuse mutation request IDs only for retries of the same canonical intent.\n" +
+        "Never send source, diffs, raw logs, prompts, secrets, environment dumps or workspace paths.";
+
     public static async Task<int> RunAsync(string[] args, CancellationToken cancellationToken = default)
     {
         try
@@ -40,7 +47,7 @@ public static class HeroPassportProgram
             builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
             builder.Logging.SetMinimumLevel(LogLevel.Warning);
             builder.Services
-                .AddMcpServer()
+                .AddMcpServer(options => options.ServerInstructions = McpServerInstructions)
                 .WithStdioServerTransport()
                 .WithTools(HpMcpServerTools.Create(adapter));
 
