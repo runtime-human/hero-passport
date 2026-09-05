@@ -11,7 +11,7 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
     {
         ArgumentNullException.ThrowIfNull(request);
         var locale = RequireClosedValue(request.Locale, Locales, "locale");
-        var heroName = SafeTextV1.Normalize(request.HeroName, 1, 64);
+        var heroName = NormalizeRequestText(request.HeroName, 1, 64, "heroName");
         var presentationStyle = RequireClosedValue(request.PresentationStyle, PresentationStyles, "presentationStyle");
         var hash = CanonicalMutationEncoder.HashBootstrap(locale, heroName, presentationStyle, request.AutoStartQuest, request.AutoFinishQuest);
         return store.BootstrapAsync(
@@ -37,7 +37,7 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
     public Task<CreateHeroResult> CreateHeroAsync(CreateHeroRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var name = SafeTextV1.Normalize(request.Name, 1, 64);
+        var name = NormalizeRequestText(request.Name, 1, 64, "name");
         var hash = CanonicalMutationEncoder.HashCreateHero(name);
         return store.CreateHeroAsync(
             new CreateHeroStoreCommand(request.CreateRequestId, HeroPassportVersions.MutationArgsVersion, hash, name),
@@ -51,19 +51,32 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
     private static ProjectBindingContext ValidateProject(ProjectBindingContext project)
     {
         ArgumentNullException.ThrowIfNull(project);
-        var displayName = SafeTextV1.Normalize(project.DisplayName, 1, 120);
         if (!IsLowerHex64(project.WorkspaceFingerprint) ||
             !string.Equals(project.IdentityVersion, "project-identity/1", StringComparison.Ordinal))
         {
             throw new HeroPassportException("HP310", "Project binding is invalid.");
         }
 
+        string displayName;
+        try
+        {
+            displayName = SafeTextV1.Normalize(project.DisplayName, 1, 120);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new HeroPassportException("HP310", "Project binding is invalid.", exception);
+        }
+
         return project with { DisplayName = displayName };
     }
 
-    private static string RequireClosedValue(string value, IReadOnlyList<string> allowed, string fieldName)
+    private static string RequireClosedValue(string? value, IReadOnlyList<string> allowed, string fieldName)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new HeroPassportException("HP300", $"Invalid {fieldName}.");
+        }
+
         foreach (var candidate in allowed)
         {
             if (string.Equals(candidate, value, StringComparison.Ordinal))
@@ -75,9 +88,21 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
         throw new HeroPassportException("HP300", $"Invalid {fieldName}.");
     }
 
-    private static bool IsLowerHex64(string value)
+    private static string NormalizeRequestText(string? value, int minimumScalars, int maximumScalars, string fieldName)
     {
-        if (value.Length != 64)
+        try
+        {
+            return SafeTextV1.Normalize(value!, minimumScalars, maximumScalars);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new HeroPassportException("HP100", $"Invalid {fieldName}.", exception);
+        }
+    }
+
+    private static bool IsLowerHex64(string? value)
+    {
+        if (value is null || value.Length != 64)
         {
             return false;
         }
