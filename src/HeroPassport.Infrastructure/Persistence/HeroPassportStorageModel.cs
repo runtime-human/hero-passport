@@ -8,6 +8,7 @@ internal static class HeroPassportStorageModel
     private const string Project = "HeroPassport.Storage.Project";
     private const string Settings = "HeroPassport.Storage.AppSettings";
     private const string Quest = "HeroPassport.Storage.QuestSession";
+    private const string MutationReceipt = "HeroPassport.Storage.MutationReceipt";
 
     public static void Configure(ModelBuilder modelBuilder)
     {
@@ -17,6 +18,7 @@ internal static class HeroPassportStorageModel
         ConfigureProject(modelBuilder);
         ConfigureSettings(modelBuilder);
         ConfigureQuest(modelBuilder);
+        ConfigureMutationReceipt(modelBuilder);
     }
 
     private static void ConfigureHero(ModelBuilder modelBuilder)
@@ -145,6 +147,33 @@ internal static class HeroPassportStorageModel
                 table.HasCheckConstraint(
                     "ck_quest_sessions_status_finished_at",
                     "(status = 'open' AND finished_at_utc IS NULL) OR (status = 'finished' AND finished_at_utc IS NOT NULL)");
+            });
+        });
+    }
+
+    private static void ConfigureMutationReceipt(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity(MutationReceipt, entity =>
+        {
+            entity.Property<string>("operation_key").HasColumnType("TEXT");
+            entity.Property<string>("request_id").HasColumnType("TEXT");
+            entity.Property<string>("args_encoding_version").HasColumnType("TEXT").IsRequired();
+            entity.Property<byte[]>("args_hash").HasColumnType("BLOB").IsRequired();
+            entity.Property<string>("result_kind").HasColumnType("TEXT").IsRequired();
+            entity.Property<string?>("result_entity_id").HasColumnType("TEXT");
+            entity.Property<string?>("project_id").HasColumnType("TEXT");
+            entity.Property<string?>("hero_id").HasColumnType("TEXT");
+            entity.Property<string>("result_status").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("effective_at_utc").HasColumnType("TEXT").IsRequired();
+
+            entity.HasKey("operation_key", "request_id");
+            entity.ToTable("mutation_receipts", table =>
+            {
+                table.HasCheckConstraint("ck_mutation_receipts_operation", "operation_key IN ('bootstrap','create_hero','start_quest','finish_quest')");
+                table.HasCheckConstraint("ck_mutation_receipts_args_version", "length(args_encoding_version) BETWEEN 1 AND 64");
+                table.HasCheckConstraint("ck_mutation_receipts_args_hash", "length(args_hash) = 32");
+                table.HasCheckConstraint("ck_mutation_receipts_result_kind", "result_kind IN ('bootstrap','hero','quest_start','quest_finish')");
+                table.HasCheckConstraint("ck_mutation_receipts_result_status", "result_status IN ('active','target_deleted')");
             });
         });
     }
