@@ -149,7 +149,7 @@ public sealed class HpMcpAdapter(
         var hero = (await application.ListHeroesAsync(token).ConfigureAwait(false)).Heroes.Single(item => item.HeroId == created.Hero.HeroId);
         return Success(new
         {
-            hero = HeroListItem(hero),
+            hero = HeroCreateItem(hero),
             created.Replayed,
             displayText = $"Hero {hero.Name} created.",
         });
@@ -284,9 +284,19 @@ public sealed class HpMcpAdapter(
                 result.HeroProgress.TotalXpAfter,
                 result.HeroProgress.LevelBefore,
                 result.HeroProgress.LevelAfter,
+                result.HeroProgress.IsLevelCapped,
+                result.HeroProgress.LevelXp,
+                result.HeroProgress.NextLevelXpRequired,
                 result.HeroProgress.RankBefore,
                 result.HeroProgress.RankAfter,
             },
+            trustStrain = result.TrustStrain,
+            streak = result.Streak,
+            skillProgress = result.SkillProgress,
+            traitsUnlocked = result.TraitsUnlocked,
+            titlesUnlocked = result.TitlesUnlocked,
+            activeTitle = ExplicitNullableString(result.ActiveTitle),
+            milestones = result.Milestones,
             displayText = result.Replayed ? "Quest finish replayed." : result.AlreadyFinalized ? "Quest was already finalized with the same payload." : "Quest finished.",
         });
     }
@@ -304,7 +314,11 @@ public sealed class HpMcpAdapter(
                 result.Hero.Name,
                 result.Hero.TotalXp,
                 result.Hero.Level,
+                result.Hero.IsLevelCapped,
+                result.Hero.LevelXp,
+                result.Hero.NextLevelXpRequired,
                 result.Hero.RankKey,
+                activeTitle = ExplicitNullableString(result.Hero.ActiveTitle),
                 result.Hero.Trust,
                 result.Hero.Strain,
                 result.Hero.SuccessStreak,
@@ -336,6 +350,17 @@ public sealed class HpMcpAdapter(
         settings.AutoFinishQuest,
     };
 
+    private static object HeroCreateItem(HeroListItemSnapshot hero) => new
+    {
+        heroId = hero.HeroId.ToString(),
+        hero.Name,
+        hero.Level,
+        hero.RankKey,
+        hero.Trust,
+        hero.Strain,
+        hero.Archived,
+    };
+
     private static object HeroListItem(HeroListItemSnapshot hero) => new
     {
         heroId = hero.HeroId.ToString(),
@@ -348,6 +373,9 @@ public sealed class HpMcpAdapter(
         hero.Trust,
         hero.Strain,
     };
+
+    private static JsonElement ExplicitNullableString(string? value) =>
+        JsonSerializer.SerializeToElement(value, JsonOptions.GetTypeInfo<string>());
 
     private static CallToolResult Success<T>(T value) =>
         HpMcpResponses.Success(JsonSerializer.SerializeToElement(value, JsonOptions));
