@@ -26,3 +26,14 @@ public sealed record StartQuestStoreCommand(
     string Title,
     string Goal,
     ProjectBindingContext Project);
+
+public sealed record FinishQuestStoreCommand(
+    MutationRequestId RequestId,
+    string ArgsEncodingVersion,
+    byte[] ArgsHash,
+    QuestId QuestId,
+    string Result,
+    string Summary,
+    FinishQuestMetrics Metrics,
+    IReadOnlyList<string> SkillsUsed,
+    ProjectBindingContext Project);

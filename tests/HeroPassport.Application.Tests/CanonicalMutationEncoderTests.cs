@@ -45,4 +45,25 @@ public sealed class CanonicalMutationEncoderTests
             Convert.FromHexString("8FB4E7F982F72001728F2ED6262026D371E9D0CA8816372339ED4B0C2AD38B88"),
             hash);
     }
+
+    [Fact]
+    public void FinishQuestHashMatchesMutationArgsV1GoldenVector()
+    {
+        var hash = CanonicalMutationEncoder.HashFinishQuest(
+            QuestId.Parse("01900000-0000-7000-8000-000000000333"),
+            "success",
+            "Завершили durable Finish",
+            testsMentioned: true,
+            scopeViolations: 0,
+            userCorrections: 0,
+            "passed",
+            "observed",
+            "passed",
+            "observed",
+            ["coding", "testing_awareness", "scope_control"]);
+
+        Assert.Equal(
+            Convert.FromHexString("5FB2393663186D9E4780506E98CE22E179ABAE1FDE8126855D8E99A7DCDE5B06"),
+            hash);
+    }
 }

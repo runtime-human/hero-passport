@@ -21,6 +21,20 @@ public readonly record struct QuestId(Guid Value)
     public override string ToString() => Uuid7Value.Format(Value);
 }
 
+public readonly record struct QuestReportId(Guid Value)
+{
+    public static QuestReportId New() => new(Uuid7Value.New());
+    public static QuestReportId Parse(string value) => new(Uuid7Value.Parse(value));
+    public override string ToString() => Uuid7Value.Format(Value);
+}
+
+public readonly record struct XpEventId(Guid Value)
+{
+    public static XpEventId New() => new(Uuid7Value.New());
+    public static XpEventId Parse(string value) => new(Uuid7Value.Parse(value));
+    public override string ToString() => Uuid7Value.Format(Value);
+}
+
 public readonly record struct MutationRequestId(Guid Value)
 {
     public static MutationRequestId New() => new(Uuid7Value.New());

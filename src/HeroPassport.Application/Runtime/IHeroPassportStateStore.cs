@@ -32,4 +32,9 @@ public interface IHeroPassportStateStore
         StartQuestStoreCommand command,
         DateTimeOffset now,
         CancellationToken cancellationToken = default);
+
+    Task<FinishQuestResult> FinishQuestAsync(
+        FinishQuestStoreCommand command,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
 }

@@ -19,6 +19,8 @@ public sealed class SqliteFoundationQualificationTests
 
             Assert.NotNull(context.Model.FindEntityType("HeroPassport.Storage.MutationReceipt"));
             Assert.NotNull(context.Model.FindEntityType("HeroPassport.Storage.HeroProjectStats"));
+            Assert.NotNull(context.Model.FindEntityType("HeroPassport.Storage.QuestReport"));
+            Assert.NotNull(context.Model.FindEntityType("HeroPassport.Storage.XpEvent"));
             Assert.False(context.Database.HasPendingModelChanges());
         }
         finally
@@ -43,7 +45,7 @@ public sealed class SqliteFoundationQualificationTests
             Assert.Equal(firstSalt, secondSalt);
             await using var connection = await HeroPassportDatabase.OpenConnectionAsync(path, cancellationToken);
             Assert.Equal(1L, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM app_settings;", cancellationToken));
-            Assert.Equal(3L, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory;", cancellationToken));
+            Assert.Equal(4L, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory;", cancellationToken));
         }
         finally
         {

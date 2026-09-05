@@ -24,7 +24,7 @@ public sealed class SqlitePersistenceTests
             Assert.Equal(0L, await ScalarLongAsync(connection, "PRAGMA trusted_schema;", cancellationToken));
             Assert.True(ParseSqliteVersion(await ScalarStringAsync(connection, "SELECT sqlite_version();", cancellationToken)) >= new Version(3, 53, 4));
             Assert.Equal(1L, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM app_settings WHERE id = 1;", cancellationToken));
-            Assert.Equal(3L, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory;", cancellationToken));
+            Assert.Equal(4L, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory;", cancellationToken));
         }
         finally
         {
@@ -89,6 +89,45 @@ public sealed class SqlitePersistenceTests
         {
             DeleteDatabase(path);
         }
+    }
+
+    [Fact]
+    public async Task FinishTablesHaveUniqueQuestBackstops()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var path = CreateDatabasePath();
+        try
+        {
+            await HeroPassportDatabase.InitializeAsync(path, cancellationToken);
+            await using var connection = await HeroPassportDatabase.OpenConnectionAsync(path, cancellationToken);
+
+            Assert.True(await HasUniqueIndexAsync(connection, "quest_reports", "ux_quest_reports_quest_id", cancellationToken));
+            Assert.True(await HasUniqueIndexAsync(connection, "xp_events", "ux_xp_events_quest_id", cancellationToken));
+        }
+        finally
+        {
+            DeleteDatabase(path);
+        }
+    }
+
+    private static async Task<bool> HasUniqueIndexAsync(
+        SqliteConnection connection,
+        string table,
+        string indexName,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"PRAGMA index_list('{table}');";
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (string.Equals(reader.GetString(1), indexName, StringComparison.Ordinal) && reader.GetInt64(2) == 1)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static async Task ExecuteAsync(SqliteConnection connection, string sql, CancellationToken cancellationToken)
