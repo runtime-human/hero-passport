@@ -130,7 +130,6 @@ public sealed class SqlitePersistenceTests
 
     private static void DeleteDatabase(string path)
     {
-        SqliteConnection.ClearAllPools();
         var directory = Path.GetDirectoryName(path);
         if (directory is not null && Directory.Exists(directory))
         {
