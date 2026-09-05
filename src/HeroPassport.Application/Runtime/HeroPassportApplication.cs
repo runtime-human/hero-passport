@@ -6,6 +6,7 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
 {
     private static readonly string[] Locales = ["ru-RU", "en-US"];
     private static readonly string[] PresentationStyles = ["rpg_engineering", "classic_rpg", "minimal"];
+    private static readonly string[] QuestTypes = ["planning", "research", "coding", "review", "debugging", "documentation", "maintenance"];
 
     public Task<BootstrapResult> BootstrapAsync(BootstrapRequest request, CancellationToken cancellationToken = default)
     {
@@ -48,6 +49,30 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
     public Task ActivateHeroAsync(HeroId heroId, CancellationToken cancellationToken = default) =>
         store.ActivateHeroAsync(heroId, timeProvider.GetUtcNow(), cancellationToken);
 
+    public Task<StartQuestResult> StartQuestAsync(
+        StartQuestRequest request,
+        ProjectBindingContext project,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var validatedProject = ValidateProject(project);
+        var questType = RequireQuestType(request.QuestType);
+        var title = NormalizeRequestText(request.Title, 1, 120, "title");
+        var goal = NormalizeRequestText(request.Goal, 1, 500, "goal");
+
+        return store.StartQuestAsync(
+            new StartQuestStoreCommand(
+                request.StartRequestId,
+                HeroPassportVersions.MutationArgsVersion,
+                request.HeroId,
+                questType,
+                title,
+                goal,
+                validatedProject),
+            timeProvider.GetUtcNow(),
+            cancellationToken);
+    }
+
     private static ProjectBindingContext ValidateProject(ProjectBindingContext project)
     {
         ArgumentNullException.ThrowIfNull(project);
@@ -86,6 +111,22 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
         }
 
         throw new HeroPassportException("HP300", $"Invalid {fieldName}.");
+    }
+
+    private static string RequireQuestType(string? value)
+    {
+        if (value is not null)
+        {
+            foreach (var candidate in QuestTypes)
+            {
+                if (string.Equals(candidate, value, StringComparison.Ordinal))
+                {
+                    return value;
+                }
+            }
+        }
+
+        throw new HeroPassportException("HP110", "Quest type is invalid.");
     }
 
     private static string NormalizeRequestText(string? value, int minimumScalars, int maximumScalars, string fieldName)
