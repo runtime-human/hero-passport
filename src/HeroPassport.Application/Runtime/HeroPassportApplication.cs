@@ -62,9 +62,9 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
         {
             displayName = SafeTextV1.Normalize(project.DisplayName, 1, 120);
         }
-        catch (ArgumentException exception)
+        catch (ArgumentException)
         {
-            throw new HeroPassportException("HP310", "Project binding is invalid.", exception);
+            throw new HeroPassportException("HP310", "Project binding is invalid.");
         }
 
         return project with { DisplayName = displayName };
@@ -94,9 +94,9 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
         {
             return SafeTextV1.Normalize(value!, minimumScalars, maximumScalars);
         }
-        catch (ArgumentException exception)
+        catch (ArgumentException)
         {
-            throw new HeroPassportException("HP100", $"Invalid {fieldName}.", exception);
+            throw new HeroPassportException("HP100", $"Invalid {fieldName}.");
         }
     }
 
