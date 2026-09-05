@@ -3,4 +3,8 @@
     <ProjectReference Include="../HeroPassport.Application/HeroPassport.Application.csproj" />
     <ProjectReference Include="../HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
 </Project>
