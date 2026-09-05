@@ -2,6 +2,7 @@ using HeroPassport.Application.Runtime;
 using HeroPassport.Domain.Primitives;
 using HeroPassport.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
+using System.Globalization;
 using Xunit;
 
 namespace HeroPassport.Application.Tests;
@@ -251,6 +252,6 @@ public sealed class StartQuestBehaviorTests
         await using var connection = await HeroPassportDatabase.OpenConnectionAsync(path, token);
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
-        return Convert.ToInt64(await command.ExecuteScalarAsync(token));
+        return Convert.ToInt64(await command.ExecuteScalarAsync(token), CultureInfo.InvariantCulture);
     }
 }
