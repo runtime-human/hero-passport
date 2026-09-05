@@ -6,6 +6,7 @@ namespace HeroPassport.App.Mcp;
 public static class HpMcpToolCatalog
 {
     private const string Uuid7Pattern = "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+    private const string UuidPlaceholder = "$UUID7$";
 
     public static IReadOnlyList<Tool> ProtocolTools { get; } =
     [
@@ -54,15 +55,15 @@ public static class HpMcpToolCatalog
         {"type":"object","properties":{},"required":[],"additionalProperties":false}
         """);
 
-    private static JsonElement HeroIdSchema() => Parse($$"""
-        {"type":"object","properties":{"heroId":{"type":"string","pattern":"{{Uuid7Pattern}}"}},"required":["heroId"],"additionalProperties":false}
+    private static JsonElement HeroIdSchema() => ParseWithUuid("""
+        {"type":"object","properties":{"heroId":{"type":"string","pattern":"$UUID7$"}},"required":["heroId"],"additionalProperties":false}
         """);
 
-    private static JsonElement BootstrapSchema() => Parse($$"""
+    private static JsonElement BootstrapSchema() => ParseWithUuid("""
         {
           "type":"object",
           "properties":{
-            "bootstrapRequestId":{"type":"string","pattern":"{{Uuid7Pattern}}"},
+            "bootstrapRequestId":{"type":"string","pattern":"$UUID7$"},
             "locale":{"type":"string","enum":["ru-RU","en-US"]},
             "heroName":{"type":"string","minLength":1,"maxLength":64},
             "presentationStyle":{"type":"string","enum":["rpg_engineering","classic_rpg","minimal"]},
@@ -88,11 +89,11 @@ public static class HpMcpToolCatalog
         }
         """);
 
-    private static JsonElement CreateHeroSchema() => Parse($$"""
+    private static JsonElement CreateHeroSchema() => ParseWithUuid("""
         {
           "type":"object",
           "properties":{
-            "createRequestId":{"type":"string","pattern":"{{Uuid7Pattern}}"},
+            "createRequestId":{"type":"string","pattern":"$UUID7$"},
             "name":{"type":"string","minLength":1,"maxLength":64}
           },
           "required":["createRequestId","name"],
@@ -100,12 +101,12 @@ public static class HpMcpToolCatalog
         }
         """);
 
-    private static JsonElement StartQuestSchema() => Parse($$"""
+    private static JsonElement StartQuestSchema() => ParseWithUuid("""
         {
           "type":"object",
           "properties":{
-            "startRequestId":{"type":"string","pattern":"{{Uuid7Pattern}}"},
-            "heroId":{"type":"string","pattern":"{{Uuid7Pattern}}"},
+            "startRequestId":{"type":"string","pattern":"$UUID7$"},
+            "heroId":{"type":"string","pattern":"$UUID7$"},
             "questType":{"type":"string","enum":["planning","research","coding","review","debugging","documentation","maintenance"]},
             "title":{"type":"string","minLength":1,"maxLength":120},
             "goal":{"type":"string","minLength":1,"maxLength":500}
@@ -115,12 +116,12 @@ public static class HpMcpToolCatalog
         }
         """);
 
-    private static JsonElement FinishQuestSchema() => Parse($$"""
+    private static JsonElement FinishQuestSchema() => ParseWithUuid("""
         {
           "type":"object",
           "properties":{
-            "finishRequestId":{"type":"string","pattern":"{{Uuid7Pattern}}"},
-            "questId":{"type":"string","pattern":"{{Uuid7Pattern}}"},
+            "finishRequestId":{"type":"string","pattern":"$UUID7$"},
+            "questId":{"type":"string","pattern":"$UUID7$"},
             "result":{"type":"string","enum":["success","partial","blocked","failed","abandoned"]},
             "summary":{"type":"string","minLength":1,"maxLength":2000},
             "metrics":{
@@ -149,6 +150,9 @@ public static class HpMcpToolCatalog
           "additionalProperties":false
         }
         """);
+
+    private static JsonElement ParseWithUuid(string json) =>
+        Parse(json.Replace(UuidPlaceholder, Uuid7Pattern, StringComparison.Ordinal));
 
     private static JsonElement Parse(string json)
     {
