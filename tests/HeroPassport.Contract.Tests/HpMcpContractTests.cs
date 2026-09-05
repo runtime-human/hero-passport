@@ -43,16 +43,28 @@ public sealed class HpMcpContractTests
     }
 
     [Fact]
+    public void EveryToolPublishesClosedStructuredOutputSchema()
+    {
+        foreach (var tool in HpMcpToolCatalog.ProtocolTools)
+        {
+            var output = Assert.IsType<JsonElement>(tool.OutputSchema);
+            Assert.Equal("object", output.GetProperty("type").GetString());
+            Assert.False(output.GetProperty("additionalProperties").GetBoolean());
+            Assert.Contains("displayText", RequiredNames(output));
+        }
+    }
+
+    [Fact]
     public void StartAndFinishSchemasExposeExplicitRetryAndOwnershipFields()
     {
         var start = HpMcpToolCatalog.ProtocolTools.Single(static tool => tool.Name == "hero.start_quest").InputSchema;
-        var startRequired = start.GetProperty("required").EnumerateArray().Select(static value => value.GetString()).ToArray();
+        var startRequired = RequiredNames(start);
         Assert.Contains("startRequestId", startRequired);
         Assert.Contains("heroId", startRequired);
         Assert.DoesNotContain("projectId", start.GetProperty("properties").EnumerateObject().Select(static property => property.Name));
 
         var finish = HpMcpToolCatalog.ProtocolTools.Single(static tool => tool.Name == "hero.finish_quest").InputSchema;
-        var finishRequired = finish.GetProperty("required").EnumerateArray().Select(static value => value.GetString()).ToArray();
+        var finishRequired = RequiredNames(finish);
         Assert.Contains("finishRequestId", finishRequired);
         Assert.Contains("questId", finishRequired);
 
@@ -62,6 +74,53 @@ public sealed class HpMcpContractTests
         Assert.Equal(1, skills.GetProperty("minItems").GetInt32());
         Assert.Equal(3, skills.GetProperty("maxItems").GetInt32());
         Assert.True(skills.GetProperty("uniqueItems").GetBoolean());
+    }
+
+    [Fact]
+    public void FinishOutputSchemaPublishesFullImmutableWireShape()
+    {
+        var output = Assert.IsType<JsonElement>(HpMcpToolCatalog.ProtocolTools.Single(static tool => tool.Name == "hero.finish_quest").OutputSchema);
+        AssertRequired(output,
+            "questId", "result", "replayed", "alreadyFinalized", "reward", "heroProgress", "trustStrain", "streak",
+            "skillProgress", "traitsUnlocked", "titlesUnlocked", "activeTitle", "milestones", "displayText");
+
+        var properties = output.GetProperty("properties");
+        AssertClosedObject(properties.GetProperty("reward"));
+        AssertClosedObject(properties.GetProperty("heroProgress"));
+        AssertClosedObject(properties.GetProperty("trustStrain"));
+        AssertClosedObject(properties.GetProperty("streak"));
+        AssertRequired(properties.GetProperty("heroProgress"),
+            "heroId", "totalXpBefore", "totalXpAfter", "levelBefore", "levelAfter", "isLevelCapped", "levelXp", "rankBefore", "rankAfter");
+        Assert.True(properties.GetProperty("heroProgress").GetProperty("properties").TryGetProperty("nextLevelXpRequired", out _));
+
+        var skillItem = properties.GetProperty("skillProgress").GetProperty("items");
+        AssertClosedObject(skillItem);
+        AssertRequired(skillItem, "skillKey", "xpGained", "xpAfter", "levelBefore", "levelAfter", "isLevelCapped");
+        Assert.True(skillItem.GetProperty("properties").TryGetProperty("nextLevelXpRequired", out _));
+
+        var milestoneItem = properties.GetProperty("milestones").GetProperty("items");
+        AssertClosedObject(milestoneItem);
+        AssertRequired(milestoneItem, "eventKey", "semanticKey");
+    }
+
+    [Fact]
+    public void CardOutputSchemaPublishesCapAwareHeroProjection()
+    {
+        var output = Assert.IsType<JsonElement>(HpMcpToolCatalog.ProtocolTools.Single(static tool => tool.Name == "hero.get_card").OutputSchema);
+        AssertRequired(output, "hero", "project", "displayText");
+        var properties = output.GetProperty("properties");
+        var hero = properties.GetProperty("hero");
+        AssertClosedObject(hero);
+        AssertRequired(hero,
+            "heroId", "name", "totalXp", "level", "isLevelCapped", "levelXp", "rankKey", "activeTitle",
+            "trust", "strain", "successStreak", "topSkills", "traits", "titles");
+        Assert.True(hero.GetProperty("properties").TryGetProperty("nextLevelXpRequired", out _));
+        AssertClosedObject(properties.GetProperty("project"));
+
+        var skill = hero.GetProperty("properties").GetProperty("topSkills").GetProperty("items");
+        AssertClosedObject(skill);
+        AssertRequired(skill, "skillKey", "xp", "level", "isLevelCapped");
+        Assert.True(skill.GetProperty("properties").TryGetProperty("nextLevelXpRequired", out _));
     }
 
     [Fact]
@@ -91,5 +150,23 @@ public sealed class HpMcpContractTests
         Assert.Null(error.StructuredContent);
         var errorText = Assert.IsType<TextContentBlock>(Assert.Single(error.Content));
         Assert.Contains("HP001", errorText.Text, StringComparison.Ordinal);
+    }
+
+    private static string?[] RequiredNames(JsonElement schema) =>
+        schema.GetProperty("required").EnumerateArray().Select(static value => value.GetString()).ToArray();
+
+    private static void AssertRequired(JsonElement schema, params string[] names)
+    {
+        var required = RequiredNames(schema);
+        foreach (var name in names)
+        {
+            Assert.Contains(name, required);
+        }
+    }
+
+    private static void AssertClosedObject(JsonElement schema)
+    {
+        Assert.Equal("object", schema.GetProperty("type").GetString());
+        Assert.False(schema.GetProperty("additionalProperties").GetBoolean());
     }
 }
