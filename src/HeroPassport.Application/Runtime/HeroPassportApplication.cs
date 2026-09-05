@@ -7,6 +7,10 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
     private static readonly string[] Locales = ["ru-RU", "en-US"];
     private static readonly string[] PresentationStyles = ["rpg_engineering", "classic_rpg", "minimal"];
     private static readonly string[] QuestTypes = ["planning", "research", "coding", "review", "debugging", "documentation", "maintenance"];
+    private static readonly string[] QuestResults = ["success", "partial", "blocked", "failed", "abandoned"];
+    private static readonly string[] MetricStatuses = ["not_run", "passed", "failed", "unknown"];
+    private static readonly string[] MetricEvidence = ["observed", "reported", "none"];
+    private static readonly string[] SkillKeys = ["coding", "testing_awareness", "scope_control", "documentation", "tool_use", "planning", "research", "debugging", "review", "maintenance"];
 
     public Task<BootstrapResult> BootstrapAsync(BootstrapRequest request, CancellationToken cancellationToken = default)
     {
@@ -73,6 +77,45 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
             cancellationToken);
     }
 
+    public Task<FinishQuestResult> FinishQuestAsync(
+        FinishQuestRequest request,
+        ProjectBindingContext project,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var validatedProject = ValidateProject(project);
+        var result = RequireFinishResult(request.Result);
+        var summary = NormalizeRequestText(request.Summary, 1, 2000, "summary");
+        var metrics = ValidateFinishMetrics(request.Metrics);
+        var skillsUsed = ValidateSkills(request.SkillsUsed);
+        var argsHash = CanonicalMutationEncoder.HashFinishQuest(
+            request.QuestId,
+            result,
+            summary,
+            metrics.TestsMentioned,
+            metrics.ScopeViolations,
+            metrics.UserCorrections,
+            metrics.BuildStatus,
+            metrics.BuildEvidence,
+            metrics.TestsStatus,
+            metrics.TestsEvidence,
+            skillsUsed);
+
+        return store.FinishQuestAsync(
+            new FinishQuestStoreCommand(
+                request.FinishRequestId,
+                HeroPassportVersions.MutationArgsVersion,
+                argsHash,
+                request.QuestId,
+                result,
+                summary,
+                metrics,
+                skillsUsed,
+                validatedProject),
+            timeProvider.GetUtcNow(),
+            cancellationToken);
+    }
+
     private static ProjectBindingContext ValidateProject(ProjectBindingContext project)
     {
         ArgumentNullException.ThrowIfNull(project);
@@ -115,18 +158,79 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
 
     private static string RequireQuestType(string? value)
     {
-        if (value is not null)
+        if (IsAllowed(value, QuestTypes))
         {
-            foreach (var candidate in QuestTypes)
-            {
-                if (string.Equals(candidate, value, StringComparison.Ordinal))
-                {
-                    return value;
-                }
-            }
+            return value!;
         }
 
         throw new HeroPassportException("HP110", "Quest type is invalid.");
+    }
+
+    private static string RequireFinishResult(string? value)
+    {
+        if (IsAllowed(value, QuestResults))
+        {
+            return value!;
+        }
+
+        throw new HeroPassportException("HP111", "Quest result is invalid.");
+    }
+
+    private static FinishQuestMetrics ValidateFinishMetrics(FinishQuestMetrics? metrics)
+    {
+        if (metrics is null ||
+            metrics.ScopeViolations is < 0 or > 20 ||
+            metrics.UserCorrections is < 0 or > 20 ||
+            !IsAllowed(metrics.BuildStatus, MetricStatuses) ||
+            !IsAllowed(metrics.BuildEvidence, MetricEvidence) ||
+            !IsAllowed(metrics.TestsStatus, MetricStatuses) ||
+            !IsAllowed(metrics.TestsEvidence, MetricEvidence))
+        {
+            throw new HeroPassportException("HP120", "Quest metrics are invalid.");
+        }
+
+        return metrics;
+    }
+
+    private static string[] ValidateSkills(IReadOnlyList<string>? skillsUsed)
+    {
+        if (skillsUsed is null || skillsUsed.Count is < 1 or > 3)
+        {
+            throw new HeroPassportException("HP112", "Quest skills are invalid.");
+        }
+
+        var validated = new string[skillsUsed.Count];
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = 0; index < skillsUsed.Count; index++)
+        {
+            var skill = skillsUsed[index];
+            if (!IsAllowed(skill, SkillKeys) || !seen.Add(skill))
+            {
+                throw new HeroPassportException("HP112", "Quest skills are invalid.");
+            }
+
+            validated[index] = skill;
+        }
+
+        return validated;
+    }
+
+    private static bool IsAllowed(string? value, IReadOnlyList<string> allowed)
+    {
+        if (value is null)
+        {
+            return false;
+        }
+
+        foreach (var candidate in allowed)
+        {
+            if (string.Equals(candidate, value, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string NormalizeRequestText(string? value, int minimumScalars, int maximumScalars, string fieldName)
