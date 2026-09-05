@@ -16,6 +16,7 @@ public sealed class SqliteFoundationQualificationTests
         {
             var factory = new HeroPassportDbContextFactory(path);
             await using var context = factory.CreateDbContext();
+            Assert.NotNull(context.Model.FindEntityType("HeroPassport.Storage.MutationReceipt"));
             Assert.False(context.Database.HasPendingModelChanges());
         }
         finally
