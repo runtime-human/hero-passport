@@ -22,6 +22,8 @@ public sealed class HpMcpStdioIntegrationTests
         "hero.get_card",
     ];
 
+    private static readonly string[] CodingSkills = ["coding"];
+
     private const string ExpectedInstructions =
         "Use the installed Hero Passport Agent Skill for ambient lifecycle policy.\n" +
         "Call hero.get_context to hydrate/recover uncertain state.\n" +
@@ -132,7 +134,7 @@ public sealed class HpMcpStdioIntegrationTests
                         ["testsStatus"] = "not_run",
                         ["testsEvidence"] = "none",
                     },
-                    ["skillsUsed"] = new[] { "coding" },
+                    ["skillsUsed"] = CodingSkills,
                 },
                 cancellationToken: token);
             var finishJson = Structured(finish);
