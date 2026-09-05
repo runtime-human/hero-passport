@@ -10,7 +10,7 @@ namespace HeroPassport.Application.Tests;
 public sealed class StartQuestBehaviorTests
 {
     [Fact]
-    public async Task SameRequestReplaysAndChangedHeroOrProjectConflicts()
+    public async Task SameRequestReplaysAndChangedHeroProjectOrArgsConflict()
     {
         var token = TestContext.Current.CancellationToken;
         var path = TestRuntime.CreateDatabasePath();
@@ -37,6 +37,40 @@ public sealed class StartQuestBehaviorTests
             var changedProject = await Assert.ThrowsAsync<HeroPassportException>(() =>
                 app.StartQuestAsync(request, Project('b', "Other Project"), token));
             Assert.Equal("HP135", changedProject.Code);
+
+            var changedTitle = await Assert.ThrowsAsync<HeroPassportException>(() =>
+                app.StartQuestAsync(request with { Title = "Changed" }, project, token));
+            Assert.Equal("HP135", changedTitle.Code);
+        }
+        finally
+        {
+            TestRuntime.DeleteDatabase(path);
+        }
+    }
+
+    [Fact]
+    public async Task StartBeforeSetupReturnsSetupRequiredWithoutCreatingProject()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var path = TestRuntime.CreateDatabasePath();
+        try
+        {
+            await HeroPassportDatabase.InitializeAsync(path, token);
+            var app = TestRuntime.CreateApplication(path);
+            var request = new StartQuestRequest(
+                MutationRequestId.New(),
+                HeroId.Parse("01900000-0000-7000-8000-000000000999"),
+                "coding",
+                "Quest",
+                "Should remain setup gated");
+
+            var error = await Assert.ThrowsAsync<HeroPassportException>(() =>
+                app.StartQuestAsync(request, Project('5', "Pre-setup Project"), token));
+
+            Assert.Equal("HP001", error.Code);
+            Assert.Equal(0, await ScalarLongAsync(path, "SELECT COUNT(*) FROM projects;", token));
+            Assert.Equal(0, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_sessions;", token));
+            Assert.Equal(0, await ScalarLongAsync(path, "SELECT COUNT(*) FROM mutation_receipts WHERE operation_key='start_quest';", token));
         }
         finally
         {
