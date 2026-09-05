@@ -24,10 +24,10 @@ public sealed class HpMcpStdioIntegrationTests
 
     private const string ExpectedInstructions =
         "Use the installed Hero Passport Agent Skill for ambient lifecycle policy.\n" +
-        "Call hero.get_context to hydrate or recover uncertain state.\n" +
+        "Call hero.get_context to hydrate/recover uncertain state.\n" +
         "Pass explicit heroId when starting a Quest and carry returned questId.\n" +
         "Reuse mutation request IDs only for retries of the same canonical intent.\n" +
-        "Never send source, diffs, raw logs, prompts, secrets, environment dumps, or workspace paths.";
+        "Never send source, diffs, raw logs, prompts, secrets, environment dumps or workspace paths.";
 
     [Theory]
     [InlineData("2026-07-28")]
