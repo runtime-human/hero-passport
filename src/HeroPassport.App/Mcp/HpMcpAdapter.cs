@@ -167,20 +167,20 @@ public sealed class HpMcpAdapter(
     }
 
     private Task<CallToolResult> ActivateHeroAsync(IDictionary<string, JsonElement>? arguments, CancellationToken token) =>
-        HeroPreferenceAsync(arguments, token, application.ActivateHeroPreferenceAsync, "activated", "already active");
+        HeroPreferenceAsync(arguments, application.ActivateHeroPreferenceAsync, "activated", "already active", token);
 
     private Task<CallToolResult> ArchiveHeroAsync(IDictionary<string, JsonElement>? arguments, CancellationToken token) =>
-        HeroPreferenceAsync(arguments, token, application.ArchiveHeroAsync, "archived", "already archived");
+        HeroPreferenceAsync(arguments, application.ArchiveHeroAsync, "archived", "already archived", token);
 
     private Task<CallToolResult> RestoreHeroAsync(IDictionary<string, JsonElement>? arguments, CancellationToken token) =>
-        HeroPreferenceAsync(arguments, token, application.RestoreHeroAsync, "restored", "already restored");
+        HeroPreferenceAsync(arguments, application.RestoreHeroAsync, "restored", "already restored", token);
 
-    private async Task<CallToolResult> HeroPreferenceAsync(
+    private static async Task<CallToolResult> HeroPreferenceAsync(
         IDictionary<string, JsonElement>? arguments,
-        CancellationToken token,
         Func<HeroId, CancellationToken, Task<HeroPreferenceChangeResult>> action,
         string changedText,
-        string unchangedText)
+        string unchangedText,
+        CancellationToken token)
     {
         var args = RequireExact(arguments, "heroId");
         var result = await action(HeroId.Parse(RequireString(args, "heroId")), token).ConfigureAwait(false);
@@ -237,7 +237,10 @@ public sealed class HpMcpAdapter(
         var metrics = metricsElement.EnumerateObject().ToDictionary(static property => property.Name, static property => property.Value, StringComparer.Ordinal);
         _ = RequireExact(metrics, "testsMentioned", "scopeViolations", "userCorrections", "buildStatus", "buildEvidence", "testsStatus", "testsEvidence");
         var skillsElement = RequireElement(args, "skillsUsed", JsonValueKind.Array);
-        var skills = skillsElement.EnumerateArray().Select(static value => value.ValueKind == JsonValueKind.String ? value.GetString()! : throw new ArgumentException()).ToArray();
+        var skills = skillsElement.EnumerateArray().Select(static value =>
+            value.ValueKind == JsonValueKind.String
+                ? value.GetString()!
+                : throw new HeroPassportException("HP100", "Invalid request.")).ToArray();
         var project = await projectProvider(token).ConfigureAwait(false);
         var result = await application.FinishQuestAsync(
             new FinishQuestRequest(
@@ -362,13 +365,13 @@ public sealed class HpMcpAdapter(
         return args;
     }
 
-    private static string RequireString(IReadOnlyDictionary<string, JsonElement> args, string name)
+    private static string RequireString(Dictionary<string, JsonElement> args, string name)
     {
         var value = RequireElement(args, name, JsonValueKind.String).GetString();
         return value ?? throw new HeroPassportException("HP100", "Invalid request.");
     }
 
-    private static bool RequireBool(IReadOnlyDictionary<string, JsonElement> args, string name)
+    private static bool RequireBool(Dictionary<string, JsonElement> args, string name)
     {
         var element = args.TryGetValue(name, out var value) ? value : throw new HeroPassportException("HP100", "Invalid request.");
         return element.ValueKind switch
@@ -379,13 +382,13 @@ public sealed class HpMcpAdapter(
         };
     }
 
-    private static int RequireInt32(IReadOnlyDictionary<string, JsonElement> args, string name)
+    private static int RequireInt32(Dictionary<string, JsonElement> args, string name)
     {
         var element = RequireElement(args, name, JsonValueKind.Number);
         return element.TryGetInt32(out var value) ? value : throw new HeroPassportException("HP100", "Invalid request.");
     }
 
-    private static JsonElement RequireElement(IReadOnlyDictionary<string, JsonElement> args, string name, JsonValueKind kind)
+    private static JsonElement RequireElement(Dictionary<string, JsonElement> args, string name, JsonValueKind kind)
     {
         if (!args.TryGetValue(name, out var value) || value.ValueKind != kind)
         {
