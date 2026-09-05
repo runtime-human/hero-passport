@@ -24,7 +24,7 @@ public sealed class SqlitePersistenceTests
             Assert.Equal(0L, await ScalarLongAsync(connection, "PRAGMA trusted_schema;", cancellationToken));
             Assert.True(ParseSqliteVersion(await ScalarStringAsync(connection, "SELECT sqlite_version();", cancellationToken)) >= new Version(3, 53, 4));
             Assert.Equal(1L, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM app_settings WHERE id = 1;", cancellationToken));
-            Assert.Equal(1L, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory;", cancellationToken));
+            Assert.Equal(2L, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory;", cancellationToken));
         }
         finally
         {
