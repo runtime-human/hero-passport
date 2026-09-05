@@ -375,7 +375,7 @@ public sealed class HpMcpAdapter(
     };
 
     private static JsonElement ExplicitNullableString(string? value) =>
-        JsonSerializer.SerializeToElement(value, JsonOptions.GetTypeInfo<string>());
+        JsonSerializer.SerializeToElement<string?>(value, JsonOptions);
 
     private static CallToolResult Success<T>(T value) =>
         HpMcpResponses.Success(JsonSerializer.SerializeToElement(value, JsonOptions));
