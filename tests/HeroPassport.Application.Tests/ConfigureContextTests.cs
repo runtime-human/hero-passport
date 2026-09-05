@@ -28,6 +28,27 @@ public sealed class ConfigureContextTests
     }
 
     [Fact]
+    public async Task InvalidConfigurationAndProjectBindingUseStableApplicationErrors()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var path = TestRuntime.CreateDatabasePath();
+        try
+        {
+            await HeroPassportDatabase.InitializeAsync(path, token);
+            var app = TestRuntime.CreateApplication(path);
+
+            var configuration = await Assert.ThrowsAsync<HeroPassportException>(() =>
+                app.ConfigureAsync(new ConfigureRequest(null!, "minimal", false, false), token));
+            Assert.Equal("HP300", configuration.Code);
+
+            var binding = await Assert.ThrowsAsync<HeroPassportException>(() =>
+                app.GetRuntimeContextAsync(new ProjectBindingContext("Project", null!, "project-identity/1"), token));
+            Assert.Equal("HP310", binding.Code);
+        }
+        finally { TestRuntime.DeleteDatabase(path); }
+    }
+
+    [Fact]
     public async Task RuntimeContextBeforeSetupDoesNotPersistProjectAndAfterSetupHydratesActiveHero()
     {
         var token = TestContext.Current.CancellationToken;
