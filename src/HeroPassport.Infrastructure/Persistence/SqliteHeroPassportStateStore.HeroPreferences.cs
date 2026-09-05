@@ -48,7 +48,7 @@ public sealed partial class SqliteHeroPassportStateStore
 
         _ = await HeroAsync(connection, transaction, heroId.ToString(), cancellationToken).ConfigureAwait(false);
         await ExecuteAsync(connection, transaction,
-            "UPDATE app_settings SET active_hero_id=$hero,config_version=config_version+1,updated_at_utc=$time WHERE id=1;",
+            "UPDATE app_settings SET active_hero_id=$hero,config_version=config_version+1,updated_at_utc=$time WHERE id=1 AND active_hero_id IS NOT $hero;",
             cancellationToken, ("$hero", heroId.ToString()), ("$time", Timestamp(now))).ConfigureAwait(false);
         transaction.Commit();
     }
