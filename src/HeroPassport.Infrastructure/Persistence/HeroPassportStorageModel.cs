@@ -10,6 +10,8 @@ internal static class HeroPassportStorageModel
     private const string Quest = "HeroPassport.Storage.QuestSession";
     private const string MutationReceipt = "HeroPassport.Storage.MutationReceipt";
     private const string HeroProjectStats = "HeroPassport.Storage.HeroProjectStats";
+    private const string QuestReport = "HeroPassport.Storage.QuestReport";
+    private const string XpEvent = "HeroPassport.Storage.XpEvent";
 
     public static void Configure(ModelBuilder modelBuilder)
     {
@@ -21,6 +23,8 @@ internal static class HeroPassportStorageModel
         ConfigureQuest(modelBuilder);
         ConfigureMutationReceipt(modelBuilder);
         ConfigureHeroProjectStats(modelBuilder);
+        ConfigureQuestReport(modelBuilder);
+        ConfigureXpEvent(modelBuilder);
     }
 
     private static void ConfigureHero(ModelBuilder modelBuilder)
@@ -206,6 +210,119 @@ internal static class HeroPassportStorageModel
                 table.HasCheckConstraint("ck_hero_project_stats_quests_finished", "quests_finished >= 0");
                 table.HasCheckConstraint("ck_hero_project_stats_quests_succeeded", "quests_succeeded >= 0");
                 table.HasCheckConstraint("ck_hero_project_stats_total_xp_earned", "total_xp_earned >= 0");
+            });
+        });
+    }
+
+    private static void ConfigureQuestReport(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity(QuestReport, entity =>
+        {
+            entity.Property<string>("id").HasColumnType("TEXT");
+            entity.Property<string>("quest_id").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("result").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("summary").HasColumnType("TEXT").IsRequired();
+            entity.Property<int>("tests_mentioned").HasColumnType("INTEGER");
+            entity.Property<int>("scope_violations").HasColumnType("INTEGER");
+            entity.Property<int>("user_corrections").HasColumnType("INTEGER");
+            entity.Property<string>("build_status").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("build_evidence").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("tests_status").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("tests_evidence").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("finalization_args_encoding_version").HasColumnType("TEXT").IsRequired();
+            entity.Property<byte[]>("finalization_args_hash").HasColumnType("BLOB").IsRequired();
+            entity.Property<string>("reward_rule_version").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("hero_progression_version").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("skill_progression_version").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("skill_allocation_version").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("trust_strain_rule_version").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("streak_rule_version").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("unlock_rule_version").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("rank_rule_version").HasColumnType("TEXT").IsRequired();
+            entity.Property<int>("base_xp").HasColumnType("INTEGER");
+            entity.Property<int>("bonus_xp").HasColumnType("INTEGER");
+            entity.Property<int>("penalty_xp").HasColumnType("INTEGER");
+            entity.Property<int>("raw_xp").HasColumnType("INTEGER");
+            entity.Property<int>("outcome_permille").HasColumnType("INTEGER");
+            entity.Property<long>("xp_gained").HasColumnType("INTEGER");
+            entity.Property<long>("hero_total_xp_before").HasColumnType("INTEGER");
+            entity.Property<long>("hero_total_xp_after").HasColumnType("INTEGER");
+            entity.Property<int>("hero_level_before").HasColumnType("INTEGER");
+            entity.Property<int>("hero_level_after").HasColumnType("INTEGER");
+            entity.Property<string>("rank_before").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("rank_after").HasColumnType("TEXT").IsRequired();
+            entity.Property<int>("trust_before").HasColumnType("INTEGER");
+            entity.Property<int>("trust_after").HasColumnType("INTEGER");
+            entity.Property<int>("strain_before").HasColumnType("INTEGER");
+            entity.Property<int>("strain_after").HasColumnType("INTEGER");
+            entity.Property<long>("streak_before").HasColumnType("INTEGER");
+            entity.Property<long>("streak_after").HasColumnType("INTEGER");
+            entity.Property<string?>("active_title_before").HasColumnType("TEXT");
+            entity.Property<string?>("active_title_after").HasColumnType("TEXT");
+            entity.Property<string>("created_at_utc").HasColumnType("TEXT").IsRequired();
+
+            entity.HasKey("id");
+            entity.HasOne(Quest)
+                .WithMany()
+                .HasForeignKey("quest_id")
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex("quest_id")
+                .IsUnique()
+                .HasDatabaseName("ux_quest_reports_quest_id");
+            entity.ToTable("quest_reports", table =>
+            {
+                table.HasCheckConstraint("ck_quest_reports_result", "result IN ('success','partial','blocked','failed','abandoned')");
+                table.HasCheckConstraint("ck_quest_reports_summary", "length(summary) BETWEEN 1 AND 2000");
+                table.HasCheckConstraint("ck_quest_reports_tests_mentioned", "tests_mentioned IN (0,1)");
+                table.HasCheckConstraint("ck_quest_reports_scope_violations", "scope_violations BETWEEN 0 AND 20");
+                table.HasCheckConstraint("ck_quest_reports_user_corrections", "user_corrections BETWEEN 0 AND 20");
+                table.HasCheckConstraint("ck_quest_reports_build_status", "build_status IN ('not_run','passed','failed','unknown')");
+                table.HasCheckConstraint("ck_quest_reports_build_evidence", "build_evidence IN ('observed','reported','none')");
+                table.HasCheckConstraint("ck_quest_reports_tests_status", "tests_status IN ('not_run','passed','failed','unknown')");
+                table.HasCheckConstraint("ck_quest_reports_tests_evidence", "tests_evidence IN ('observed','reported','none')");
+                table.HasCheckConstraint("ck_quest_reports_finalization_hash", "length(finalization_args_hash) = 32");
+                table.HasCheckConstraint("ck_quest_reports_xp_components", "base_xp >= 0 AND bonus_xp >= 0 AND penalty_xp >= 0 AND raw_xp >= 0 AND xp_gained >= 0");
+                table.HasCheckConstraint("ck_quest_reports_outcome_permille", "outcome_permille IN (0,100,300,600,1000)");
+                table.HasCheckConstraint("ck_quest_reports_total_xp", "hero_total_xp_before BETWEEN 0 AND 9007199254740991 AND hero_total_xp_after BETWEEN 0 AND 9007199254740991");
+                table.HasCheckConstraint("ck_quest_reports_levels", "hero_level_before BETWEEN 1 AND 50 AND hero_level_after BETWEEN 1 AND 50");
+                table.HasCheckConstraint("ck_quest_reports_trust", "trust_before BETWEEN 0 AND 100 AND trust_after BETWEEN 0 AND 100");
+                table.HasCheckConstraint("ck_quest_reports_strain", "strain_before BETWEEN 0 AND 100 AND strain_after BETWEEN 0 AND 100");
+                table.HasCheckConstraint("ck_quest_reports_streak", "streak_before >= 0 AND streak_after >= 0");
+            });
+        });
+    }
+
+    private static void ConfigureXpEvent(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity(XpEvent, entity =>
+        {
+            entity.Property<string>("id").HasColumnType("TEXT");
+            entity.Property<string>("quest_id").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("hero_id").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("project_id").HasColumnType("TEXT").IsRequired();
+            entity.Property<long>("xp_delta").HasColumnType("INTEGER");
+            entity.Property<string>("reward_rule_version").HasColumnType("TEXT").IsRequired();
+            entity.Property<string>("created_at_utc").HasColumnType("TEXT").IsRequired();
+
+            entity.HasKey("id");
+            entity.HasOne(Quest)
+                .WithMany()
+                .HasForeignKey("quest_id")
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(Hero)
+                .WithMany()
+                .HasForeignKey("hero_id")
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(Project)
+                .WithMany()
+                .HasForeignKey("project_id")
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex("quest_id")
+                .IsUnique()
+                .HasDatabaseName("ux_xp_events_quest_id");
+            entity.ToTable("xp_events", table =>
+            {
+                table.HasCheckConstraint("ck_xp_events_xp_delta", "xp_delta >= 0");
             });
         });
     }
