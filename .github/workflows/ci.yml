@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - agent/bootstrap-runtime-context
   pull_request:
 
 permissions:
@@ -33,49 +32,3 @@ jobs:
         run: dotnet test tests/HeroPassport.Application.Tests/HeroPassport.Application.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
       - name: Infrastructure tests
         run: dotnet test tests/HeroPassport.Infrastructure.Tests/HeroPassport.Infrastructure.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
-
-  # Temporary generation path; remove after EF emits reviewed metadata.
-  ef-codegen:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/agent/bootstrap-runtime-context'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-      - name: Check whether migration needs regeneration
-        id: migration
-        run: |
-          migration=$(find src/HeroPassport.Infrastructure/Persistence/GeneratedMigrations -maxdepth 1 -name '*_AddMutationReceipts.cs' -print -quit)
-          if [ -n "$migration" ] && grep -q 'ck_mutation_receipts_args_version' "$migration"; then
-            echo "needed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "needed=false" >> "$GITHUB_OUTPUT"
-          fi
-      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
-        if: steps.migration.outputs.needed == 'true'
-        with:
-          dotnet-version: 10.0.302
-      - name: Restore
-        if: steps.migration.outputs.needed == 'true'
-        run: dotnet restore HeroPassport.slnx
-      - name: Build
-        if: steps.migration.outputs.needed == 'true'
-        run: dotnet build HeroPassport.slnx --no-restore -c Release
-      - name: Restore local tools
-        if: steps.migration.outputs.needed == 'true'
-        run: dotnet tool restore
-      - name: Remove unpublished migration
-        if: steps.migration.outputs.needed == 'true'
-        run: dotnet ef migrations remove --force --project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --startup-project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --context HeroPassportDbContext --configuration Release --no-build
-      - name: Generate migration
-        if: steps.migration.outputs.needed == 'true'
-        run: dotnet ef migrations add AddMutationReceipts --project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --startup-project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --context HeroPassportDbContext --output-dir Persistence/GeneratedMigrations --configuration Release
-      - name: Commit regenerated migration
-        if: steps.migration.outputs.needed == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/HeroPassport.Infrastructure/Persistence/GeneratedMigrations
-          git commit -m "storage: regenerate mutation receipt migration"
-          git push origin HEAD:agent/bootstrap-runtime-context
