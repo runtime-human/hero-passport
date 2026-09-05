@@ -181,8 +181,6 @@ namespace HeroPassport.Infrastructure.Persistence.GeneratedMigrations
                         {
                             t.HasCheckConstraint("ck_mutation_receipts_args_hash", "length(args_hash) = 32");
 
-                            t.HasCheckConstraint("ck_mutation_receipts_args_version", "length(args_encoding_version) BETWEEN 1 AND 64");
-
                             t.HasCheckConstraint("ck_mutation_receipts_operation", "operation_key IN ('bootstrap','create_hero','start_quest','finish_quest')");
 
                             t.HasCheckConstraint("ck_mutation_receipts_result_kind", "result_kind IN ('bootstrap','hero','quest_start','quest_finish')");

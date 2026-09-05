@@ -29,7 +29,6 @@ namespace HeroPassport.Infrastructure.Persistence.GeneratedMigrations
                 {
                     table.PrimaryKey("PK_mutation_receipts", x => new { x.operation_key, x.request_id });
                     table.CheckConstraint("ck_mutation_receipts_args_hash", "length(args_hash) = 32");
-                    table.CheckConstraint("ck_mutation_receipts_args_version", "length(args_encoding_version) BETWEEN 1 AND 64");
                     table.CheckConstraint("ck_mutation_receipts_operation", "operation_key IN ('bootstrap','create_hero','start_quest','finish_quest')");
                     table.CheckConstraint("ck_mutation_receipts_result_kind", "result_kind IN ('bootstrap','hero','quest_start','quest_finish')");
                     table.CheckConstraint("ck_mutation_receipts_result_status", "result_status IN ('active','target_deleted')");

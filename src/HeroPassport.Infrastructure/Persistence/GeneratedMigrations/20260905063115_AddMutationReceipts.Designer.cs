@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HeroPassport.Infrastructure.Persistence.GeneratedMigrations
 {
     [DbContext(typeof(HeroPassportDbContext))]
-    [Migration("20260905062641_AddMutationReceipts")]
+    [Migration("20260905063115_AddMutationReceipts")]
     partial class AddMutationReceipts
     {
         /// <inheritdoc />
@@ -183,8 +183,6 @@ namespace HeroPassport.Infrastructure.Persistence.GeneratedMigrations
                     b.ToTable("mutation_receipts", null, t =>
                         {
                             t.HasCheckConstraint("ck_mutation_receipts_args_hash", "length(args_hash) = 32");
-
-                            t.HasCheckConstraint("ck_mutation_receipts_args_version", "length(args_encoding_version) BETWEEN 1 AND 64");
 
                             t.HasCheckConstraint("ck_mutation_receipts_operation", "operation_key IN ('bootstrap','create_hero','start_quest','finish_quest')");
 
