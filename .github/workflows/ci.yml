@@ -34,6 +34,7 @@ jobs:
       - name: Infrastructure tests
         run: dotnet test tests/HeroPassport.Infrastructure.Tests/HeroPassport.Infrastructure.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
 
+  # Temporary generation path; remove after EF emits reviewed metadata.
   ef-codegen:
     if: github.event_name == 'push' && github.ref == 'refs/heads/agent/bootstrap-runtime-context'
     runs-on: ubuntu-24.04
