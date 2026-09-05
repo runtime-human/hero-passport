@@ -190,14 +190,22 @@ public sealed partial class SqliteHeroPassportStateStore
         var successRatePermille = questsFinished == 0
             ? 0
             : checked((int)(((decimal)questsSucceeded * 1000m) / questsFinished));
+        var rules = HeroPassportVersions.CurrentRules;
         var level = MinimalQuestFinishRules.HeroLevel(hero.TotalXp);
+        var isLevelCapped = MinimalQuestFinishRules.IsHeroLevelCapped(level, rules.HeroProgression);
+        var levelXp = MinimalQuestFinishRules.HeroLevelXp(hero.TotalXp, level, rules.HeroProgression);
+        var nextLevelXpRequired = MinimalQuestFinishRules.NextHeroLevelXpRequired(level, rules.HeroProgression);
         return new HeroCardResult(
             new HeroCardSnapshot(
                 hero.HeroId,
                 hero.Name,
                 hero.TotalXp,
                 level,
+                isLevelCapped,
+                levelXp,
+                nextLevelXpRequired,
                 MinimalQuestFinishRules.RankKey(level),
+                ActiveTitle: null,
                 hero.Trust,
                 hero.Strain,
                 hero.SuccessStreak,
