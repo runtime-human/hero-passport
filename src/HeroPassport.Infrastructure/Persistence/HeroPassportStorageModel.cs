@@ -9,6 +9,7 @@ internal static class HeroPassportStorageModel
     private const string Settings = "HeroPassport.Storage.AppSettings";
     private const string Quest = "HeroPassport.Storage.QuestSession";
     private const string MutationReceipt = "HeroPassport.Storage.MutationReceipt";
+    private const string HeroProjectStats = "HeroPassport.Storage.HeroProjectStats";
 
     public static void Configure(ModelBuilder modelBuilder)
     {
@@ -19,6 +20,7 @@ internal static class HeroPassportStorageModel
         ConfigureSettings(modelBuilder);
         ConfigureQuest(modelBuilder);
         ConfigureMutationReceipt(modelBuilder);
+        ConfigureHeroProjectStats(modelBuilder);
     }
 
     private static void ConfigureHero(ModelBuilder modelBuilder)
@@ -173,6 +175,37 @@ internal static class HeroPassportStorageModel
                 table.HasCheckConstraint("ck_mutation_receipts_args_hash", "length(args_hash) = 32");
                 table.HasCheckConstraint("ck_mutation_receipts_result_kind", "result_kind IN ('bootstrap','hero','quest_start','quest_finish')");
                 table.HasCheckConstraint("ck_mutation_receipts_result_status", "result_status IN ('active','target_deleted')");
+            });
+        });
+    }
+
+    private static void ConfigureHeroProjectStats(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity(HeroProjectStats, entity =>
+        {
+            entity.Property<string>("hero_id").HasColumnType("TEXT");
+            entity.Property<string>("project_id").HasColumnType("TEXT");
+            entity.Property<long>("quests_started").HasColumnType("INTEGER");
+            entity.Property<long>("quests_finished").HasColumnType("INTEGER");
+            entity.Property<long>("quests_succeeded").HasColumnType("INTEGER");
+            entity.Property<long>("total_xp_earned").HasColumnType("INTEGER");
+            entity.Property<string?>("last_quest_at_utc").HasColumnType("TEXT");
+
+            entity.HasKey("hero_id", "project_id");
+            entity.HasOne(Hero)
+                .WithMany()
+                .HasForeignKey("hero_id")
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(Project)
+                .WithMany()
+                .HasForeignKey("project_id")
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("hero_project_stats", table =>
+            {
+                table.HasCheckConstraint("ck_hero_project_stats_quests_started", "quests_started >= 0");
+                table.HasCheckConstraint("ck_hero_project_stats_quests_finished", "quests_finished >= 0");
+                table.HasCheckConstraint("ck_hero_project_stats_quests_succeeded", "quests_succeeded >= 0");
+                table.HasCheckConstraint("ck_hero_project_stats_total_xp_earned", "total_xp_earned >= 0");
             });
         });
     }
