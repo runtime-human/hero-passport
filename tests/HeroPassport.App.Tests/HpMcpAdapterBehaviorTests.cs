@@ -11,6 +11,7 @@ public sealed class HpMcpAdapterBehaviorTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly string[] CreateHeroWireFields = ["heroId", "name", "level", "rankKey", "trust", "strain", "archived"];
+    private static readonly string[] CodingSkills = ["coding"];
 
     [Fact]
     public async Task FinishAndCardExposeFullWireProjectionAndCreateDoesNotLeakListOnlyFields()
@@ -79,7 +80,7 @@ public sealed class HpMcpAdapterBehaviorTests
                         testsStatus = "not_run",
                         testsEvidence = "none",
                     },
-                    skillsUsed = new[] { "coding" },
+                    skillsUsed = CodingSkills,
                 }),
                 token);
             var finishJson = Structured(finished);
