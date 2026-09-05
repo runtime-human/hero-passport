@@ -10,6 +10,7 @@ namespace HeroPassport.App.Tests;
 public sealed class HpMcpAdapterBehaviorTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly string[] CreateHeroWireFields = ["heroId", "name", "level", "rankKey", "trust", "strain", "archived"];
 
     [Fact]
     public async Task FinishAndCardExposeFullWireProjectionAndCreateDoesNotLeakListOnlyFields()
@@ -45,9 +46,7 @@ public sealed class HpMcpAdapterBehaviorTests
                 Arguments(new { createRequestId = RequestId(), name = "Second" }),
                 token);
             var createdHero = Structured(created).GetProperty("hero");
-            Assert.Equal(
-                ["heroId", "name", "level", "rankKey", "trust", "strain", "archived"],
-                createdHero.EnumerateObject().Select(static property => property.Name).ToArray());
+            Assert.Equal(CreateHeroWireFields, createdHero.EnumerateObject().Select(static property => property.Name).ToArray());
 
             var started = await adapter.InvokeAsync(
                 "hero.start_quest",
