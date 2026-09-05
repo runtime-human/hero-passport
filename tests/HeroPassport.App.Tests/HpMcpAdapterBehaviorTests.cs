@@ -90,7 +90,7 @@ public sealed class HpMcpAdapterBehaviorTests
             Assert.True(finishJson.TryGetProperty("traitsUnlocked", out _));
             Assert.True(finishJson.TryGetProperty("titlesUnlocked", out _));
             Assert.True(finishJson.TryGetProperty("milestones", out _));
-            Assert.Equal(JsonValueKind.Null, finishJson.GetProperty("activeTitle").ValueKind);
+            Assert.False(finishJson.TryGetProperty("activeTitle", out _));
             var progress = finishJson.GetProperty("heroProgress");
             Assert.False(progress.GetProperty("isLevelCapped").GetBoolean());
             Assert.Equal(60, progress.GetProperty("levelXp").GetInt64());
@@ -101,7 +101,7 @@ public sealed class HpMcpAdapterBehaviorTests
             Assert.False(cardHero.GetProperty("isLevelCapped").GetBoolean());
             Assert.Equal(60, cardHero.GetProperty("levelXp").GetInt64());
             Assert.Equal(100, cardHero.GetProperty("nextLevelXpRequired").GetInt64());
-            Assert.Equal(JsonValueKind.Null, cardHero.GetProperty("activeTitle").ValueKind);
+            Assert.False(cardHero.TryGetProperty("activeTitle", out _));
         }
         finally
         {
