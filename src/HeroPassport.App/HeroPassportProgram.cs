@@ -11,6 +11,10 @@ namespace HeroPassport.App;
 
 public static class HeroPassportProgram
 {
+    private static readonly Dictionary<string, int> McpToolOrder = HpMcpToolCatalog.ProtocolTools
+        .Select(static (tool, index) => new KeyValuePair<string, int>(tool.Name, index))
+        .ToDictionary(static pair => pair.Key, static pair => pair.Value, StringComparer.Ordinal);
+
     private const string McpServerInstructions =
         "Use the installed Hero Passport Agent Skill for ambient lifecycle policy.\n" +
         "Call hero.get_context to hydrate/recover uncertain state.\n" +
@@ -49,6 +53,18 @@ public static class HeroPassportProgram
             builder.Services
                 .AddMcpServer(options => options.ServerInstructions = McpServerInstructions)
                 .WithStdioServerTransport()
+                .WithRequestFilters(filters =>
+                {
+                    filters.AddListToolsFilter(next => async (request, token) =>
+                    {
+                        var result = await next(request, token).ConfigureAwait(false);
+                        result.Tools = result.Tools
+                            .OrderBy(static tool => McpToolOrder.TryGetValue(tool.Name, out var order) ? order : int.MaxValue)
+                            .ThenBy(static tool => tool.Name, StringComparer.Ordinal)
+                            .ToArray();
+                        return result;
+                    });
+                })
                 .WithTools(HpMcpServerTools.Create(adapter));
 
             await builder.Build().RunAsync(cancellationToken).ConfigureAwait(false);
