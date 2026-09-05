@@ -27,4 +27,9 @@ public interface IHeroPassportStateStore
         HeroId heroId,
         DateTimeOffset now,
         CancellationToken cancellationToken = default);
+
+    Task<StartQuestResult> StartQuestAsync(
+        StartQuestStoreCommand command,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
 }

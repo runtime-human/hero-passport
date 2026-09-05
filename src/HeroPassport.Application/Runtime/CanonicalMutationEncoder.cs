@@ -1,3 +1,4 @@
+using HeroPassport.Domain.Primitives;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
@@ -22,7 +23,7 @@ public static class CanonicalMutationEncoder
         WriteStringFrame(stream, 0x03, presentationStyle);
         WriteBoolFrame(stream, 0x04, autoStartQuest);
         WriteBoolFrame(stream, 0x05, autoFinishQuest);
-        return SHA256.HashData(stream.GetBuffer().AsSpan(0, checked((int)stream.Length)));
+        return Hash(stream);
     }
 
     public static byte[] HashCreateHero(string name)
@@ -30,15 +31,35 @@ public static class CanonicalMutationEncoder
         using var stream = NewStream();
         WriteStringFrame(stream, 0x00, "create_hero");
         WriteStringFrame(stream, 0x01, name);
-        return SHA256.HashData(stream.GetBuffer().AsSpan(0, checked((int)stream.Length)));
+        return Hash(stream);
+    }
+
+    public static byte[] HashStartQuest(
+        ProjectId projectId,
+        HeroId heroId,
+        string questType,
+        string title,
+        string goal)
+    {
+        using var stream = NewStream();
+        WriteStringFrame(stream, 0x00, "start_quest");
+        WriteStringFrame(stream, 0x01, projectId.ToString());
+        WriteStringFrame(stream, 0x02, heroId.ToString());
+        WriteStringFrame(stream, 0x03, questType);
+        WriteStringFrame(stream, 0x04, title);
+        WriteStringFrame(stream, 0x05, goal);
+        return Hash(stream);
     }
 
     private static MemoryStream NewStream()
     {
-        var stream = new MemoryStream(128);
+        var stream = new MemoryStream(256);
         stream.Write(Prefix);
         return stream;
     }
+
+    private static byte[] Hash(MemoryStream stream) =>
+        SHA256.HashData(stream.GetBuffer().AsSpan(0, checked((int)stream.Length)));
 
     private static void WriteStringFrame(Stream stream, byte tag, string value) =>
         WriteFrame(stream, tag, Encoding.UTF8.GetBytes(value));

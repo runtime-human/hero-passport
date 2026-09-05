@@ -17,3 +17,12 @@ public sealed record CreateHeroStoreCommand(
     string ArgsEncodingVersion,
     byte[] ArgsHash,
     string Name);
+
+public sealed record StartQuestStoreCommand(
+    MutationRequestId RequestId,
+    string ArgsEncodingVersion,
+    HeroId HeroId,
+    string QuestType,
+    string Title,
+    string Goal,
+    ProjectBindingContext Project);
