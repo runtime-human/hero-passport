@@ -82,9 +82,11 @@ public sealed class HpMcpContractTests
         var output = Assert.IsType<JsonElement>(HpMcpToolCatalog.ProtocolTools.Single(static tool => tool.Name == "hero.finish_quest").OutputSchema);
         AssertRequired(output,
             "questId", "result", "replayed", "alreadyFinalized", "reward", "heroProgress", "trustStrain", "streak",
-            "skillProgress", "traitsUnlocked", "titlesUnlocked", "activeTitle", "milestones", "displayText");
+            "skillProgress", "traitsUnlocked", "titlesUnlocked", "milestones", "displayText");
 
         var properties = output.GetProperty("properties");
+        Assert.DoesNotContain("activeTitle", RequiredNames(output));
+        Assert.Equal("string", properties.GetProperty("activeTitle").GetProperty("type").GetString());
         AssertClosedObject(properties.GetProperty("reward"));
         AssertClosedObject(properties.GetProperty("heroProgress"));
         AssertClosedObject(properties.GetProperty("trustStrain"));
@@ -112,8 +114,10 @@ public sealed class HpMcpContractTests
         var hero = properties.GetProperty("hero");
         AssertClosedObject(hero);
         AssertRequired(hero,
-            "heroId", "name", "totalXp", "level", "isLevelCapped", "levelXp", "rankKey", "activeTitle",
+            "heroId", "name", "totalXp", "level", "isLevelCapped", "levelXp", "rankKey",
             "trust", "strain", "successStreak", "topSkills", "traits", "titles");
+        Assert.DoesNotContain("activeTitle", RequiredNames(hero));
+        Assert.Equal("string", hero.GetProperty("properties").GetProperty("activeTitle").GetProperty("type").GetString());
         Assert.True(hero.GetProperty("properties").TryGetProperty("nextLevelXpRequired", out _));
         AssertClosedObject(properties.GetProperty("project"));
 
