@@ -40,6 +40,27 @@ public sealed class BootstrapBehaviorTests
     }
 
     [Fact]
+    public async Task InvalidBootstrapHeroNameUsesStableInvalidRequestError()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var path = TestRuntime.CreateDatabasePath();
+        try
+        {
+            await HeroPassportDatabase.InitializeAsync(path, token);
+            var app = TestRuntime.CreateApplication(path);
+
+            var error = await Assert.ThrowsAsync<HeroPassportException>(() =>
+                app.BootstrapAsync(new BootstrapRequest(MutationRequestId.New(), "en-US", null!, "minimal", true, true), token));
+
+            Assert.Equal("HP100", error.Code);
+        }
+        finally
+        {
+            TestRuntime.DeleteDatabase(path);
+        }
+    }
+
+    [Fact]
     public async Task ConcurrentFreshBootstrapsCreateExactlyOneInitialHero()
     {
         var token = TestContext.Current.CancellationToken;
@@ -56,6 +77,7 @@ public sealed class BootstrapBehaviorTests
 
             Assert.Single(results, static item => item.Result is not null);
             Assert.Equal("HP002", Assert.IsType<HeroPassportException>(Assert.Single(results, static item => item.Error is not null).Error).Code);
+            Assert.Equal(1, await CountHeroesAsync(path, token));
         }
         finally
         {
@@ -67,5 +89,13 @@ public sealed class BootstrapBehaviorTests
     {
         try { return (await action(), null); }
         catch (Exception exception) { return (null, exception); }
+    }
+
+    private static async Task<long> CountHeroesAsync(string path, CancellationToken token)
+    {
+        await using var connection = await HeroPassportDatabase.OpenConnectionAsync(path, token);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM heroes;";
+        return (long)(await command.ExecuteScalarAsync(token) ?? 0L);
     }
 }
