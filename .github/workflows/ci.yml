@@ -70,7 +70,7 @@ jobs:
         run: dotnet ef migrations remove --force --project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --startup-project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --context HeroPassportDbContext --configuration Release --no-build
       - name: Generate migration
         if: steps.migration.outputs.needed == 'true'
-        run: dotnet ef migrations add AddMutationReceipts --project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --startup-project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --context HeroPassportDbContext --output-dir Persistence/GeneratedMigrations --configuration Release --no-build
+        run: dotnet ef migrations add AddMutationReceipts --project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --startup-project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --context HeroPassportDbContext --output-dir Persistence/GeneratedMigrations --configuration Release
       - name: Commit regenerated migration
         if: steps.migration.outputs.needed == 'true'
         run: |
