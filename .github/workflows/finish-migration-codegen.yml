@@ -1,0 +1,48 @@
+name: finish-migration-codegen
+
+on:
+  push:
+    branches:
+      - agent/minimal-quest-finish
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Check generated migration
+        id: migration
+        run: |
+          if compgen -G "src/HeroPassport.Infrastructure/Persistence/GeneratedMigrations/*_AddQuestFinishPersistence.cs" > /dev/null; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        if: steps.migration.outputs.needed == 'true'
+        with:
+          dotnet-version: 10.0.302
+      - name: Restore
+        if: steps.migration.outputs.needed == 'true'
+        run: dotnet restore HeroPassport.slnx
+      - name: Build
+        if: steps.migration.outputs.needed == 'true'
+        run: dotnet build HeroPassport.slnx --no-restore -c Release
+      - name: Restore local tools
+        if: steps.migration.outputs.needed == 'true'
+        run: dotnet tool restore
+      - name: Generate migration
+        if: steps.migration.outputs.needed == 'true'
+        run: dotnet ef migrations add AddQuestFinishPersistence --project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --startup-project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj --context HeroPassportDbContext --output-dir Persistence/GeneratedMigrations --configuration Release --no-build
+      - name: Commit generated migration
+        if: steps.migration.outputs.needed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/HeroPassport.Infrastructure/Persistence/GeneratedMigrations
+          git commit -m "storage: add quest finish persistence migration"
+          git push origin HEAD:agent/minimal-quest-finish
