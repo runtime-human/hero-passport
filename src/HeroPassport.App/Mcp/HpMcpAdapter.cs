@@ -295,7 +295,7 @@ public sealed class HpMcpAdapter(
             skillProgress = result.SkillProgress,
             traitsUnlocked = result.TraitsUnlocked,
             titlesUnlocked = result.TitlesUnlocked,
-            activeTitle = ExplicitNullableString(result.ActiveTitle),
+            activeTitle = OptionalString(result.ActiveTitle),
             milestones = result.Milestones,
             displayText = result.Replayed ? "Quest finish replayed." : result.AlreadyFinalized ? "Quest was already finalized with the same payload." : "Quest finished.",
         });
@@ -318,7 +318,7 @@ public sealed class HpMcpAdapter(
                 result.Hero.LevelXp,
                 result.Hero.NextLevelXpRequired,
                 result.Hero.RankKey,
-                activeTitle = ExplicitNullableString(result.Hero.ActiveTitle),
+                activeTitle = OptionalString(result.Hero.ActiveTitle),
                 result.Hero.Trust,
                 result.Hero.Strain,
                 result.Hero.SuccessStreak,
@@ -374,8 +374,7 @@ public sealed class HpMcpAdapter(
         hero.Strain,
     };
 
-    private static JsonElement ExplicitNullableString(string? value) =>
-        JsonSerializer.SerializeToElement<string?>(value, JsonOptions);
+    private static object? OptionalString(string? value) => value;
 
     private static CallToolResult Success<T>(T value) =>
         HpMcpResponses.Success(JsonSerializer.SerializeToElement(value, JsonOptions));
