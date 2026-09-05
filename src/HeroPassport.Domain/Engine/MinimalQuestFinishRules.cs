@@ -66,11 +66,7 @@ public static class MinimalQuestFinishRules
         RequireHeroProgressionVersion(ruleVersion);
         RequireHeroLevel(level);
         var threshold = HeroLevelThresholds[level - 1];
-        if (totalXp < threshold)
-        {
-            throw new ArgumentOutOfRangeException(nameof(totalXp));
-        }
-
+        ArgumentOutOfRangeException.ThrowIfLessThan(totalXp, threshold);
         return checked(totalXp - threshold);
     }
 
@@ -103,9 +99,7 @@ public static class MinimalQuestFinishRules
 
     private static void RequireHeroLevel(int level)
     {
-        if (level < 1 || level > HeroLevelThresholds.Length)
-        {
-            throw new ArgumentOutOfRangeException(nameof(level));
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(level, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(level, HeroLevelThresholds.Length);
     }
 }
