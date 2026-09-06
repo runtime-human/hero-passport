@@ -108,9 +108,9 @@ public sealed class UnlockRulesTests
                 new UnlockMilestone("rank_changed", "rank:code_knight"),
                 new UnlockMilestone("skill_level_changed", "skill_level:coding:5"),
                 new UnlockMilestone("streak_changed", "streak:5"),
-                new UnlockMilestone("steady_hand", "trait:steady_hand"),
-                new UnlockMilestone("rising_adventurer", "title:rising_adventurer"),
-                new UnlockMilestone("skill_specialist", "title:skill_specialist"),
+                new UnlockMilestone("trait_unlocked", "trait:steady_hand"),
+                new UnlockMilestone("title_unlocked", "title:rising_adventurer"),
+                new UnlockMilestone("title_unlocked", "title:skill_specialist"),
             ],
             result.Milestones);
     }
@@ -120,9 +120,9 @@ public sealed class UnlockRulesTests
     {
         var states = new[]
         {
-            new TitleUnlockState("rising_adventurer", DateTimeOffset.Parse("2026-09-06T12:00:00Z")),
-            new TitleUnlockState("skill_specialist", DateTimeOffset.Parse("2026-09-05T12:00:00Z")),
-            new TitleUnlockState("master_of_many_tools", DateTimeOffset.Parse("2026-01-01T00:00:00Z")),
+            new TitleUnlockState("rising_adventurer", new DateTimeOffset(2026, 9, 6, 12, 0, 0, TimeSpan.Zero)),
+            new TitleUnlockState("skill_specialist", new DateTimeOffset(2026, 9, 5, 12, 0, 0, TimeSpan.Zero)),
+            new TitleUnlockState("master_of_many_tools", new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)),
         };
 
         Assert.Equal("master_of_many_tools", UnlockRules.SelectActiveTitle(states, UnlockRules.RuleVersion));
@@ -151,6 +151,8 @@ public sealed class UnlockRulesTests
         Assert.Throws<ArgumentOutOfRangeException>(() => UnlockRules.Evaluate(valid with { PreciseExecutorSuccessesAfter = -1 }, UnlockRules.RuleVersion));
         Assert.Throws<ArgumentException>(() => UnlockRules.Evaluate(valid with { SkillsAfter = [new UnlockSkillState("unknown", 1)] }, UnlockRules.RuleVersion));
         Assert.Throws<ArgumentException>(() => UnlockRules.Evaluate(valid with { ExistingTraits = ["unknown"] }, UnlockRules.RuleVersion));
-        Assert.Throws<ArgumentException>(() => UnlockRules.SelectActiveTitle([new TitleUnlockState("unknown", DateTimeOffset.UtcNow)], UnlockRules.RuleVersion));
+        Assert.Throws<ArgumentException>(() => UnlockRules.SelectActiveTitle(
+            [new TitleUnlockState("unknown", new DateTimeOffset(2026, 9, 6, 0, 0, 0, TimeSpan.Zero))],
+            UnlockRules.RuleVersion));
     }
 }
