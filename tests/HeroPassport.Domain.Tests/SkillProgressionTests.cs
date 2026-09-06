@@ -66,11 +66,11 @@ public sealed class SkillProgressionTests
     }
 
     [Fact]
-    public void UnsupportedVersionNegativeXpAndJsonSafeOverflowAreRejected()
+    public void UnsupportedVersionNegativeXpAndJsonSafeBoundaryAreRejected()
     {
         Assert.Throws<ArgumentException>(() => SkillProgressionRules.Level(0, "skill-progression/1.0.0"));
         Assert.Throws<ArgumentOutOfRangeException>(() => SkillProgressionRules.Level(-1, "skill-progression/2.0.0"));
         Assert.Throws<ArgumentOutOfRangeException>(() => SkillProgressionRules.Apply(0, -1, "skill-progression/2.0.0"));
-        Assert.Throws<OverflowException>(() => SkillProgressionRules.Apply(9_007_199_254_740_991L, 1, "skill-progression/2.0.0"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SkillProgressionRules.Apply(9_007_199_254_740_991L, 1, "skill-progression/2.0.0"));
     }
 }
