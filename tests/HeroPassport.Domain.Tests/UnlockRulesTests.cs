@@ -71,7 +71,7 @@ public sealed class UnlockRulesTests
                 new UnlockSkillState("tool_use", 5),
             ],
             SkillLevelChanges: [],
-            ExistingTraits: [],
+            ExistingTraits: ["steady_hand", "polyglot_crafter"],
             ExistingTitles: ["rising_adventurer", "skill_specialist"]);
 
         var result = UnlockRules.Evaluate(context, UnlockRules.RuleVersion);
