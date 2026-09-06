@@ -374,7 +374,7 @@ public sealed class HpMcpAdapter(
         hero.Strain,
     };
 
-    private static object? OptionalString(string? value) => value;
+    private static string? OptionalString(string? value) => value;
 
     private static CallToolResult Success<T>(T value) =>
         HpMcpResponses.Success(JsonSerializer.SerializeToElement(value, JsonOptions));
