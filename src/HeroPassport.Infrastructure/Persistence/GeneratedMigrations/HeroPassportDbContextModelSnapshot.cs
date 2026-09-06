@@ -497,6 +497,7 @@ namespace HeroPassport.Infrastructure.Persistence.GeneratedMigrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("skill_key")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<long>("xp_after")
@@ -791,7 +792,8 @@ namespace HeroPassport.Infrastructure.Persistence.GeneratedMigrations
                     b.HasOne("HeroPassport.Storage.Skill", null)
                         .WithMany()
                         .HasForeignKey("skill_key")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("HeroPassport.Storage.QuestRewardComponent", b =>

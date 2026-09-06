@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HeroPassport.Infrastructure.Persistence.GeneratedMigrations
 {
     [DbContext(typeof(HeroPassportDbContext))]
-    [Migration("20260906100551_AddRewardSkillPersistence")]
+    [Migration("20260906101002_AddRewardSkillPersistence")]
     partial class AddRewardSkillPersistence
     {
         /// <inheritdoc />
@@ -500,6 +500,7 @@ namespace HeroPassport.Infrastructure.Persistence.GeneratedMigrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("skill_key")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<long>("xp_after")
@@ -794,7 +795,8 @@ namespace HeroPassport.Infrastructure.Persistence.GeneratedMigrations
                     b.HasOne("HeroPassport.Storage.Skill", null)
                         .WithMany()
                         .HasForeignKey("skill_key")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("HeroPassport.Storage.QuestRewardComponent", b =>

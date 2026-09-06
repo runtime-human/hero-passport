@@ -80,7 +80,7 @@ namespace HeroPassport.Infrastructure.Persistence.GeneratedMigrations
                     ordinal = table.Column<int>(type: "INTEGER", nullable: false),
                     level_after = table.Column<int>(type: "INTEGER", nullable: false),
                     level_before = table.Column<int>(type: "INTEGER", nullable: false),
-                    skill_key = table.Column<string>(type: "TEXT", nullable: true),
+                    skill_key = table.Column<string>(type: "TEXT", nullable: false),
                     xp_after = table.Column<long>(type: "INTEGER", nullable: false),
                     xp_before = table.Column<long>(type: "INTEGER", nullable: false),
                     xp_gained = table.Column<long>(type: "INTEGER", nullable: false)
