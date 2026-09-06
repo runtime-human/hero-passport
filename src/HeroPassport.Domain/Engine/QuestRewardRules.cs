@@ -1,5 +1,7 @@
 namespace HeroPassport.Domain.Engine;
 
+public sealed record QuestRewardComponent(string Key, long XpDelta);
+
 public sealed record QuestRewardResult(
     int BaseXp,
     int BonusXp,
@@ -7,6 +9,7 @@ public sealed record QuestRewardResult(
     int RawXp,
     int OutcomePermille,
     long XpGained,
+    IReadOnlyList<QuestRewardComponent> Components,
     string RuleVersion);
 
 public static class QuestRewardRules
@@ -32,14 +35,21 @@ public static class QuestRewardRules
 
         var baseXp = BaseXp(questType);
         var outcomePermille = OutcomePermille(result);
-        var bonusXp =
-            (quality.HasObservedTestsPassed ? 10 : 0) +
-            (quality.HasCleanScope ? 10 : 0) +
-            (quality.HasClearSummary ? 10 : 0) +
-            (quality.HasNoUserCorrections ? 5 : 0);
-        var penaltyXp =
-            (Math.Min(scopeViolations, 3) * 5) +
-            (Math.Min(userCorrections, 3) * 5);
+        var components = Components(quality, scopeViolations, userCorrections);
+        var bonusXp = 0;
+        var penaltyXp = 0;
+        foreach (var component in components)
+        {
+            if (component.XpDelta > 0)
+            {
+                bonusXp = checked(bonusXp + (int)component.XpDelta);
+            }
+            else
+            {
+                penaltyXp = checked(penaltyXp - (int)component.XpDelta);
+            }
+        }
+
         var rawXp = Math.Max(0, checked(baseXp + bonusXp - penaltyXp));
         var xpGained = checked((long)rawXp * outcomePermille / 1000L);
 
@@ -50,6 +60,7 @@ public static class QuestRewardRules
             rawXp,
             outcomePermille,
             xpGained,
+            components,
             RuleVersion);
     }
 
@@ -74,6 +85,23 @@ public static class QuestRewardRules
         "abandoned" => 0,
         _ => throw new ArgumentOutOfRangeException(nameof(result)),
     };
+
+    private static IReadOnlyList<QuestRewardComponent> Components(
+        QuestQualityFlags quality,
+        int scopeViolations,
+        int userCorrections)
+    {
+        var components = new List<QuestRewardComponent>(6);
+        if (quality.HasObservedTestsPassed) components.Add(new("observed_tests_passed_bonus", 10));
+        if (quality.HasCleanScope) components.Add(new("clean_scope_bonus", 10));
+        if (quality.HasClearSummary) components.Add(new("clear_summary_bonus", 10));
+        if (quality.HasNoUserCorrections) components.Add(new("no_user_corrections_bonus", 5));
+        if (scopeViolations > 0)
+            components.Add(new("scope_violation_penalty", -Math.Min(scopeViolations, 3) * 5L));
+        if (userCorrections > 0)
+            components.Add(new("user_correction_penalty", -Math.Min(userCorrections, 3) * 5L));
+        return components;
+    }
 
     private static void RequireBoundedCount(int value, string parameterName)
     {
