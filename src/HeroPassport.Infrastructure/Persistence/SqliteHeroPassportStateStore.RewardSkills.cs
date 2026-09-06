@@ -8,8 +8,6 @@ namespace HeroPassport.Infrastructure.Persistence;
 
 public sealed partial class SqliteHeroPassportStateStore
 {
-    private sealed record RewardComponentRow(string Key, long XpDelta);
-
     private static QuestRewardResult CalculateReward(FinishQuestStoreCommand command, string questType)
     {
         var quality = Quality(command);
@@ -24,24 +22,9 @@ public sealed partial class SqliteHeroPassportStateStore
             command.Metrics.TestsEvidence, command.Metrics.ScopeViolations,
             command.Metrics.UserCorrections);
 
-    private static List<RewardComponentRow> RewardComponents(FinishQuestStoreCommand command)
-    {
-        var quality = Quality(command);
-        var components = new List<RewardComponentRow>(6);
-        if (quality.HasObservedTestsPassed) components.Add(new("observed_tests_passed_bonus", 10));
-        if (quality.HasCleanScope) components.Add(new("clean_scope_bonus", 10));
-        if (quality.HasClearSummary) components.Add(new("clear_summary_bonus", 10));
-        if (quality.HasNoUserCorrections) components.Add(new("no_user_corrections_bonus", 5));
-        if (command.Metrics.ScopeViolations > 0)
-            components.Add(new("scope_violation_penalty", -Math.Min(command.Metrics.ScopeViolations, 3) * 5L));
-        if (command.Metrics.UserCorrections > 0)
-            components.Add(new("user_correction_penalty", -Math.Min(command.Metrics.UserCorrections, 3) * 5L));
-        return components;
-    }
-
     private static async Task InsertRewardComponentsAsync(
         SqliteConnection connection, SqliteTransaction transaction, QuestReportId reportId,
-        IReadOnlyList<RewardComponentRow> components, CancellationToken cancellationToken)
+        IReadOnlyList<QuestRewardComponent> components, CancellationToken cancellationToken)
     {
         for (var ordinal = 0; ordinal < components.Count; ordinal++)
         {
@@ -51,6 +34,36 @@ public sealed partial class SqliteHeroPassportStateStore
                 cancellationToken, ("$report", reportId.ToString()), ("$ordinal", ordinal),
                 ("$key", component.Key), ("$delta", component.XpDelta)).ConfigureAwait(false);
         }
+    }
+
+    private static async Task<IReadOnlyList<RewardComponentSnapshot>> RewardComponentsForReportAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        QuestReportId reportId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = Command(connection, transaction, """
+            SELECT component_key,xp_delta
+            FROM quest_reward_components WHERE quest_report_id=$report ORDER BY ordinal;
+            """, ("$report", reportId.ToString()));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var snapshots = new List<RewardComponentSnapshot>();
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            snapshots.Add(new RewardComponentSnapshot(reader.GetString(0), reader.GetInt64(1)));
+        }
+        return snapshots;
+    }
+
+    private static IReadOnlyList<RewardComponentSnapshot> RewardComponentSnapshots(QuestRewardResult reward)
+    {
+        var snapshots = new RewardComponentSnapshot[reward.Components.Count];
+        for (var index = 0; index < reward.Components.Count; index++)
+        {
+            var component = reward.Components[index];
+            snapshots[index] = new RewardComponentSnapshot(component.Key, component.XpDelta);
+        }
+        return snapshots;
     }
 
     private static async Task<IReadOnlyList<SkillProgressSnapshot>> ApplySkillAllocationsAsync(
