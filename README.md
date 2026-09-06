@@ -32,11 +32,11 @@ Typical start:
 
 Canonical clean coding finish is **95 XP** before any future rule-version change.
 
-## v3.2.1 architecture snapshot — 11 August 2026
+## v3.2.1 implementation baseline — 6 September 2026
 
 ```text
 C# 14 / .NET 10 LTS / SDK 10.0.302
-ModelContextProtocol 2.1.0
+ModelContextProtocol 2.2.0
 MCP semantics 2026-07-28; qualification path 2025-11-25
 EF Core SQLite / Microsoft.Data.Sqlite 10.0.10
 SQLitePCLRaw.bundle_e_sqlite3 3.0.5
@@ -44,6 +44,8 @@ qualified actual SQLite runtime >= 3.53.4
 System.CommandLine 2.0.10
 xunit.v3 3.2.2
 ```
+
+The v3.2.1 product/architecture contract remains the 11 August 2026 baseline; dependency qualification is refreshed independently as implementation proceeds.
 
 0.1 ships MCP Core + Agent Skill + CLI. Local Web UI is 0.2.
 
