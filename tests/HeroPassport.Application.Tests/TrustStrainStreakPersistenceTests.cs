@@ -64,7 +64,7 @@ public sealed class TrustStrainStreakPersistenceTests
             Assert.Equal(1, finish.Streak.After);
             Assert.Equal("streak/1.0.0", finish.Streak.RuleVersion);
 
-            var card = await app.GetHeroCardAsync(hero.HeroId, project, token);
+            var card = await app.GetCardAsync(hero.HeroId, project, token);
             Assert.Equal(52, card.Hero.Trust);
             Assert.Equal(18, card.Hero.Strain);
             Assert.Equal(1, card.Hero.SuccessStreak);
