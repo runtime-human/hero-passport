@@ -32,7 +32,9 @@ public sealed class HpMcpContractTests
         foreach (var tool in tools)
         {
             var annotations = Assert.IsType<ToolAnnotations>(tool.Annotations);
-            Assert.False(annotations.DestructiveHint);
+            var expectedDestructive = tool.Name is
+                "hero.configure" or "hero.activate" or "hero.archive" or "hero.restore" or "hero.finish_quest";
+            Assert.Equal(expectedDestructive, annotations.DestructiveHint);
             Assert.True(annotations.IdempotentHint);
             Assert.False(annotations.OpenWorldHint);
             Assert.Equal(tool.Name is "hero.get_context" or "hero.list" or "hero.get_card", annotations.ReadOnlyHint);
