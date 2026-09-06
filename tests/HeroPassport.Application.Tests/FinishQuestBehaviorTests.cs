@@ -32,7 +32,7 @@ public sealed class FinishQuestBehaviorTests
             Assert.Equal(first.Result, replay.Result);
             Assert.Equal(first.Reward, replay.Reward);
             Assert.Equal(first.HeroProgress, replay.HeroProgress);
-            Assert.Equal(first.TrustStrain, replay.TrustStrain);
+            AssertTrustStrainHistoryEqual(first.TrustStrain, replay.TrustStrain);
             Assert.Equal(first.Streak, replay.Streak);
             Assert.True(first.SkillProgress.SequenceEqual(replay.SkillProgress));
             Assert.True(first.TraitsUnlocked.SequenceEqual(replay.TraitsUnlocked));
@@ -54,8 +54,12 @@ public sealed class FinishQuestBehaviorTests
             Assert.Equal("HP135", changed.Code);
 
             Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_reports;", token));
+            Assert.Equal(4, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_trust_strain_components;", token));
             Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM xp_events;", token));
             Assert.Equal(95, await ScalarLongAsync(path, $"SELECT total_xp FROM heroes WHERE id='{hero.HeroId}';", token));
+            Assert.Equal(52, await ScalarLongAsync(path, $"SELECT trust FROM heroes WHERE id='{hero.HeroId}';", token));
+            Assert.Equal(18, await ScalarLongAsync(path, $"SELECT strain FROM heroes WHERE id='{hero.HeroId}';", token));
+            Assert.Equal(1, await ScalarLongAsync(path, $"SELECT success_streak FROM heroes WHERE id='{hero.HeroId}';", token));
             Assert.Equal(95, await ScalarLongAsync(path, "SELECT total_xp_earned FROM hero_project_stats;", token));
             Assert.Equal(1, await ScalarLongAsync(path, "SELECT quests_finished FROM hero_project_stats;", token));
             Assert.Equal(1, await ScalarLongAsync(path, "SELECT quests_succeeded FROM hero_project_stats;", token));
@@ -88,6 +92,8 @@ public sealed class FinishQuestBehaviorTests
             Assert.True(equivalent.AlreadyFinalized);
             Assert.Equal(committed.Reward, equivalent.Reward);
             Assert.Equal(committed.HeroProgress, equivalent.HeroProgress);
+            AssertTrustStrainHistoryEqual(committed.TrustStrain, equivalent.TrustStrain);
+            Assert.Equal(committed.Streak, equivalent.Streak);
             Assert.True(committed.SkillProgress.SequenceEqual(equivalent.SkillProgress));
             Assert.Equal(2, await ScalarLongAsync(path, "SELECT COUNT(*) FROM mutation_receipts WHERE operation_key='finish_quest';", token));
 
@@ -98,6 +104,7 @@ public sealed class FinishQuestBehaviorTests
                     token));
             Assert.Equal("HP136", conflict.Code);
             Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_reports;", token));
+            Assert.Equal(committed.TrustStrain.Components.Count, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_trust_strain_components;", token));
             Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM xp_events;", token));
         }
         finally
@@ -127,8 +134,12 @@ public sealed class FinishQuestBehaviorTests
             var loser = Assert.IsType<HeroPassportException>(Assert.Single(results, static result => result.Error is not null).Error);
             Assert.Equal("HP136", loser.Code);
             Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_reports;", token));
+            Assert.Equal(winner.TrustStrain.Components.Count, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_trust_strain_components;", token));
             Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM xp_events;", token));
             Assert.Equal(winner.Reward.XpGained, await ScalarLongAsync(path, "SELECT total_xp FROM heroes;", token));
+            Assert.Equal(winner.TrustStrain.TrustAfter, await ScalarLongAsync(path, "SELECT trust FROM heroes;", token));
+            Assert.Equal(winner.TrustStrain.StrainAfter, await ScalarLongAsync(path, "SELECT strain FROM heroes;", token));
+            Assert.Equal(winner.Streak.After, await ScalarLongAsync(path, "SELECT success_streak FROM heroes;", token));
         }
         finally
         {
@@ -165,14 +176,20 @@ public sealed class FinishQuestBehaviorTests
             Assert.False(converged.Replayed);
             Assert.Equal(fresh.Reward, converged.Reward);
             Assert.Equal(fresh.HeroProgress, converged.HeroProgress);
+            AssertTrustStrainHistoryEqual(fresh.TrustStrain, converged.TrustStrain);
+            Assert.Equal(fresh.Streak, converged.Streak);
             Assert.True(fresh.SkillProgress.SequenceEqual(converged.SkillProgress));
             Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_reports;", token));
             Assert.Equal(4, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_reward_components;", token));
+            Assert.Equal(4, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_trust_strain_components;", token));
             Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_report_skills;", token));
             Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM hero_skills;", token));
             Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM xp_events;", token));
             Assert.Equal(2, await ScalarLongAsync(path, "SELECT COUNT(*) FROM mutation_receipts WHERE operation_key='finish_quest';", token));
             Assert.Equal(95, await ScalarLongAsync(path, "SELECT total_xp FROM heroes;", token));
+            Assert.Equal(52, await ScalarLongAsync(path, "SELECT trust FROM heroes;", token));
+            Assert.Equal(18, await ScalarLongAsync(path, "SELECT strain FROM heroes;", token));
+            Assert.Equal(1, await ScalarLongAsync(path, "SELECT success_streak FROM heroes;", token));
             Assert.Equal(95, await ScalarLongAsync(path, "SELECT xp FROM hero_skills WHERE skill_key='coding';", token));
         }
         finally
@@ -202,7 +219,13 @@ public sealed class FinishQuestBehaviorTests
             var finished = await app.FinishQuestAsync(request, project, token);
             Assert.Equal(owner.HeroId, finished.HeroProgress.HeroId);
             Assert.Equal(95, await ScalarLongAsync(path, $"SELECT total_xp FROM heroes WHERE id='{owner.HeroId}';", token));
+            Assert.Equal(52, await ScalarLongAsync(path, $"SELECT trust FROM heroes WHERE id='{owner.HeroId}';", token));
+            Assert.Equal(18, await ScalarLongAsync(path, $"SELECT strain FROM heroes WHERE id='{owner.HeroId}';", token));
+            Assert.Equal(1, await ScalarLongAsync(path, $"SELECT success_streak FROM heroes WHERE id='{owner.HeroId}';", token));
             Assert.Equal(0, await ScalarLongAsync(path, $"SELECT total_xp FROM heroes WHERE id='{other.HeroId}';", token));
+            Assert.Equal(50, await ScalarLongAsync(path, $"SELECT trust FROM heroes WHERE id='{other.HeroId}';", token));
+            Assert.Equal(20, await ScalarLongAsync(path, $"SELECT strain FROM heroes WHERE id='{other.HeroId}';", token));
+            Assert.Equal(0, await ScalarLongAsync(path, $"SELECT success_streak FROM heroes WHERE id='{other.HeroId}';", token));
         }
         finally
         {
@@ -236,8 +259,12 @@ public sealed class FinishQuestBehaviorTests
                 app.FinishQuestAsync(FinishRequest(quest.QuestId, "success", "This finalization must be rolled back before the receipt commits."), project, token));
 
             Assert.Equal(0, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_reports;", token));
+            Assert.Equal(0, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_trust_strain_components;", token));
             Assert.Equal(0, await ScalarLongAsync(path, "SELECT COUNT(*) FROM xp_events;", token));
             Assert.Equal(0, await ScalarLongAsync(path, $"SELECT total_xp FROM heroes WHERE id='{hero.HeroId}';", token));
+            Assert.Equal(50, await ScalarLongAsync(path, $"SELECT trust FROM heroes WHERE id='{hero.HeroId}';", token));
+            Assert.Equal(20, await ScalarLongAsync(path, $"SELECT strain FROM heroes WHERE id='{hero.HeroId}';", token));
+            Assert.Equal(0, await ScalarLongAsync(path, $"SELECT success_streak FROM heroes WHERE id='{hero.HeroId}';", token));
             Assert.Equal(0, await ScalarLongAsync(path, "SELECT quests_finished FROM hero_project_stats;", token));
             Assert.Equal(0, await ScalarLongAsync(path, "SELECT total_xp_earned FROM hero_project_stats;", token));
             Assert.Equal(1, await ScalarLongAsync(path, $"SELECT COUNT(*) FROM quest_sessions WHERE id='{quest.QuestId}' AND status='open' AND finished_at_utc IS NULL;", token));
@@ -271,6 +298,16 @@ public sealed class FinishQuestBehaviorTests
         {
             TestRuntime.DeleteDatabase(path);
         }
+    }
+
+    private static void AssertTrustStrainHistoryEqual(TrustStrainSnapshot expected, TrustStrainSnapshot actual)
+    {
+        Assert.Equal(expected.TrustBefore, actual.TrustBefore);
+        Assert.Equal(expected.TrustAfter, actual.TrustAfter);
+        Assert.Equal(expected.StrainBefore, actual.StrainBefore);
+        Assert.Equal(expected.StrainAfter, actual.StrainAfter);
+        Assert.Equal(expected.RuleVersion, actual.RuleVersion);
+        Assert.True(expected.Components.SequenceEqual(actual.Components));
     }
 
     private static async Task<(HeroIdentitySnapshot Hero, ProjectBindingContext Project, StartedQuestSnapshot Quest)> StartQuestAsync(

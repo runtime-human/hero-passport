@@ -14,8 +14,8 @@ public static class HeroPassportVersions
         "hero-progression/2.0.0",
         SkillProgressionRules.RuleVersion,
         SkillAllocationRules.RuleVersion,
-        "trust-strain/1.0.0",
-        "streak/1.0.0",
+        TrustStrainRules.RuleVersion,
+        StreakRules.RuleVersion,
         "unlock/2.0.0",
         "rank/1.0.0");
 }

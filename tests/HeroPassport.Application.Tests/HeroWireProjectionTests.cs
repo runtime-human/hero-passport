@@ -37,13 +37,16 @@ public sealed class HeroWireProjectionTests
             Assert.Equal(85, committed.HeroProgress.LevelXp);
             Assert.Equal(100, committed.HeroProgress.NextLevelXpRequired);
             Assert.Equal(50, committed.TrustStrain.TrustBefore);
-            Assert.Equal(50, committed.TrustStrain.TrustAfter);
+            Assert.Equal(52, committed.TrustStrain.TrustAfter);
             Assert.Equal(20, committed.TrustStrain.StrainBefore);
-            Assert.Equal(20, committed.TrustStrain.StrainAfter);
-            Assert.Empty(committed.TrustStrain.Components);
+            Assert.Equal(18, committed.TrustStrain.StrainAfter);
+            Assert.Collection(
+                committed.TrustStrain.Components,
+                component => Assert.Equal(new TrustStrainComponentSnapshot("success_outcome", 1, -1), component),
+                component => Assert.Equal(new TrustStrainComponentSnapshot("clean_success_bonus", 1, -1), component));
             Assert.Equal("trust-strain/1.0.0", committed.TrustStrain.RuleVersion);
             Assert.Equal(0, committed.Streak.Before);
-            Assert.Equal(0, committed.Streak.After);
+            Assert.Equal(1, committed.Streak.After);
             Assert.Equal("streak/1.0.0", committed.Streak.RuleVersion);
             var skill = Assert.Single(committed.SkillProgress);
             Assert.Equal("coding", skill.SkillKey);
@@ -68,7 +71,12 @@ public sealed class HeroWireProjectionTests
 
             var replay = await app.FinishQuestAsync(request, project, token);
             Assert.True(replay.Replayed);
-            Assert.Equal(committed.TrustStrain, replay.TrustStrain);
+            Assert.Equal(committed.TrustStrain.TrustBefore, replay.TrustStrain.TrustBefore);
+            Assert.Equal(committed.TrustStrain.TrustAfter, replay.TrustStrain.TrustAfter);
+            Assert.Equal(committed.TrustStrain.StrainBefore, replay.TrustStrain.StrainBefore);
+            Assert.Equal(committed.TrustStrain.StrainAfter, replay.TrustStrain.StrainAfter);
+            Assert.Equal(committed.TrustStrain.RuleVersion, replay.TrustStrain.RuleVersion);
+            Assert.True(committed.TrustStrain.Components.SequenceEqual(replay.TrustStrain.Components));
             Assert.Equal(committed.Streak, replay.Streak);
             Assert.Equal(committed.HeroProgress, replay.HeroProgress);
             Assert.True(committed.SkillProgress.SequenceEqual(replay.SkillProgress));

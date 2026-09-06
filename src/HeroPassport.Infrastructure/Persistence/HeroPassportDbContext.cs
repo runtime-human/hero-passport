@@ -7,5 +7,6 @@ public sealed class HeroPassportDbContext(DbContextOptions<HeroPassportDbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         HeroPassportStorageModel.Configure(modelBuilder);
+        TrustStrainStorageModel.Configure(modelBuilder);
     }
 }
