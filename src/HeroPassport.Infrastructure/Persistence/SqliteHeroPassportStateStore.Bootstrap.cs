@@ -64,7 +64,9 @@ public sealed partial class SqliteHeroPassportStateStore
             timestamp,
             cancellationToken).ConfigureAwait(false);
 
+        ObserveCommitBoundary("bootstrap", PersistenceCommitPhase.BeforeCommit);
         transaction.Commit();
+        ObserveCommitBoundary("bootstrap", PersistenceCommitPhase.AfterCommit);
         return new BootstrapResult(
             new HeroIdentitySnapshot(heroId, command.HeroName),
             new SettingsSnapshot(command.Locale, command.PresentationStyle, command.AutoStartQuest, command.AutoFinishQuest),
