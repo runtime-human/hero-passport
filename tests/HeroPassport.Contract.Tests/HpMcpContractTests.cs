@@ -195,6 +195,10 @@ public sealed class HpMcpContractTests
             type.ValueKind == JsonValueKind.String &&
             string.Equals(type.GetString(), "object", StringComparison.Ordinal))
         {
+            Assert.True(schema.TryGetProperty("properties", out var objectProperties));
+            Assert.Equal(JsonValueKind.Object, objectProperties.ValueKind);
+            Assert.True(schema.TryGetProperty("required", out var required));
+            Assert.Equal(JsonValueKind.Array, required.ValueKind);
             Assert.True(schema.TryGetProperty("additionalProperties", out var additionalProperties));
             Assert.False(additionalProperties.GetBoolean());
         }
