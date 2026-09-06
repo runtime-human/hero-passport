@@ -1,6 +1,6 @@
 # Hero Passport — References
 
-**Verification snapshot:** 2026-08-11
+**Verification snapshot:** 2026-09-06
 
 Use current primary/official sources for implementation claims. Repository prior art informs design but never overrides official documentation for the actual stack.
 
@@ -17,7 +17,7 @@ Use current primary/official sources for implementation claims. Repository prior
 - Microsoft.Data.Sqlite package: https://www.nuget.org/packages/Microsoft.Data.Sqlite
 - System.CommandLine package: https://www.nuget.org/packages/System.CommandLine
 
-Verified stable baseline:
+Verified implementation baseline:
 
 ```text
 .NET SDK 10.0.302 / .NET 10 LTS
@@ -39,19 +39,22 @@ Important verified implications:
 - SEP-2567 / sessionless explicit state handles: https://modelcontextprotocol.io/seps/2567-sessionless-mcp
 - C# SDK repository: https://github.com/modelcontextprotocol/csharp-sdk
 - C# SDK releases: https://github.com/modelcontextprotocol/csharp-sdk/releases
+- C# SDK package: https://www.nuget.org/packages/ModelContextProtocol
 - Previous 2025-11-25 Tools contract: https://modelcontextprotocol.io/specification/2025-11-25/server/tools
 
 Verified current C# SDK baseline:
 
 ```text
-ModelContextProtocol 2.1.0
-released 2026-08-05
+ModelContextProtocol 2.2.0
+released 2026-08-13
 ```
 
 Important verified implications:
 
 - MCP 2026-07-28 removes protocol session/handshake dependence and recommends explicit ordinary application handles for state across calls;
 - tools returning `structuredContent` SHOULD also return serialized JSON in TextContent for backwards compatibility;
+- Hero Passport qualifies both `2026-07-28` and `2025-11-25` against the real stdio subprocess using the official C# SDK path;
+- the SDK's server primitive collection is dictionary-backed, so HP-MCP/2 applies a narrow official `ListTools` request filter to restore the contract's deterministic tool order without replacing SDK dispatch;
 - MRTR/input-required supports server requests for missing input/user confirmation, but Hero Passport deliberately avoids requiring that cross-host capability for permanent delete in 0.1 by keeping delete CLI-only.
 
 ## SQLite

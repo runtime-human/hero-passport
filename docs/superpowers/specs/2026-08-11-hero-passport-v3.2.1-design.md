@@ -2,6 +2,7 @@
 
 **Status:** Accepted pre-implementation correction baseline  
 **Snapshot:** 2026-08-11  
+**Dependency qualification refresh:** 2026-09-06  
 **Target:** 0.1.0 local-first MVP  
 **Supersedes:** conflicting v3.2 bootstrap, active-Hero mutation context, recovery, Finish replay, destructive MCP, SQLite connection-policy, schema-invariant, sync-readiness and implementation-order clauses.
 
@@ -332,20 +333,18 @@ The strong deny-list remains, but bounded title, goal and summary can contain co
 
 ## 22. Official dependency baseline
 
-Keep:
+Keep the qualified implementation baseline:
 
 ```text
 .NET SDK 10.0.302 / net10.0 / C# 14
-ModelContextProtocol 2.1.0
+ModelContextProtocol 2.2.0
 EF Core SQLite / Microsoft.Data.Sqlite 10.0.10
 SQLitePCLRaw.bundle_e_sqlite3 3.0.5
 System.CommandLine 2.0.10
 xunit.v3 3.2.2
 ```
 
-`ModelContextProtocol 2.1.0` is an official C# SDK release published 2026-08-05. Task 1 nevertheless performs a real package restore gate.
-
-Preferred MCP semantics remain `2026-07-28`, with `2025-11-25` compatibility qualification.
+`ModelContextProtocol 2.2.0` is an official stable C# SDK release published 2026-08-13 and was revalidated for the Task 7 adapter on 2026-09-06. Preferred MCP semantics remain `2026-07-28`, with `2025-11-25` compatibility qualification. Dependency refresh does not change the HP-MCP/2 application contract epoch.
 
 ## 23. RPG scope retained
 

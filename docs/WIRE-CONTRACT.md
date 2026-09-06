@@ -1,9 +1,10 @@
 # Hero Passport — HP-MCP/2 v3.2.1 Wire Contract
 
 **Status:** Accepted normative deep dive  
-**Snapshot:** 2026-08-11  
+**Contract snapshot:** 2026-08-11  
 **Contract epoch:** `HP-MCP/2`  
-**SDK baseline:** official C# `ModelContextProtocol 2.1.0`  
+**SDK implementation baseline:** official C# `ModelContextProtocol 2.2.0`  
+**SDK qualification refresh:** 2026-09-06  
 **Preferred MCP semantics:** `2026-07-28`; release qualification also covers `2025-11-25`
 
 This file is the field/schema/result source of truth for the model-facing contract.
@@ -508,12 +509,12 @@ skillProgress[] {
 }
 traitsUnlocked[]
 titlesUnlocked[]
-activeTitle
+activeTitle?
 milestones[] { eventKey, semanticKey }
 displayText
 ```
 
-Flavor prose/key selection is presentation, not authoritative engine output.
+`activeTitle` is omitted when no Title is active. Flavor prose/key selection is presentation, not authoritative engine output.
 
 # 21. `hero.get_card`
 
@@ -531,7 +532,7 @@ Success:
 hero {
   heroId, name,
   totalXp, level, isLevelCapped, levelXp, nextLevelXpRequired?,
-  rankKey, activeTitle,
+  rankKey, activeTitle?,
   trust, strain, successStreak,
   topSkills[] { skillKey, xp, level, isLevelCapped, nextLevelXpRequired? },
   traits[], titles[]
@@ -546,7 +547,7 @@ project {
 displayText
 ```
 
-`nextLevelXpRequired` is omitted when the corresponding Hero/Skill level is capped.
+`nextLevelXpRequired` is omitted when the corresponding Hero/Skill level is capped. `activeTitle` is omitted when no Title is active.
 
 No project internal ID/fingerprint/path is exposed.
 
