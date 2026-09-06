@@ -46,7 +46,7 @@ public static class HpMcpToolCatalog
         Annotations = new ToolAnnotations
         {
             ReadOnlyHint = readOnly,
-            DestructiveHint = false,
+            DestructiveHint = name is "hero.configure" or "hero.activate" or "hero.archive" or "hero.restore" or "hero.finish_quest",
             IdempotentHint = true,
             OpenWorldHint = false,
         },
