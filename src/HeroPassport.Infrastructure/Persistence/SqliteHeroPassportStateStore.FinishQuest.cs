@@ -68,15 +68,20 @@ public sealed partial class SqliteHeroPassportStateStore
         }
 
         var hero = await HeroProgressRowAsync(connection, transaction, quest.HeroId, cancellationToken).ConfigureAwait(false);
-        var baseXp = MinimalQuestFinishRules.BaseXp(quest.QuestType);
-        var outcomePermille = MinimalQuestFinishRules.OutcomePermille(command.Result);
-        var xpGained = MinimalQuestFinishRules.QuestXp(baseXp, outcomePermille);
+        var rules = HeroPassportVersions.CurrentRules;
+        var reward = CalculateReward(command, quest.QuestType, rules.Reward);
+        var allocations = SkillXpAllocator.Allocate(reward.XpGained, command.SkillsUsed, rules.SkillAllocation);
+        var baseXp = reward.BaseXp;
+        var bonusXp = reward.BonusXp;
+        var penaltyXp = reward.PenaltyXp;
+        var rawXp = reward.RawXp;
+        var outcomePermille = reward.OutcomePermille;
+        var xpGained = reward.XpGained;
         var totalXpAfter = JsonSafeInteger.Require(checked(hero.TotalXp + xpGained));
         var levelBefore = MinimalQuestFinishRules.HeroLevel(hero.TotalXp);
         var levelAfter = MinimalQuestFinishRules.HeroLevel(totalXpAfter);
         var rankBefore = MinimalQuestFinishRules.RankKey(levelBefore);
         var rankAfter = MinimalQuestFinishRules.RankKey(levelAfter);
-        var rules = HeroPassportVersions.CurrentRules;
         var timestamp = Timestamp(now);
         var reportId = QuestReportId.New();
 
@@ -100,7 +105,7 @@ public sealed partial class SqliteHeroPassportStateStore
                 $encoding,$hash,
                 $rewardVersion,$heroProgressionVersion,$skillProgressionVersion,$skillAllocationVersion,
                 $trustStrainVersion,$streakVersion,$unlockVersion,$rankVersion,
-                $baseXp,0,0,$baseXp,$outcomePermille,$xpGained,
+                $baseXp,$bonusXp,$penaltyXp,$rawXp,$outcomePermille,$xpGained,
                 $totalBefore,$totalAfter,$levelBefore,$levelAfter,
                 $rankBefore,$rankAfter,$trust,$trust,$strain,$strain,
                 $streak,$streak,NULL,NULL,$time);
@@ -128,6 +133,9 @@ public sealed partial class SqliteHeroPassportStateStore
             ("$unlockVersion", rules.Unlock),
             ("$rankVersion", rules.Rank),
             ("$baseXp", baseXp),
+            ("$bonusXp", bonusXp),
+            ("$penaltyXp", penaltyXp),
+            ("$rawXp", rawXp),
             ("$outcomePermille", outcomePermille),
             ("$xpGained", xpGained),
             ("$totalBefore", hero.TotalXp),
@@ -140,6 +148,22 @@ public sealed partial class SqliteHeroPassportStateStore
             ("$strain", hero.Strain),
             ("$streak", hero.SuccessStreak),
             ("$time", timestamp)).ConfigureAwait(false);
+
+        await InsertRewardComponentsAsync(
+            connection,
+            transaction,
+            reportId,
+            reward.Components,
+            cancellationToken).ConfigureAwait(false);
+
+        await ApplySkillAllocationsAsync(
+            connection,
+            transaction,
+            reportId,
+            quest.HeroId,
+            allocations,
+            timestamp,
+            cancellationToken).ConfigureAwait(false);
 
         await ExecuteAsync(
             connection,
@@ -209,9 +233,9 @@ public sealed partial class SqliteHeroPassportStateStore
             command.QuestId,
             command.Result,
             baseXp,
-            bonusXp: 0,
-            penaltyXp: 0,
-            rawXp: baseXp,
+            bonusXp,
+            penaltyXp,
+            rawXp,
             outcomePermille,
             xpGained,
             rules.Reward,
