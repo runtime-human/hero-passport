@@ -31,8 +31,9 @@ public sealed partial class SqliteHeroPassportStateStore
             var replayQuest = await QuestForFinishAsync(connection, transaction, command.QuestId, cancellationToken).ConfigureAwait(false);
             EnsureProject(replayQuest, projectId.Value);
             var replayReport = await ReportForQuestAsync(connection, transaction, command.QuestId, cancellationToken).ConfigureAwait(false);
+            var replayResult = await ResultFromReportAsync(connection, transaction, replayReport, replayed: true, alreadyFinalized: false, cancellationToken).ConfigureAwait(false);
             transaction.Commit();
-            return ResultFromReport(replayReport, replayed: true, alreadyFinalized: false);
+            return replayResult;
         }
 
         var quest = await QuestForFinishAsync(connection, transaction, command.QuestId, cancellationToken).ConfigureAwait(false);
@@ -57,8 +58,9 @@ public sealed partial class SqliteHeroPassportStateStore
                 projectId.Value,
                 Timestamp(now),
                 cancellationToken).ConfigureAwait(false);
+            var existingResult = await ResultFromReportAsync(connection, transaction, existingReport, replayed: false, alreadyFinalized: true, cancellationToken).ConfigureAwait(false);
             transaction.Commit();
-            return ResultFromReport(existingReport, replayed: false, alreadyFinalized: true);
+            return existingResult;
         }
 
         var settings = await SettingsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
@@ -68,15 +70,20 @@ public sealed partial class SqliteHeroPassportStateStore
         }
 
         var hero = await HeroProgressRowAsync(connection, transaction, quest.HeroId, cancellationToken).ConfigureAwait(false);
-        var baseXp = MinimalQuestFinishRules.BaseXp(quest.QuestType);
-        var outcomePermille = MinimalQuestFinishRules.OutcomePermille(command.Result);
-        var xpGained = MinimalQuestFinishRules.QuestXp(baseXp, outcomePermille);
+        var rules = HeroPassportVersions.CurrentRules;
+        var reward = CalculateReward(command, quest.QuestType);
+        var allocations = SkillAllocationRules.Allocate(reward.XpGained, command.SkillsUsed);
+        var baseXp = reward.BaseXp;
+        var bonusXp = reward.BonusXp;
+        var penaltyXp = reward.PenaltyXp;
+        var rawXp = reward.RawXp;
+        var outcomePermille = reward.OutcomePermille;
+        var xpGained = reward.XpGained;
         var totalXpAfter = JsonSafeInteger.Require(checked(hero.TotalXp + xpGained));
         var levelBefore = MinimalQuestFinishRules.HeroLevel(hero.TotalXp);
         var levelAfter = MinimalQuestFinishRules.HeroLevel(totalXpAfter);
         var rankBefore = MinimalQuestFinishRules.RankKey(levelBefore);
         var rankAfter = MinimalQuestFinishRules.RankKey(levelAfter);
-        var rules = HeroPassportVersions.CurrentRules;
         var timestamp = Timestamp(now);
         var reportId = QuestReportId.New();
 
@@ -100,7 +107,7 @@ public sealed partial class SqliteHeroPassportStateStore
                 $encoding,$hash,
                 $rewardVersion,$heroProgressionVersion,$skillProgressionVersion,$skillAllocationVersion,
                 $trustStrainVersion,$streakVersion,$unlockVersion,$rankVersion,
-                $baseXp,0,0,$baseXp,$outcomePermille,$xpGained,
+                $baseXp,$bonusXp,$penaltyXp,$rawXp,$outcomePermille,$xpGained,
                 $totalBefore,$totalAfter,$levelBefore,$levelAfter,
                 $rankBefore,$rankAfter,$trust,$trust,$strain,$strain,
                 $streak,$streak,NULL,NULL,$time);
@@ -128,6 +135,9 @@ public sealed partial class SqliteHeroPassportStateStore
             ("$unlockVersion", rules.Unlock),
             ("$rankVersion", rules.Rank),
             ("$baseXp", baseXp),
+            ("$bonusXp", bonusXp),
+            ("$penaltyXp", penaltyXp),
+            ("$rawXp", rawXp),
             ("$outcomePermille", outcomePermille),
             ("$xpGained", xpGained),
             ("$totalBefore", hero.TotalXp),
@@ -140,6 +150,10 @@ public sealed partial class SqliteHeroPassportStateStore
             ("$strain", hero.Strain),
             ("$streak", hero.SuccessStreak),
             ("$time", timestamp)).ConfigureAwait(false);
+
+        await InsertRewardComponentsAsync(connection, transaction, reportId, reward.Components, cancellationToken).ConfigureAwait(false);
+        var skillProgress = await ApplySkillAllocationsAsync(
+            connection, transaction, reportId, quest.HeroId, allocations, rules.SkillProgression, timestamp, cancellationToken).ConfigureAwait(false);
 
         await ExecuteAsync(
             connection,
@@ -209,11 +223,12 @@ public sealed partial class SqliteHeroPassportStateStore
             command.QuestId,
             command.Result,
             baseXp,
-            bonusXp: 0,
-            penaltyXp: 0,
-            rawXp: baseXp,
+            bonusXp,
+            penaltyXp,
+            rawXp,
             outcomePermille,
             xpGained,
+            RewardComponentSnapshots(reward),
             rules.Reward,
             quest.HeroId,
             hero.TotalXp,
@@ -234,7 +249,7 @@ public sealed partial class SqliteHeroPassportStateStore
             rules.Streak,
             activeTitle: null,
             replayed: false,
-            alreadyFinalized: false);
+            alreadyFinalized: false) with { SkillProgress = skillProgress };
     }
 
     private static async Task<ProjectId?> ExistingProjectIdAsync(
@@ -320,7 +335,8 @@ public sealed partial class SqliteHeroPassportStateStore
                    r.hero_progression_version,r.rank_rule_version,q.hero_id,
                    r.hero_total_xp_before,r.hero_total_xp_after,r.hero_level_before,r.hero_level_after,r.rank_before,r.rank_after,
                    r.trust_strain_rule_version,r.streak_rule_version,
-                   r.trust_before,r.trust_after,r.strain_before,r.strain_after,r.streak_before,r.streak_after,r.active_title_after
+                   r.trust_before,r.trust_after,r.strain_before,r.strain_after,r.streak_before,r.streak_after,r.active_title_after,
+                   r.id,r.skill_progression_version
             FROM quest_reports AS r
             INNER JOIN quest_sessions AS q ON q.id=r.quest_id
             WHERE r.quest_id=$quest;
@@ -361,7 +377,9 @@ public sealed partial class SqliteHeroPassportStateStore
             reader.GetInt32(24),
             reader.GetInt64(25),
             reader.GetInt64(26),
-            reader.IsDBNull(27) ? null : reader.GetString(27));
+            reader.IsDBNull(27) ? null : reader.GetString(27),
+            QuestReportId.Parse(reader.GetString(28)),
+            reader.GetString(29));
     }
 
     private static bool FinalizationMatches(FinishReportRow report, string encodingVersion, byte[] hash) =>
@@ -395,8 +413,17 @@ public sealed partial class SqliteHeroPassportStateStore
             ("$time", timestamp)).ConfigureAwait(false);
     }
 
-    private static FinishQuestResult ResultFromReport(FinishReportRow report, bool replayed, bool alreadyFinalized) =>
-        CreateResult(
+    private static async Task<FinishQuestResult> ResultFromReportAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        FinishReportRow report,
+        bool replayed,
+        bool alreadyFinalized,
+        CancellationToken cancellationToken)
+    {
+        var rewardComponents = await RewardComponentsForReportAsync(connection, transaction, report.ReportId, cancellationToken).ConfigureAwait(false);
+        var skillProgress = await SkillProgressForReportAsync(connection, transaction, report.ReportId, report.SkillProgressionVersion, cancellationToken).ConfigureAwait(false);
+        return CreateResult(
             report.QuestId,
             report.Result,
             report.BaseXp,
@@ -405,6 +432,7 @@ public sealed partial class SqliteHeroPassportStateStore
             report.RawXp,
             report.OutcomePermille,
             report.XpGained,
+            rewardComponents,
             report.RewardRuleVersion,
             report.HeroId,
             report.TotalXpBefore,
@@ -425,7 +453,8 @@ public sealed partial class SqliteHeroPassportStateStore
             report.StreakRuleVersion,
             report.ActiveTitleAfter,
             replayed,
-            alreadyFinalized);
+            alreadyFinalized) with { SkillProgress = skillProgress };
+    }
 
     private static FinishQuestResult CreateResult(
         QuestId questId,
@@ -436,6 +465,7 @@ public sealed partial class SqliteHeroPassportStateStore
         int rawXp,
         int outcomePermille,
         long xpGained,
+        IReadOnlyList<RewardComponentSnapshot> rewardComponents,
         string rewardRuleVersion,
         HeroId heroId,
         long totalXpBefore,
@@ -464,7 +494,7 @@ public sealed partial class SqliteHeroPassportStateStore
         return new FinishQuestResult(
             questId,
             result,
-            new QuestRewardSnapshot(baseXp, bonusXp, penaltyXp, rawXp, outcomePermille, xpGained, rewardRuleVersion),
+            new QuestRewardSnapshot(baseXp, bonusXp, penaltyXp, rawXp, outcomePermille, xpGained, rewardComponents, rewardRuleVersion),
             new HeroProgressSnapshot(
                 heroId,
                 totalXpBefore,
@@ -526,5 +556,7 @@ public sealed partial class SqliteHeroPassportStateStore
         int StrainAfter,
         long StreakBefore,
         long StreakAfter,
-        string? ActiveTitleAfter);
+        string? ActiveTitleAfter,
+        QuestReportId ReportId,
+        string SkillProgressionVersion);
 }

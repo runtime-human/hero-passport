@@ -1,3 +1,5 @@
+using HeroPassport.Domain.Engine;
+
 namespace HeroPassport.Application.Runtime;
 
 public static class HeroPassportVersions
@@ -8,10 +10,10 @@ public static class HeroPassportVersions
     public const string MutationArgsVersion = "mutation-args/1";
 
     public static RuleVersions CurrentRules { get; } = new(
-        "reward/2.0.0",
+        QuestRewardRules.RuleVersion,
         "hero-progression/2.0.0",
-        "skill-progression/2.0.0",
-        "skill-allocation/1.0.0",
+        SkillProgressionRules.RuleVersion,
+        SkillAllocationRules.RuleVersion,
         "trust-strain/1.0.0",
         "streak/1.0.0",
         "unlock/2.0.0",

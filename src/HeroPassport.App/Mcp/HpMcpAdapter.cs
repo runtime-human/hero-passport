@@ -275,7 +275,11 @@ public sealed class HpMcpAdapter(
                 result.Reward.OutcomePermille,
                 result.Reward.XpGained,
                 result.Reward.RewardRuleVersion,
-                components = Array.Empty<object>(),
+                components = result.Reward.Components.Select(static component => new
+                {
+                    component.Key,
+                    component.XpDelta,
+                }).ToArray(),
             },
             heroProgress = new
             {

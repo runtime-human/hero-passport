@@ -138,7 +138,13 @@ public sealed class HpMcpStdioIntegrationTests
                 },
                 cancellationToken: token);
             var finishJson = Structured(finish);
-            Assert.Equal(60, finishJson.GetProperty("reward").GetProperty("xpGained").GetInt64());
+            var reward = finishJson.GetProperty("reward");
+            Assert.Equal(85, reward.GetProperty("xpGained").GetInt64());
+            Assert.Collection(
+                reward.GetProperty("components").EnumerateArray().ToArray(),
+                component => AssertRewardComponent(component, "clean_scope_bonus", 10),
+                component => AssertRewardComponent(component, "clear_summary_bonus", 10),
+                component => AssertRewardComponent(component, "no_user_corrections_bonus", 5));
             Assert.False(finishJson.TryGetProperty("activeTitle", out _));
             AssertStructuredTextEquality(finish);
 
@@ -147,8 +153,8 @@ public sealed class HpMcpStdioIntegrationTests
                 new Dictionary<string, object?> { ["heroId"] = heroId },
                 cancellationToken: token);
             var cardHero = Structured(card).GetProperty("hero");
-            Assert.Equal(60, cardHero.GetProperty("totalXp").GetInt64());
-            Assert.Equal(60, cardHero.GetProperty("levelXp").GetInt64());
+            Assert.Equal(85, cardHero.GetProperty("totalXp").GetInt64());
+            Assert.Equal(85, cardHero.GetProperty("levelXp").GetInt64());
             Assert.Equal(100, cardHero.GetProperty("nextLevelXpRequired").GetInt64());
             Assert.False(cardHero.TryGetProperty("activeTitle", out _));
             AssertStructuredTextEquality(card);
@@ -163,6 +169,12 @@ public sealed class HpMcpStdioIntegrationTests
             {
             }
         }
+    }
+
+    private static void AssertRewardComponent(JsonElement component, string key, long xpDelta)
+    {
+        Assert.Equal(key, component.GetProperty("key").GetString());
+        Assert.Equal(xpDelta, component.GetProperty("xpDelta").GetInt64());
     }
 
     private static JsonElement Structured(CallToolResult result)

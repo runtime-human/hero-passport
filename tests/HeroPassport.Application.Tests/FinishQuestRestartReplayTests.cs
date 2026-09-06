@@ -43,7 +43,17 @@ public sealed class FinishQuestRestartReplayTests
             Assert.False(committed.Replayed);
             Assert.True(replay.Replayed);
             Assert.False(replay.AlreadyFinalized);
-            Assert.Equal(committed, replay with { Replayed = false });
+            Assert.Equal(committed.QuestId, replay.QuestId);
+            Assert.Equal(committed.Result, replay.Result);
+            Assert.Equal(committed.Reward, replay.Reward);
+            Assert.Equal(committed.HeroProgress, replay.HeroProgress);
+            Assert.Equal(committed.TrustStrain, replay.TrustStrain);
+            Assert.Equal(committed.Streak, replay.Streak);
+            Assert.True(committed.SkillProgress.SequenceEqual(replay.SkillProgress));
+            Assert.True(committed.TraitsUnlocked.SequenceEqual(replay.TraitsUnlocked));
+            Assert.True(committed.TitlesUnlocked.SequenceEqual(replay.TitlesUnlocked));
+            Assert.Equal(committed.ActiveTitle, replay.ActiveTitle);
+            Assert.True(committed.Milestones.SequenceEqual(replay.Milestones));
         }
         finally
         {
