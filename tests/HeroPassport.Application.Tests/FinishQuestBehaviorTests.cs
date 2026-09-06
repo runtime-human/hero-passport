@@ -104,7 +104,7 @@ public sealed class FinishQuestBehaviorTests
                     token));
             Assert.Equal("HP136", conflict.Code);
             Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_reports;", token));
-            Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_trust_strain_components;", token));
+            Assert.Equal(committed.TrustStrain.Components.Count, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_trust_strain_components;", token));
             Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM xp_events;", token));
         }
         finally
