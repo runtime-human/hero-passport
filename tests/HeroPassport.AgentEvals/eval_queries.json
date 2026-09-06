@@ -1,0 +1,23 @@
+[
+  {"id":"implement-feature","query":"In this repo, implement the onboarding cache we discussed, update the tests, and keep the change scoped to the current feature.","should_trigger":true},
+  {"id":"debug-flaky-test","query":"The SQLite concurrency test in this project flakes under CI. Investigate the root cause, fix it, and verify the affected suite.","should_trigger":true},
+  {"id":"review-project-pr","query":"Review the current PR for this project, focus on retry/idempotency correctness, and make the necessary fixes you can prove.","should_trigger":true},
+  {"id":"continue-project-work","query":"Continue the implementation from the current repo state and finish the next planned vertical slice.","should_trigger":true},
+  {"id":"project-architecture-decision","query":"Research the current official SDK options for our repo, decide which approach fits the existing architecture, and record the implementation change.","should_trigger":true},
+  {"id":"refactor-with-tests","query":"Refactor the parser in this codebase so linked worktrees share identity, then add regression tests for the edge cases.","should_trigger":true},
+  {"id":"fix-build","query":"Our branch no longer builds after the dependency update. Diagnose it, apply the smallest correct fix, and run the impacted checks.","should_trigger":true},
+  {"id":"project-doc-change","query":"Update the project documentation and integration guide so they match the behavior we just implemented, including the recovery rules.","should_trigger":true},
+  {"id":"maintenance-task","query":"Clean up the obsolete compatibility path in this repository, preserve the public contract, and verify nothing regresses.","should_trigger":true},
+  {"id":"project-test-work","query":"Add regression coverage for the finalized-quest conflict bug in this project and fix the implementation if the new test exposes it.","should_trigger":true},
+
+  {"id":"short-factual","query":"What is UUIDv7 and how is it different from UUIDv4?","should_trigger":false},
+  {"id":"explain-code","query":"Can you briefly explain what this C# LINQ expression does?","should_trigger":false},
+  {"id":"generic-tool-choice","query":"In general, what are the pros and cons of xUnit versus NUnit?","should_trigger":false},
+  {"id":"translate-commit","query":"Translate this commit message to English: исправить повторную активацию героя","should_trigger":false},
+  {"id":"clarification-only","query":"Before you start, which branch are we talking about?","should_trigger":false},
+  {"id":"summarize-text","query":"Summarize the paragraph I pasted above in two sentences.","should_trigger":false},
+  {"id":"git-factual","query":"What does git rebase --onto do? Give me a short explanation only.","should_trigger":false},
+  {"id":"hero-passport-factual","query":"What is Hero Passport supposed to do at a high level? Don't change anything.","should_trigger":false},
+  {"id":"error-explanation-only","query":"What does SQLite error 'database is locked' usually mean? I only need an explanation.","should_trigger":false},
+  {"id":"casual-chat","query":"Nice, that worked. Thanks!","should_trigger":false}
+]
