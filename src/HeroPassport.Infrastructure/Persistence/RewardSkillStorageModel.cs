@@ -80,7 +80,7 @@ internal static class RewardSkillStorageModel
         {
             entity.Property<string>("quest_report_id").HasColumnType("TEXT");
             entity.Property<int>("ordinal").HasColumnType("INTEGER");
-            entity.Property<string>("skill_key").HasColumnType("TEXT");
+            entity.Property<string>("skill_key").HasColumnType("TEXT").IsRequired();
             entity.Property<long>("xp_gained").HasColumnType("INTEGER");
             entity.Property<long>("xp_before").HasColumnType("INTEGER");
             entity.Property<long>("xp_after").HasColumnType("INTEGER");
