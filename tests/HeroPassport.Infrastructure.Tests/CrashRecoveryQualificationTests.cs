@@ -23,6 +23,8 @@ public sealed class CrashRecoveryQualificationTests
         try
         {
             await HeroPassportDatabase.InitializeAsync(databasePath, token);
+            SqliteConnection.ClearAllPools();
+
             var request = new BootstrapRequest(MutationRequestId.New(), "en-US", "Crash Nova", "rpg_engineering", true, true);
             var harnessDll = CrashHarnessDll();
             Assert.True(File.Exists(harnessDll), $"Crash harness was not built at {harnessDll}.");
