@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/HeroPassport.Application/HeroPassport.Application.csproj" />
+    <ProjectReference Include="../../src/HeroPassport.Domain/HeroPassport.Domain.csproj" />
+    <ProjectReference Include="../../src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
