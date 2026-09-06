@@ -165,6 +165,7 @@ public sealed partial class SqliteHeroPassportStateStore
             ("$time", timestamp)).ConfigureAwait(false);
 
         await InsertRewardComponentsAsync(connection, transaction, reportId, reward.Components, cancellationToken).ConfigureAwait(false);
+        await InsertTrustStrainComponentsAsync(connection, transaction, reportId, trustStrain.Components, cancellationToken).ConfigureAwait(false);
         var skillProgress = await ApplySkillAllocationsAsync(
             connection, transaction, reportId, quest.HeroId, allocations, rules.SkillProgression, timestamp, cancellationToken).ConfigureAwait(false);
 
@@ -268,15 +269,7 @@ public sealed partial class SqliteHeroPassportStateStore
             alreadyFinalized: false) with
         {
             SkillProgress = skillProgress,
-            TrustStrain = new TrustStrainSnapshot(
-                trustStrain.TrustBefore,
-                trustStrain.TrustAfter,
-                trustStrain.StrainBefore,
-                trustStrain.StrainAfter,
-                trustStrain.Components
-                    .Select(static component => new TrustStrainComponentSnapshot(component.Key, component.TrustDelta, component.StrainDelta))
-                    .ToArray(),
-                trustStrain.RuleVersion),
+            TrustStrain = TrustStrainSnapshot(trustStrain),
             Streak = new StreakSnapshot(streak.Before, streak.After, streak.RuleVersion),
         };
     }
@@ -451,6 +444,7 @@ public sealed partial class SqliteHeroPassportStateStore
         CancellationToken cancellationToken)
     {
         var rewardComponents = await RewardComponentsForReportAsync(connection, transaction, report.ReportId, cancellationToken).ConfigureAwait(false);
+        var trustStrainComponents = await TrustStrainComponentsForReportAsync(connection, transaction, report.ReportId, cancellationToken).ConfigureAwait(false);
         var skillProgress = await SkillProgressForReportAsync(connection, transaction, report.ReportId, report.SkillProgressionVersion, cancellationToken).ConfigureAwait(false);
         return CreateResult(
             report.QuestId,
@@ -482,7 +476,17 @@ public sealed partial class SqliteHeroPassportStateStore
             report.StreakRuleVersion,
             report.ActiveTitleAfter,
             replayed,
-            alreadyFinalized) with { SkillProgress = skillProgress };
+            alreadyFinalized) with
+        {
+            SkillProgress = skillProgress,
+            TrustStrain = new TrustStrainSnapshot(
+                report.TrustBefore,
+                report.TrustAfter,
+                report.StrainBefore,
+                report.StrainAfter,
+                trustStrainComponents,
+                report.TrustStrainRuleVersion),
+        };
     }
 
     private static FinishQuestResult CreateResult(
