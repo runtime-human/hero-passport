@@ -141,7 +141,7 @@ public sealed class TrustStrainStreakPersistenceTests
             token);
     }
 
-    private static async Task<QuestSnapshot> StartAsync(
+    private static async Task<StartedQuestSnapshot> StartAsync(
         HeroPassportApplication app,
         HeroId heroId,
         ProjectBindingContext project,
