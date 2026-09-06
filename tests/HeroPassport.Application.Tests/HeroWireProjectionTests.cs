@@ -34,7 +34,7 @@ public sealed class HeroWireProjectionTests
 
             var committed = await app.FinishQuestAsync(request, project, token);
             Assert.False(committed.HeroProgress.IsLevelCapped);
-            Assert.Equal(60, committed.HeroProgress.LevelXp);
+            Assert.Equal(85, committed.HeroProgress.LevelXp);
             Assert.Equal(100, committed.HeroProgress.NextLevelXpRequired);
             Assert.Equal(50, committed.TrustStrain.TrustBefore);
             Assert.Equal(50, committed.TrustStrain.TrustAfter);
@@ -67,7 +67,7 @@ public sealed class HeroWireProjectionTests
 
             var card = await app.GetCardAsync(hero.HeroId, project, token);
             Assert.False(card.Hero.IsLevelCapped);
-            Assert.Equal(60, card.Hero.LevelXp);
+            Assert.Equal(85, card.Hero.LevelXp);
             Assert.Equal(100, card.Hero.NextLevelXpRequired);
             Assert.Null(card.Hero.ActiveTitle);
             Assert.Equal(80, card.Hero.Trust);
