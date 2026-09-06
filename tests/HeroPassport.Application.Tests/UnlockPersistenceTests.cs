@@ -19,7 +19,7 @@ public sealed class UnlockPersistenceTests
             var hero = (await app.BootstrapAsync(
                 new BootstrapRequest(MutationRequestId.New(), "en-US", "Nova", "rpg_engineering", true, true),
                 token)).Hero;
-            var project = new ProjectBindingContext("Unlock Project", new string('u', 64), "project-identity/1");
+            var project = new ProjectBindingContext("Unlock Project", new string('f', 64), "project-identity/1");
 
             FinishQuestResult? fourth = null;
             FinishQuestResult? fifth = null;
