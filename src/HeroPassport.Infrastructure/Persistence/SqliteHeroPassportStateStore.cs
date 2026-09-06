@@ -6,9 +6,24 @@ using System.Security.Cryptography;
 
 namespace HeroPassport.Infrastructure.Persistence;
 
-public sealed partial class SqliteHeroPassportStateStore(string databasePath) : IHeroPassportStateStore
+public sealed partial class SqliteHeroPassportStateStore : IHeroPassportStateStore
 {
-    private readonly string _databasePath = Path.GetFullPath(databasePath);
+    private readonly string _databasePath;
+    private readonly IPersistenceCommitObserver? _commitObserver;
+
+    public SqliteHeroPassportStateStore(string databasePath)
+        : this(databasePath, commitObserver: null)
+    {
+    }
+
+    internal SqliteHeroPassportStateStore(string databasePath, IPersistenceCommitObserver? commitObserver)
+    {
+        _databasePath = Path.GetFullPath(databasePath);
+        _commitObserver = commitObserver;
+    }
+
+    private void ObserveCommitBoundary(string operation, PersistenceCommitPhase phase) =>
+        _commitObserver?.OnCommitBoundary(operation, phase);
 
     private static SqliteCommand Command(
         SqliteConnection connection,
