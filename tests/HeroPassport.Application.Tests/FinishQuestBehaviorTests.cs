@@ -137,6 +137,51 @@ public sealed class FinishQuestBehaviorTests
     }
 
     [Fact]
+    public async Task ConcurrentEquivalentFinalizationsConvergeWithoutDuplicateProgression()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var path = TestRuntime.CreateDatabasePath();
+        try
+        {
+            await HeroPassportDatabase.InitializeAsync(path, token);
+            var setup = TestRuntime.CreateApplication(path);
+            var (_, project, quest) = await StartQuestAsync(setup, '2', token);
+            var first = TestRuntime.CreateApplication(path);
+            var second = TestRuntime.CreateApplication(path);
+            var firstRequest = FinishRequest(
+                quest.QuestId,
+                "success",
+                "Equivalent concurrent finalization payload with deterministic reward and Skill progression.");
+            var secondRequest = firstRequest with { FinishRequestId = MutationRequestId.New() };
+
+            var results = await Task.WhenAll(
+                CaptureAsync(() => first.FinishQuestAsync(firstRequest, project, token)),
+                CaptureAsync(() => second.FinishQuestAsync(secondRequest, project, token)));
+
+            Assert.All(results, static result => Assert.Null(result.Error));
+            var fresh = Assert.Single(results, static result => result.Result is { AlreadyFinalized: false }).Result!;
+            var converged = Assert.Single(results, static result => result.Result is { AlreadyFinalized: true }).Result!;
+            Assert.False(fresh.Replayed);
+            Assert.False(converged.Replayed);
+            Assert.Equal(fresh.Reward, converged.Reward);
+            Assert.Equal(fresh.HeroProgress, converged.HeroProgress);
+            Assert.True(fresh.SkillProgress.SequenceEqual(converged.SkillProgress));
+            Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_reports;", token));
+            Assert.Equal(4, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_reward_components;", token));
+            Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM quest_report_skills;", token));
+            Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM hero_skills;", token));
+            Assert.Equal(1, await ScalarLongAsync(path, "SELECT COUNT(*) FROM xp_events;", token));
+            Assert.Equal(2, await ScalarLongAsync(path, "SELECT COUNT(*) FROM mutation_receipts WHERE operation_key='finish_quest';", token));
+            Assert.Equal(95, await ScalarLongAsync(path, "SELECT total_xp FROM heroes;", token));
+            Assert.Equal(95, await ScalarLongAsync(path, "SELECT xp FROM hero_skills WHERE skill_key='coding';", token));
+        }
+        finally
+        {
+            TestRuntime.DeleteDatabase(path);
+        }
+    }
+
+    [Fact]
     public async Task ProjectMismatchAndActiveHeroChangesCannotRedirectProgression()
     {
         var token = TestContext.Current.CancellationToken;
