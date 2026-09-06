@@ -1,5 +1,6 @@
 using HeroPassport.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 using Xunit;
 
@@ -15,7 +16,8 @@ public sealed class SqlitePersistenceTests
         try
         {
             await HeroPassportDatabase.InitializeAsync(path, cancellationToken);
-
+            await using var context = new HeroPassportDbContextFactory(path).CreateDbContext();
+            var declaredMigrationCount = context.Database.GetMigrations().LongCount();
             await using var connection = await HeroPassportDatabase.OpenConnectionAsync(path, cancellationToken);
 
             Assert.Equal("wal", await ScalarStringAsync(connection, "PRAGMA journal_mode;", cancellationToken));
@@ -24,7 +26,7 @@ public sealed class SqlitePersistenceTests
             Assert.Equal(0L, await ScalarLongAsync(connection, "PRAGMA trusted_schema;", cancellationToken));
             Assert.True(ParseSqliteVersion(await ScalarStringAsync(connection, "SELECT sqlite_version();", cancellationToken)) >= new Version(3, 53, 4));
             Assert.Equal(1L, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM app_settings WHERE id = 1;", cancellationToken));
-            Assert.Equal(4L, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory;", cancellationToken));
+            Assert.Equal(declaredMigrationCount, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory;", cancellationToken));
         }
         finally
         {
@@ -169,6 +171,7 @@ public sealed class SqlitePersistenceTests
 
     private static void DeleteDatabase(string path)
     {
+        SqliteConnection.ClearAllPools();
         var directory = Path.GetDirectoryName(path);
         if (directory is not null && Directory.Exists(directory))
         {
