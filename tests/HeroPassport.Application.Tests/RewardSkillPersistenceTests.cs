@@ -47,6 +47,12 @@ public sealed class RewardSkillPersistenceTests
             Assert.Equal(95, first.Reward.XpGained);
             Assert.Equal("reward/2.0.0", first.Reward.RewardRuleVersion);
             Assert.Collection(
+                first.Reward.Components,
+                component => AssertRewardComponent(component, "observed_tests_passed_bonus", 10),
+                component => AssertRewardComponent(component, "clean_scope_bonus", 10),
+                component => AssertRewardComponent(component, "clear_summary_bonus", 10),
+                component => AssertRewardComponent(component, "no_user_corrections_bonus", 5));
+            Assert.Collection(
                 first.SkillProgress,
                 skill => AssertSkill(skill, "coding", 47, 47, 1, 1, 50),
                 skill => AssertSkill(skill, "testing_awareness", 29, 29, 1, 1, 50),
@@ -200,6 +206,15 @@ public sealed class RewardSkillPersistenceTests
                 TestsStatus: "passed",
                 TestsEvidence: "observed"),
             skills);
+
+    private static void AssertRewardComponent(
+        RewardComponentSnapshot component,
+        string key,
+        long xpDelta)
+    {
+        Assert.Equal(key, component.Key);
+        Assert.Equal(xpDelta, component.XpDelta);
+    }
 
     private static void AssertSkill(
         SkillProgressSnapshot skill,
