@@ -10,4 +10,5 @@
   <Project Path="tests/HeroPassport.Architecture.Tests/HeroPassport.Architecture.Tests.csproj" />
   <Project Path="tests/HeroPassport.Contract.Tests/HeroPassport.Contract.Tests.csproj" />
   <Project Path="tests/HeroPassport.AgentEvals/HeroPassport.AgentEvals.csproj" />
+  <Project Path="tests/HeroPassport.CrashHarness/HeroPassport.CrashHarness.csproj" />
 </Solution>
