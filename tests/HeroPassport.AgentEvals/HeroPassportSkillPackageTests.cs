@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Xunit;
 
 namespace HeroPassport.AgentEvals;
@@ -63,6 +64,25 @@ public sealed class HeroPassportSkillPackageTests
         Assert.Contains("reported", text, StringComparison.Ordinal);
         Assert.Contains("source", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("raw logs", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TriggerEvalCorpusIsBalancedRealisticAndStable()
+    {
+        var path = Path.Combine(RepoRoot(), "tests", "HeroPassport.AgentEvals", "eval_queries.json");
+        Assert.True(File.Exists(path));
+
+        using var document = JsonDocument.Parse(File.ReadAllText(path));
+        var queries = document.RootElement.EnumerateArray().ToArray();
+        Assert.Equal(20, queries.Length);
+
+        var ids = queries.Select(static item => item.GetProperty("id").GetString()).ToArray();
+        Assert.DoesNotContain(ids, static id => string.IsNullOrWhiteSpace(id));
+        Assert.Equal(ids.Length, ids.Distinct(StringComparer.Ordinal).Count());
+
+        Assert.Equal(10, queries.Count(static item => item.GetProperty("should_trigger").GetBoolean()));
+        Assert.Equal(10, queries.Count(static item => !item.GetProperty("should_trigger").GetBoolean()));
+        Assert.All(queries, static item => Assert.True(item.GetProperty("query").GetString()!.Length >= 20));
     }
 
     private static string SkillRoot() => Path.Combine(RepoRoot(), "skills", "hero-passport");
