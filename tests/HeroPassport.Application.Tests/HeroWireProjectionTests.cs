@@ -52,7 +52,7 @@ public sealed class HeroWireProjectionTests
             Assert.Equal(1, skill.LevelBefore);
             Assert.Equal(2, skill.LevelAfter);
             Assert.False(skill.IsLevelCapped);
-            Assert.Equal(125L, skill.NextLevelXpRequired);
+            Assert.Equal(75L, skill.NextLevelXpRequired);
             Assert.Empty(committed.TraitsUnlocked);
             Assert.Empty(committed.TitlesUnlocked);
             Assert.Null(committed.ActiveTitle);
