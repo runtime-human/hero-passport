@@ -201,7 +201,9 @@ public sealed partial class SqliteHeroPassportStateStore
             ("$time", timestamp),
             ("$quest", command.QuestId.ToString())).ConfigureAwait(false);
 
+        ObserveCommitBoundary("finish_quest", PersistenceCommitPhase.BeforeCommit);
         transaction.Commit();
+        ObserveCommitBoundary("finish_quest", PersistenceCommitPhase.AfterCommit);
 
         return CreateResult(
             command.QuestId,
