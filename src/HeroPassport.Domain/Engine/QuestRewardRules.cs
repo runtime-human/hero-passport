@@ -86,7 +86,7 @@ public static class QuestRewardRules
         _ => throw new ArgumentOutOfRangeException(nameof(result)),
     };
 
-    private static IReadOnlyList<QuestRewardComponent> Components(
+    private static List<QuestRewardComponent> Components(
         QuestQualityFlags quality,
         int scopeViolations,
         int userCorrections)
