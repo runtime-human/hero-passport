@@ -33,6 +33,19 @@ public sealed class RewardAndSkillAllocationTests
     }
 
     [Theory]
+    [InlineData("planning", 30)]
+    [InlineData("research", 40)]
+    [InlineData("coding", 60)]
+    [InlineData("review", 50)]
+    [InlineData("debugging", 70)]
+    [InlineData("documentation", 40)]
+    [InlineData("maintenance", 40)]
+    public void QuestTypeBaseXpMatchesCanonicalTable(string questType, int expectedBaseXp)
+    {
+        Assert.Equal(expectedBaseXp, QuestRewardRules.BaseXp(questType));
+    }
+
+    [Theory]
     [InlineData("success", 95)]
     [InlineData("partial", 57)]
     [InlineData("blocked", 28)]
@@ -100,14 +113,27 @@ public sealed class RewardAndSkillAllocationTests
     }
 
     [Fact]
+    public void SkillAllocationConservesJsonSafeMaximumWithoutOverflow()
+    {
+        const long max = 9_007_199_254_740_991L;
+
+        var allocations = SkillAllocationRules.Allocate(max, ["coding", "testing_awareness", "scope_control"]);
+
+        Assert.Equal(max, allocations.Sum(static item => item.XpGained));
+        Assert.All(allocations, static item => Assert.True(item.XpGained >= 0));
+    }
+
+    [Fact]
     public void DomainGuardsRejectUnsupportedRewardAndSkillInputs()
     {
         var flags = QuestQualityFlags.From(40, "passed", "observed", 0, 0);
 
         Assert.Throws<ArgumentOutOfRangeException>(() => QuestRewardRules.Evaluate("unknown", "success", flags, 0, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => QuestRewardRules.Evaluate("coding", "unknown", flags, 0, 0));
+        Assert.Throws<ArgumentException>(() => QuestRewardRules.Evaluate("coding", "success", flags, 1, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => QuestQualityFlags.From(-1, "not_run", "none", 0, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => QuestQualityFlags.From(1, "not_run", "none", 21, 0));
+        Assert.Throws<ArgumentException>(() => QuestQualityFlags.From(1, "passed", "none", 0, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => SkillAllocationRules.Allocate(-1, ["coding"]));
         Assert.Throws<ArgumentException>(() => SkillAllocationRules.Allocate(1, []));
         Assert.Throws<ArgumentException>(() => SkillAllocationRules.Allocate(1, ["coding", "coding"]));
