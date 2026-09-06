@@ -25,7 +25,7 @@ public sealed class HeroPassportSkillPackageTests
         Assert.Equal("---", lines[0]);
         Assert.Contains(lines, static line => string.Equals(line.Trim(), "name: hero-passport", StringComparison.Ordinal));
 
-        var description = Assert.Single(lines.Where(static line => line.StartsWith("description:", StringComparison.Ordinal)));
+        var description = Assert.Single(lines, static line => line.StartsWith("description:", StringComparison.Ordinal));
         var descriptionValue = description["description:".Length..].Trim();
         Assert.InRange(descriptionValue.Length, 1, 1024);
         Assert.Contains("project", descriptionValue, StringComparison.OrdinalIgnoreCase);
