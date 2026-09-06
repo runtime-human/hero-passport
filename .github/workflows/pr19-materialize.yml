@@ -37,6 +37,14 @@ jobs:
             --output-dir Persistence/GeneratedMigrations \
             --configuration Release \
             --no-build
+      - name: Rebuild generated migration
+        run: dotnet build HeroPassport.slnx --no-restore -c Release
+      - name: Verify EF model snapshot
+        run: |
+          dotnet ef migrations has-pending-model-changes \
+            --project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj \
+            --configuration Release \
+            --no-build
       - name: Verify Application contract
         run: dotnet test tests/HeroPassport.Application.Tests/HeroPassport.Application.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
       - name: Commit materialized implementation
