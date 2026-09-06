@@ -266,8 +266,8 @@ public static class UnlockRules
     }
 
     private static void AddTraitIf(
-        ICollection<string> destination,
-        IReadOnlySet<string> existing,
+        List<string> destination,
+        HashSet<string> existing,
         string key,
         bool condition)
     {
@@ -278,8 +278,8 @@ public static class UnlockRules
     }
 
     private static void AddTitleIf(
-        ICollection<string> destination,
-        IReadOnlySet<string> existing,
+        List<string> destination,
+        HashSet<string> existing,
         string key,
         bool condition)
     {
