@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace HeroPassport.AgentEvals;
@@ -23,13 +24,23 @@ public sealed class HeroPassportSkillPackageTests
         var lines = File.ReadAllLines(skillPath);
         Assert.InRange(lines.Length, 1, 500);
         Assert.Equal("---", lines[0]);
-        Assert.Contains(lines, static line => string.Equals(line.Trim(), "name: hero-passport", StringComparison.Ordinal));
+        var frontmatterEnd = Array.FindIndex(lines, 1, static line => string.Equals(line.Trim(), "---", StringComparison.Ordinal));
+        Assert.True(frontmatterEnd > 1, "SKILL.md must close its YAML frontmatter before Markdown instructions.");
 
-        var description = Assert.Single(lines, static line => line.StartsWith("description:", StringComparison.Ordinal));
+        var nameLine = Assert.Single(lines[..frontmatterEnd], static line => line.StartsWith("name:", StringComparison.Ordinal));
+        var name = nameLine["name:".Length..].Trim();
+        Assert.InRange(name.Length, 1, 64);
+        Assert.Matches(new Regex("^[a-z0-9]+(?:-[a-z0-9]+)*$", RegexOptions.CultureInvariant), name);
+        Assert.Equal(Path.GetFileName(skillRoot), name);
+
+        var description = Assert.Single(lines[..frontmatterEnd], static line => line.StartsWith("description:", StringComparison.Ordinal));
         var descriptionValue = description["description:".Length..].Trim();
         Assert.InRange(descriptionValue.Length, 1, 1024);
         Assert.Contains("project", descriptionValue, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("quest", descriptionValue, StringComparison.OrdinalIgnoreCase);
+
+        var compatibility = Assert.Single(lines[..frontmatterEnd], static line => line.StartsWith("compatibility:", StringComparison.Ordinal));
+        Assert.InRange(compatibility["compatibility:".Length..].Trim().Length, 1, 500);
 
         var text = File.ReadAllText(skillPath);
         Assert.Contains("hero-passport-skill/1", text, StringComparison.Ordinal);
