@@ -1,7 +1,7 @@
 # Hero Passport — Decision Log
 
 **Current baseline:** v3.2.1  
-**Snapshot:** 2026-08-11
+**Snapshot:** 2026-09-06
 
 Focused contracts are normative for exact schemas/rules. This log records intent and supersession.
 
@@ -236,6 +236,18 @@ Domain emits semantic milestone events only. Deterministic hash/mod flavor selec
 Before all RPG layers, prove SQLite/project identity/bootstrap/get_context/minimal Start+Finish/real MCP/minimal Skill/Codex E2E with restart/retry/race/crash.
 
 Only then implement full reward/progression/RPG cosmetics/localization/admin/broader qualification.
+
+## ADR-072 — Reward component keys are canonical history
+
+**Status:** Accepted v3.2.1 clarification.
+
+Persisted `quest_reward_components.component_key` values are immutable semantic history, not implementation-private names or localized presentation labels.
+
+`reward/2.0.0` uses the fixed catalog and ordering defined by `REWARD-COMPONENTS.md`: observed-tests, clean-scope, clear-summary and no-user-corrections bonuses followed by aggregated scope-violation and user-correction penalties. Inactive/zero-delta components are omitted and persisted ordinals are dense after filtering.
+
+Base XP and the outcome multiplier remain report fields rather than synthetic component rows. Penalty categories persist one capped aggregate row each rather than one row per violation/correction.
+
+Future reward versions may change the catalog only under a new `reward_rule_version`; existing completed Quest rows are never reinterpreted or relabeled in storage. Localization such as Russian “Бонус за контроль” remains presentation only.
 
 ## Historical/superseded terms
 
