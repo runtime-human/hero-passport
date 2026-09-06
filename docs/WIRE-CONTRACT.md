@@ -50,20 +50,20 @@ Permanent deletion is CLI-only. Recovery/settings hydration use `hero.get_contex
 
 ## 3. Annotation matrix
 
-Annotations are hints, never security controls.
+Annotations are hints, never security controls. Per MCP `ToolAnnotations`, `destructive=false` is reserved for read-only or additive updates; operations that replace, archive/restore, activate, or finalize existing state are marked `destructive=true` even when they are retry-safe or reversible.
 
 | Tool | readOnly | destructive | idempotent | openWorld |
 |---|---:|---:|---:|---:|
 |`hero.bootstrap`|false|false|true|false|
-|`hero.configure`|false|false|true|false|
+|`hero.configure`|false|true|true|false|
 |`hero.get_context`|true|false|true|false|
 |`hero.create`|false|false|true|false|
 |`hero.list`|true|false|true|false|
-|`hero.activate`|false|false|true|false|
-|`hero.archive`|false|false|true|false|
-|`hero.restore`|false|false|true|false|
+|`hero.activate`|false|true|true|false|
+|`hero.archive`|false|true|true|false|
+|`hero.restore`|false|true|true|false|
 |`hero.start_quest`|false|false|true|false|
-|`hero.finish_quest`|false|false|true|false|
+|`hero.finish_quest`|false|true|true|false|
 |`hero.get_card`|true|false|true|false|
 
 `bootstrap`, `create`, `start_quest` and `finish_quest` use caller-generated request identities. Same request identity with changed canonical scope/arguments is rejected.
