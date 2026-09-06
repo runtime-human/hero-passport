@@ -1,7 +1,7 @@
 # Hero Passport Documentation
 
 **Current architecture:** v3.2.1  
-**Snapshot:** 2026-08-13
+**Snapshot:** 2026-09-06
 
 ## Start here
 
@@ -21,9 +21,12 @@ When documents overlap, use this order for the relevant topic:
 4. `DATA-MODEL.md` — schema, CHECK/FK/index/projection invariants;
 5. `PROJECT-IDENTITY.md` — Git/filesystem project identity;
 6. `ENGINE-SPEC.md` — deterministic game rules;
-7. `AGENT-SKILL.md` — Skill trigger/lifecycle/recovery/presentation behavior;
-8. subsystem overview docs;
-9. roadmap/integration/reference material.
+7. `REWARD-COMPONENTS.md` — persisted reward component keys/order for versioned historical reports;
+8. `AGENT-SKILL.md` — Skill trigger/lifecycle/recovery/presentation behavior;
+9. subsystem overview docs;
+10. roadmap/integration/reference material.
+
+For `quest_reward_components.component_key` and its ordinal/delta semantics, `REWARD-COMPONENTS.md` is the focused contract and takes precedence over generic table descriptions.
 
 The v3.2 consolidated design and implementation plan are superseded by v3.2.1. Older v3/v3.1 material is historical only.
 
@@ -33,6 +36,7 @@ The v3.2 consolidated design and implementation plan are superseded by v3.2.1. O
 - [`ARCHITECTURE.md`](ARCHITECTURE.md)
 - [`WIRE-CONTRACT.md`](WIRE-CONTRACT.md)
 - [`ENGINE-SPEC.md`](ENGINE-SPEC.md)
+- [`REWARD-COMPONENTS.md`](REWARD-COMPONENTS.md)
 - [`AGENT-SKILL.md`](AGENT-SKILL.md)
 - [`DATA-MODEL.md`](DATA-MODEL.md)
 - [`PERSISTENCE-RELIABILITY.md`](PERSISTENCE-RELIABILITY.md)
