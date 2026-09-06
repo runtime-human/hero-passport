@@ -19,6 +19,8 @@ public sealed record FinishQuestRequest(
     FinishQuestMetrics Metrics,
     IReadOnlyList<string> SkillsUsed);
 
+public sealed record RewardComponentSnapshot(string Key, long XpDelta);
+
 public sealed record QuestRewardSnapshot(
     int BaseXp,
     int BonusXp,
@@ -26,6 +28,7 @@ public sealed record QuestRewardSnapshot(
     int RawXp,
     int OutcomePermille,
     long XpGained,
+    IReadOnlyList<RewardComponentSnapshot> Components,
     string RewardRuleVersion);
 
 public sealed record HeroProgressSnapshot(
