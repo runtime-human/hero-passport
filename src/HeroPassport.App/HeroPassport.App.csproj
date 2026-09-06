@@ -10,4 +10,9 @@
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="../../skills/hero-passport/**/*"
+             LinkBase="skills/hero-passport"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
