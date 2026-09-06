@@ -75,6 +75,7 @@ jobs:
           dotnet ef migrations add AddRewardSkillAllocation \
             --project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj \
             --output-dir Persistence/GeneratedMigrations \
+            --configuration Release \
             --no-build
       - name: Commit materialized Task 10 implementation
         shell: bash
