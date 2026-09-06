@@ -150,7 +150,7 @@ public sealed partial class SqliteHeroPassportStateStore : IHeroPassportStateSto
             throw new HeroPassportException("HP140", "Hero was not found.");
         }
 
-        return new HeroIdentitySnapshot(HeroId.Parse(heroId), reader.GetString(1));
+        return new HeroIdentitySnapshot(HeroId.Parse(reader.GetString(0)), reader.GetString(1));
     }
 
     private static string Timestamp(DateTimeOffset value) =>
