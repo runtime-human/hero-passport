@@ -20,10 +20,18 @@ jobs:
           dotnet-version: 10.0.302
       - name: SDK
         run: dotnet --info
+      - name: Restore tools
+        run: dotnet tool restore
       - name: Restore
         run: dotnet restore HeroPassport.slnx
       - name: Build
         run: dotnet build HeroPassport.slnx --no-restore -c Release
+      - name: EF model drift
+        run: |
+          dotnet ef migrations has-pending-model-changes \
+            --project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj \
+            --configuration Release \
+            --no-build
       - name: Architecture tests
         run: dotnet test tests/HeroPassport.Architecture.Tests/HeroPassport.Architecture.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
       - name: Domain tests
