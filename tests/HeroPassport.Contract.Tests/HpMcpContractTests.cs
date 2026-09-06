@@ -55,6 +55,16 @@ public sealed class HpMcpContractTests
     }
 
     [Fact]
+    public void EveryObjectSchemaIsClosedRecursively()
+    {
+        foreach (var tool in HpMcpToolCatalog.ProtocolTools)
+        {
+            AssertObjectSchemasClosed(tool.InputSchema);
+            AssertObjectSchemasClosed(Assert.IsType<JsonElement>(tool.OutputSchema));
+        }
+    }
+
+    [Fact]
     public void StartAndFinishSchemasExposeExplicitRetryAndOwnershipFields()
     {
         var start = HpMcpToolCatalog.ProtocolTools.Single(static tool => tool.Name == "hero.start_quest").InputSchema;
@@ -172,5 +182,34 @@ public sealed class HpMcpContractTests
     {
         Assert.Equal("object", schema.GetProperty("type").GetString());
         Assert.False(schema.GetProperty("additionalProperties").GetBoolean());
+    }
+
+    private static void AssertObjectSchemasClosed(JsonElement schema)
+    {
+        if (schema.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        if (schema.TryGetProperty("type", out var type) &&
+            type.ValueKind == JsonValueKind.String &&
+            string.Equals(type.GetString(), "object", StringComparison.Ordinal))
+        {
+            Assert.True(schema.TryGetProperty("additionalProperties", out var additionalProperties));
+            Assert.False(additionalProperties.GetBoolean());
+        }
+
+        if (schema.TryGetProperty("properties", out var properties))
+        {
+            foreach (var property in properties.EnumerateObject())
+            {
+                AssertObjectSchemasClosed(property.Value);
+            }
+        }
+
+        if (schema.TryGetProperty("items", out var items))
+        {
+            AssertObjectSchemasClosed(items);
+        }
     }
 }
