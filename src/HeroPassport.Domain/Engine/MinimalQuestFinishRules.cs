@@ -13,27 +13,9 @@ public static class MinimalQuestFinishRules
         25000, 25750, 26500, 27250, 28000, 28750, 29500, 30250, 31000, 31750
     ];
 
-    public static int BaseXp(string questType) => questType switch
-    {
-        "planning" => 30,
-        "research" => 40,
-        "coding" => 60,
-        "review" => 50,
-        "debugging" => 70,
-        "documentation" => 40,
-        "maintenance" => 40,
-        _ => throw new ArgumentOutOfRangeException(nameof(questType))
-    };
+    public static int BaseXp(string questType) => QuestRewardRules.BaseXp(questType);
 
-    public static int OutcomePermille(string result) => result switch
-    {
-        "success" => 1000,
-        "partial" => 600,
-        "blocked" => 300,
-        "failed" => 100,
-        "abandoned" => 0,
-        _ => throw new ArgumentOutOfRangeException(nameof(result))
-    };
+    public static int OutcomePermille(string result) => QuestRewardRules.OutcomePermille(result);
 
     public static long QuestXp(int baseXp, int outcomePermille) =>
         checked((long)baseXp * outcomePermille / 1000L);
