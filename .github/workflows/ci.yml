@@ -38,3 +38,9 @@ jobs:
         run: dotnet test tests/HeroPassport.App.Tests/HeroPassport.App.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
       - name: Agent Skill evals
         run: dotnet test tests/HeroPassport.AgentEvals/HeroPassport.AgentEvals.csproj --no-build -c Release --logger "console;verbosity=normal"
+      - name: Publish packaged app
+        run: dotnet publish src/HeroPassport.App/HeroPassport.App.csproj --no-restore -c Release --no-self-contained -o "$GITHUB_WORKSPACE/artifacts/publish/hero-passport"
+      - name: Packaged vertical E2E
+        env:
+          HERO_PASSPORT_PUBLISH_DIR: ${{ github.workspace }}/artifacts/publish/hero-passport
+        run: dotnet test tests/HeroPassport.PackagedE2E/HeroPassport.PackagedE2E.csproj --no-build -c Release --logger "console;verbosity=normal"
