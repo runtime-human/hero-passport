@@ -75,7 +75,7 @@ public sealed class PackagedVerticalE2ETests
                     cancellationToken: token));
                 Assert.False(finish.GetProperty("replayed").GetBoolean());
                 Assert.False(finish.GetProperty("alreadyFinalized").GetBoolean());
-                Assert.Equal(60, finish.GetProperty("reward").GetProperty("xpGained").GetInt64());
+                AssertReward(finish.GetProperty("reward"));
             }
 
             await using (var restarted = await CreateClientAsync(appDll, home, repository, token))
@@ -89,7 +89,7 @@ public sealed class PackagedVerticalE2ETests
                     "hero.get_card",
                     new Dictionary<string, object?> { ["heroId"] = heroId },
                     cancellationToken: token));
-                Assert.Equal(60, card.GetProperty("hero").GetProperty("totalXp").GetInt64());
+                Assert.Equal(85, card.GetProperty("hero").GetProperty("totalXp").GetInt64());
 
                 var startReplay = Structured(await restarted.CallToolAsync(
                     "hero.start_quest",
@@ -103,7 +103,7 @@ public sealed class PackagedVerticalE2ETests
                     FinishArguments(finishRequestId, questId),
                     cancellationToken: token));
                 Assert.True(finishReplay.GetProperty("replayed").GetBoolean());
-                Assert.Equal(60, finishReplay.GetProperty("reward").GetProperty("xpGained").GetInt64());
+                AssertReward(finishReplay.GetProperty("reward"));
 
                 var changedStart = await restarted.CallToolAsync(
                     "hero.start_quest",
@@ -130,6 +130,22 @@ public sealed class PackagedVerticalE2ETests
         {
             try { Directory.Delete(root, recursive: true); } catch (IOException) { }
         }
+    }
+
+    private static void AssertReward(JsonElement reward)
+    {
+        Assert.Equal(85, reward.GetProperty("xpGained").GetInt64());
+        Assert.Collection(
+            reward.GetProperty("components").EnumerateArray().ToArray(),
+            component => AssertRewardComponent(component, "clean_scope_bonus", 10),
+            component => AssertRewardComponent(component, "clear_summary_bonus", 10),
+            component => AssertRewardComponent(component, "no_user_corrections_bonus", 5));
+    }
+
+    private static void AssertRewardComponent(JsonElement component, string key, long xpDelta)
+    {
+        Assert.Equal(key, component.GetProperty("key").GetString());
+        Assert.Equal(xpDelta, component.GetProperty("xpDelta").GetInt64());
     }
 
     private static async Task<McpClient> CreateClientAsync(
