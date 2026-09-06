@@ -55,7 +55,7 @@ public sealed partial class SqliteHeroPassportStateStore
         return snapshots;
     }
 
-    private static IReadOnlyList<RewardComponentSnapshot> RewardComponentSnapshots(QuestRewardResult reward)
+    private static RewardComponentSnapshot[] RewardComponentSnapshots(QuestRewardResult reward)
     {
         var snapshots = new RewardComponentSnapshot[reward.Components.Count];
         for (var index = 0; index < reward.Components.Count; index++)
