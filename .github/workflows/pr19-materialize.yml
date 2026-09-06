@@ -22,7 +22,9 @@ jobs:
         with:
           dotnet-version: 10.0.302
       - name: Apply implementation patch
-        run: python3 .github/scripts/pr19_materialize.py
+        run: |
+          python3 .github/scripts/pr19_materialize.py
+          sed -i 's/private static IReadOnlyList<RewardComponentRow> RewardComponents/private static List<RewardComponentRow> RewardComponents/' src/HeroPassport.Infrastructure/Persistence/SqliteHeroPassportStateStore.RewardSkills.cs
       - name: Restore tools and build
         run: |
           dotnet tool restore
