@@ -34,7 +34,7 @@ public sealed class HeroWireProjectionTests
 
             var committed = await app.FinishQuestAsync(request, project, token);
             Assert.False(committed.HeroProgress.IsLevelCapped);
-            Assert.Equal(60, committed.HeroProgress.LevelXp);
+            Assert.Equal(85, committed.HeroProgress.LevelXp);
             Assert.Equal(100, committed.HeroProgress.NextLevelXpRequired);
             Assert.Equal(50, committed.TrustStrain.TrustBefore);
             Assert.Equal(50, committed.TrustStrain.TrustAfter);
@@ -45,7 +45,14 @@ public sealed class HeroWireProjectionTests
             Assert.Equal(0, committed.Streak.Before);
             Assert.Equal(0, committed.Streak.After);
             Assert.Equal("streak/1.0.0", committed.Streak.RuleVersion);
-            Assert.Empty(committed.SkillProgress);
+            var skill = Assert.Single(committed.SkillProgress);
+            Assert.Equal("coding", skill.SkillKey);
+            Assert.Equal(85, skill.XpGained);
+            Assert.Equal(85, skill.XpAfter);
+            Assert.Equal(1, skill.LevelBefore);
+            Assert.Equal(2, skill.LevelAfter);
+            Assert.False(skill.IsLevelCapped);
+            Assert.Equal(125L, skill.NextLevelXpRequired);
             Assert.Empty(committed.TraitsUnlocked);
             Assert.Empty(committed.TitlesUnlocked);
             Assert.Null(committed.ActiveTitle);
@@ -64,10 +71,11 @@ public sealed class HeroWireProjectionTests
             Assert.Equal(committed.TrustStrain, replay.TrustStrain);
             Assert.Equal(committed.Streak, replay.Streak);
             Assert.Equal(committed.HeroProgress, replay.HeroProgress);
+            Assert.True(committed.SkillProgress.SequenceEqual(replay.SkillProgress));
 
             var card = await app.GetCardAsync(hero.HeroId, project, token);
             Assert.False(card.Hero.IsLevelCapped);
-            Assert.Equal(60, card.Hero.LevelXp);
+            Assert.Equal(85, card.Hero.LevelXp);
             Assert.Equal(100, card.Hero.NextLevelXpRequired);
             Assert.Null(card.Hero.ActiveTitle);
             Assert.Equal(80, card.Hero.Trust);
