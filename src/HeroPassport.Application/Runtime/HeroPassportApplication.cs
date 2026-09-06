@@ -53,6 +53,24 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
     public Task ActivateHeroAsync(HeroId heroId, CancellationToken cancellationToken = default) =>
         store.ActivateHeroAsync(heroId, timeProvider.GetUtcNow(), cancellationToken);
 
+    public Task<HeroListResult> ListHeroesAsync(CancellationToken cancellationToken = default) =>
+        store.ListHeroesAsync(cancellationToken);
+
+    public Task<HeroPreferenceChangeResult> ActivateHeroPreferenceAsync(HeroId heroId, CancellationToken cancellationToken = default) =>
+        store.ActivateHeroPreferenceAsync(heroId, timeProvider.GetUtcNow(), cancellationToken);
+
+    public Task<HeroPreferenceChangeResult> ArchiveHeroAsync(HeroId heroId, CancellationToken cancellationToken = default) =>
+        store.ArchiveHeroAsync(heroId, timeProvider.GetUtcNow(), cancellationToken);
+
+    public Task<HeroPreferenceChangeResult> RestoreHeroAsync(HeroId heroId, CancellationToken cancellationToken = default) =>
+        store.RestoreHeroAsync(heroId, timeProvider.GetUtcNow(), cancellationToken);
+
+    public Task<HeroCardResult> GetCardAsync(
+        HeroId heroId,
+        ProjectBindingContext project,
+        CancellationToken cancellationToken = default) =>
+        store.GetCardAsync(heroId, ValidateProject(project), cancellationToken);
+
     public Task<StartQuestResult> StartQuestAsync(
         StartQuestRequest request,
         ProjectBindingContext project,
@@ -184,13 +202,24 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
             !IsAllowed(metrics.BuildStatus, MetricStatuses) ||
             !IsAllowed(metrics.BuildEvidence, MetricEvidence) ||
             !IsAllowed(metrics.TestsStatus, MetricStatuses) ||
-            !IsAllowed(metrics.TestsEvidence, MetricEvidence))
+            !IsAllowed(metrics.TestsEvidence, MetricEvidence) ||
+            !IsMetricAttestationConsistent(metrics.BuildStatus, metrics.BuildEvidence) ||
+            !IsMetricAttestationConsistent(metrics.TestsStatus, metrics.TestsEvidence) ||
+            (!string.Equals(metrics.TestsStatus, "not_run", StringComparison.Ordinal) && !metrics.TestsMentioned))
         {
             throw new HeroPassportException("HP120", "Quest metrics are invalid.");
         }
 
         return metrics;
     }
+
+    private static bool IsMetricAttestationConsistent(string status, string evidence) => status switch
+    {
+        "not_run" => string.Equals(evidence, "none", StringComparison.Ordinal),
+        "passed" or "failed" => !string.Equals(evidence, "none", StringComparison.Ordinal),
+        "unknown" => true,
+        _ => false,
+    };
 
     private static string[] ValidateSkills(IReadOnlyList<string>? skillsUsed)
     {

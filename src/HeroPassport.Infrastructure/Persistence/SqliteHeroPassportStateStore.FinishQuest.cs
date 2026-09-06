@@ -203,22 +203,36 @@ public sealed partial class SqliteHeroPassportStateStore
 
         transaction.Commit();
 
-        return new FinishQuestResult(
+        return CreateResult(
             command.QuestId,
             command.Result,
-            new QuestRewardSnapshot(baseXp, 0, 0, baseXp, outcomePermille, xpGained, rules.Reward),
-            new HeroProgressSnapshot(
-                quest.HeroId,
-                hero.TotalXp,
-                totalXpAfter,
-                levelBefore,
-                levelAfter,
-                rankBefore,
-                rankAfter,
-                rules.HeroProgression,
-                rules.Rank),
-            Replayed: false,
-            AlreadyFinalized: false);
+            baseXp,
+            bonusXp: 0,
+            penaltyXp: 0,
+            rawXp: baseXp,
+            outcomePermille,
+            xpGained,
+            rules.Reward,
+            quest.HeroId,
+            hero.TotalXp,
+            totalXpAfter,
+            levelBefore,
+            levelAfter,
+            rankBefore,
+            rankAfter,
+            rules.HeroProgression,
+            rules.Rank,
+            hero.Trust,
+            hero.Trust,
+            hero.Strain,
+            hero.Strain,
+            rules.TrustStrain,
+            hero.SuccessStreak,
+            hero.SuccessStreak,
+            rules.Streak,
+            activeTitle: null,
+            replayed: false,
+            alreadyFinalized: false);
     }
 
     private static async Task<ProjectId?> ExistingProjectIdAsync(
@@ -302,7 +316,9 @@ public sealed partial class SqliteHeroPassportStateStore
             SELECT r.result,r.finalization_args_encoding_version,r.finalization_args_hash,
                    r.reward_rule_version,r.base_xp,r.bonus_xp,r.penalty_xp,r.raw_xp,r.outcome_permille,r.xp_gained,
                    r.hero_progression_version,r.rank_rule_version,q.hero_id,
-                   r.hero_total_xp_before,r.hero_total_xp_after,r.hero_level_before,r.hero_level_after,r.rank_before,r.rank_after
+                   r.hero_total_xp_before,r.hero_total_xp_after,r.hero_level_before,r.hero_level_after,r.rank_before,r.rank_after,
+                   r.trust_strain_rule_version,r.streak_rule_version,
+                   r.trust_before,r.trust_after,r.strain_before,r.strain_after,r.streak_before,r.streak_after,r.active_title_after
             FROM quest_reports AS r
             INNER JOIN quest_sessions AS q ON q.id=r.quest_id
             WHERE r.quest_id=$quest;
@@ -334,7 +350,16 @@ public sealed partial class SqliteHeroPassportStateStore
             reader.GetInt32(15),
             reader.GetInt32(16),
             reader.GetString(17),
-            reader.GetString(18));
+            reader.GetString(18),
+            reader.GetString(19),
+            reader.GetString(20),
+            reader.GetInt32(21),
+            reader.GetInt32(22),
+            reader.GetInt32(23),
+            reader.GetInt32(24),
+            reader.GetInt64(25),
+            reader.GetInt64(26),
+            reader.IsDBNull(27) ? null : reader.GetString(27));
     }
 
     private static bool FinalizationMatches(FinishReportRow report, string encodingVersion, byte[] hash) =>
@@ -369,29 +394,104 @@ public sealed partial class SqliteHeroPassportStateStore
     }
 
     private static FinishQuestResult ResultFromReport(FinishReportRow report, bool replayed, bool alreadyFinalized) =>
-        new(
+        CreateResult(
             report.QuestId,
             report.Result,
-            new QuestRewardSnapshot(
-                report.BaseXp,
-                report.BonusXp,
-                report.PenaltyXp,
-                report.RawXp,
-                report.OutcomePermille,
-                report.XpGained,
-                report.RewardRuleVersion),
-            new HeroProgressSnapshot(
-                report.HeroId,
-                report.TotalXpBefore,
-                report.TotalXpAfter,
-                report.LevelBefore,
-                report.LevelAfter,
-                report.RankBefore,
-                report.RankAfter,
-                report.HeroProgressionVersion,
-                report.RankRuleVersion),
+            report.BaseXp,
+            report.BonusXp,
+            report.PenaltyXp,
+            report.RawXp,
+            report.OutcomePermille,
+            report.XpGained,
+            report.RewardRuleVersion,
+            report.HeroId,
+            report.TotalXpBefore,
+            report.TotalXpAfter,
+            report.LevelBefore,
+            report.LevelAfter,
+            report.RankBefore,
+            report.RankAfter,
+            report.HeroProgressionVersion,
+            report.RankRuleVersion,
+            report.TrustBefore,
+            report.TrustAfter,
+            report.StrainBefore,
+            report.StrainAfter,
+            report.TrustStrainRuleVersion,
+            report.StreakBefore,
+            report.StreakAfter,
+            report.StreakRuleVersion,
+            report.ActiveTitleAfter,
             replayed,
             alreadyFinalized);
+
+    private static FinishQuestResult CreateResult(
+        QuestId questId,
+        string result,
+        int baseXp,
+        int bonusXp,
+        int penaltyXp,
+        int rawXp,
+        int outcomePermille,
+        long xpGained,
+        string rewardRuleVersion,
+        HeroId heroId,
+        long totalXpBefore,
+        long totalXpAfter,
+        int levelBefore,
+        int levelAfter,
+        string rankBefore,
+        string rankAfter,
+        string heroProgressionVersion,
+        string rankRuleVersion,
+        int trustBefore,
+        int trustAfter,
+        int strainBefore,
+        int strainAfter,
+        string trustStrainRuleVersion,
+        long streakBefore,
+        long streakAfter,
+        string streakRuleVersion,
+        string? activeTitle,
+        bool replayed,
+        bool alreadyFinalized)
+    {
+        var isLevelCapped = MinimalQuestFinishRules.IsHeroLevelCapped(levelAfter, heroProgressionVersion);
+        var levelXp = MinimalQuestFinishRules.HeroLevelXp(totalXpAfter, levelAfter, heroProgressionVersion);
+        var nextLevelXpRequired = MinimalQuestFinishRules.NextHeroLevelXpRequired(levelAfter, heroProgressionVersion);
+        return new FinishQuestResult(
+            questId,
+            result,
+            new QuestRewardSnapshot(baseXp, bonusXp, penaltyXp, rawXp, outcomePermille, xpGained, rewardRuleVersion),
+            new HeroProgressSnapshot(
+                heroId,
+                totalXpBefore,
+                totalXpAfter,
+                levelBefore,
+                levelAfter,
+                isLevelCapped,
+                levelXp,
+                nextLevelXpRequired,
+                rankBefore,
+                rankAfter,
+                heroProgressionVersion,
+                rankRuleVersion),
+            new TrustStrainSnapshot(
+                trustBefore,
+                trustAfter,
+                strainBefore,
+                strainAfter,
+                Array.Empty<TrustStrainComponentSnapshot>(),
+                trustStrainRuleVersion),
+            new StreakSnapshot(streakBefore, streakAfter, streakRuleVersion),
+            Array.Empty<SkillProgressSnapshot>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            activeTitle,
+            Array.Empty<MilestoneSnapshot>(),
+            replayed,
+            alreadyFinalized);
+    }
 
     private sealed record FinishQuestRow(HeroId HeroId, ProjectId ProjectId, string QuestType, string Status);
     private sealed record HeroProgressRow(long TotalXp, int Trust, int Strain, long SuccessStreak);
@@ -415,5 +515,14 @@ public sealed partial class SqliteHeroPassportStateStore
         int LevelBefore,
         int LevelAfter,
         string RankBefore,
-        string RankAfter);
+        string RankAfter,
+        string TrustStrainRuleVersion,
+        string StreakRuleVersion,
+        int TrustBefore,
+        int TrustAfter,
+        int StrainBefore,
+        int StrainAfter,
+        long StreakBefore,
+        long StreakAfter,
+        string? ActiveTitleAfter);
 }

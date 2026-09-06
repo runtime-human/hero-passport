@@ -6,7 +6,9 @@
 
 **Architecture:** C# 14 / .NET 10 modular monolith. Domain owns pure versioned game rules; Application owns semantic use cases; Infrastructure owns EF/SQLite/Git/filesystem/config/doctor; App owns MCP/CLI/localization/presentation. Agent Skill is a portable orchestration package and never calculates authoritative game state.
 
-**Tech baseline:** .NET SDK 10.0.302; `net10.0`; ModelContextProtocol 2.1.0; EF Core SQLite/Microsoft.Data.Sqlite 10.0.10; SQLitePCLRaw.bundle_e_sqlite3 3.0.5; qualified actual SQLite >=3.53.4; System.CommandLine 2.0.10; xunit.v3 3.2.2.
+**Tech baseline:** .NET SDK 10.0.302; `net10.0`; ModelContextProtocol 2.2.0; EF Core SQLite/Microsoft.Data.Sqlite 10.0.10; SQLitePCLRaw.bundle_e_sqlite3 3.0.5; qualified actual SQLite >=3.53.4; System.CommandLine 2.0.10; xunit.v3 3.2.2.
+
+**Dependency qualification refresh:** 2026-09-06. The HP-MCP/2 application contract remains v3.2.1; the official MCP SDK implementation baseline was refreshed and requalified independently.
 
 ## Global constraints
 
@@ -60,7 +62,7 @@ Directory.Packages.props
 
 ```text
 SDK 10.0.302
-ModelContextProtocol 2.1.0
+ModelContextProtocol 2.2.0
 Microsoft.EntityFrameworkCore.Sqlite 10.0.10
 Microsoft.Data.Sqlite 10.0.10
 SQLitePCLRaw.bundle_e_sqlite3 3.0.5
@@ -68,7 +70,7 @@ System.CommandLine 2.0.10
 xunit.v3 3.2.2
 ```
 
-**Evidence:** run real package restore against configured feeds. If ModelContextProtocol 2.1.0 cannot restore, stop and investigate package/feed identity; do not silently downgrade the architecture.
+**Evidence:** run real package restore against configured feeds. If the pinned ModelContextProtocol version cannot restore, stop and investigate package/feed identity; do not silently downgrade the architecture.
 
 **Verify:**
 
@@ -303,7 +305,7 @@ Correct claim: at-most-once committed progression per Quest.
 
 ## Task 7 — Real HP-MCP/2 adapter on official C# SDK
 
-**Implement:** stdio MCP composition in App using `ModelContextProtocol 2.1.0`.
+**Implement:** stdio MCP composition in App using `ModelContextProtocol 2.2.0`.
 
 Current exact tool order:
 
@@ -327,7 +329,7 @@ At this phase unimplemented later Hero admin behavior may exist only if required
 
 **Transport tests:** stdout contains protocol frames only; safe diagnostics to stderr.
 
-**Protocol qualification:** preferred 2026-07-28 plus 2025-11-25 compatibility supported by selected SDK.
+**Protocol qualification:** preferred 2026-07-28 plus 2025-11-25 compatibility supported by selected SDK. Qualify the real stdio subprocess, exact tool inventory/order and canonical server instructions.
 
 **Commit:** `feat(mcp): expose hp-mcp-2 v3.2.1 tools`
 
@@ -563,7 +565,7 @@ Record exact commands/outputs/versions. Do not claim release readiness from part
 Before Task 0 product code begins, v3.2.1 documentation must consistently specify:
 
 ```text
-real MCP SDK 2.1.0 dependency gate
+real MCP SDK 2.2.0 dependency gate
 bootstrap request identity
 pre/post setup tool gate
 get_context hydration/recovery/version fields

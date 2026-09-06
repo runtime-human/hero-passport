@@ -1,9 +1,10 @@
 # Hero Passport — Dependency Baseline
 
 **Status:** Accepted v3.2.1 dependency policy  
-**Snapshot:** 2026-08-11
+**Architecture snapshot:** 2026-08-11  
+**Verification refresh:** 2026-09-06
 
-Versions are pinned to stable releases verified during the architecture pass. Task 0 of the implementation plan performs a real package restore gate before product work proceeds.
+Versions are pinned to stable releases verified during architecture/implementation passes. Task 0 of the implementation plan performs a real package restore gate before product work proceeds; later implementation slices may refresh a dependency within the accepted major when official sources and qualification support it.
 
 ## 1. Runtime/language
 
@@ -19,10 +20,10 @@ Do not move 0.1 to .NET 11 preview.
 ## 2. MCP
 
 ```text
-ModelContextProtocol  2.1.0
+ModelContextProtocol  2.2.0
 ```
 
-Official C# SDK v2.1.0 was released 2026-08-05. The architecture does not regress to 2.0.0 based on stale search/package indexes; implementation still proves actual restore/build from configured feeds.
+Official C# SDK v2.2.0 was released 2026-08-13 and is the current stable package qualified by the HP-MCP/2 adapter implementation. The adapter qualifies both preferred `2026-07-28` semantics and the `2025-11-25` compatibility path through the official SDK; do not add custom protocol negotiation workarounds.
 
 `ModelContextProtocol.AspNetCore` is not required because 0.1 supported transport is stdio.
 
@@ -123,7 +124,7 @@ These are not runtime correctness dependencies merely because CI uses them.
 Before implementation and every release:
 
 1. check current official vendor/package sources;
-2. prefer stable patch upgrades within selected major when qualified;
+2. prefer stable patch upgrades within the selected major; compatible minor upgrades require task-specific qualification before adoption;
 3. read release/security/reliability notes;
 4. re-run affected persistence/MCP qualification;
 5. update `REFERENCES.md`;

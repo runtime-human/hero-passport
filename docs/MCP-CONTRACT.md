@@ -1,8 +1,9 @@
 # Hero Passport — MCP Contract Overview
 
 **Status:** Accepted HP-MCP/2 v3.2.1 overview  
-**Snapshot:** 2026-08-11  
-**SDK:** official C# `ModelContextProtocol 2.1.0`  
+**Contract snapshot:** 2026-08-11  
+**SDK implementation baseline:** official C# `ModelContextProtocol 2.2.0`  
+**SDK qualification refresh:** 2026-09-06  
 **Preferred protocol:** MCP `2026-07-28`  
 **0.1 transport:** stdio
 

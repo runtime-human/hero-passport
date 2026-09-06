@@ -2,6 +2,8 @@ namespace HeroPassport.Domain.Engine;
 
 public static class MinimalQuestFinishRules
 {
+    private const string HeroProgressionV2 = "hero-progression/2.0.0";
+
     private static readonly long[] HeroLevelThresholds =
     [
         0, 100, 250, 450, 700, 1000, 1350, 1750, 2200, 2700,
@@ -52,6 +54,31 @@ public static class MinimalQuestFinishRules
         return level;
     }
 
+    public static bool IsHeroLevelCapped(int level, string ruleVersion)
+    {
+        RequireHeroProgressionVersion(ruleVersion);
+        RequireHeroLevel(level);
+        return level == HeroLevelThresholds.Length;
+    }
+
+    public static long HeroLevelXp(long totalXp, int level, string ruleVersion)
+    {
+        RequireHeroProgressionVersion(ruleVersion);
+        RequireHeroLevel(level);
+        var threshold = HeroLevelThresholds[level - 1];
+        ArgumentOutOfRangeException.ThrowIfLessThan(totalXp, threshold);
+        return checked(totalXp - threshold);
+    }
+
+    public static long? NextHeroLevelXpRequired(int level, string ruleVersion)
+    {
+        RequireHeroProgressionVersion(ruleVersion);
+        RequireHeroLevel(level);
+        return level == HeroLevelThresholds.Length
+            ? null
+            : checked(HeroLevelThresholds[level] - HeroLevelThresholds[level - 1]);
+    }
+
     public static string RankKey(int heroLevel) => heroLevel switch
     {
         <= 4 => "code_squire",
@@ -61,4 +88,18 @@ public static class MinimalQuestFinishRules
         <= 49 => "principal_warlord",
         _ => "legendary_architect"
     };
+
+    private static void RequireHeroProgressionVersion(string ruleVersion)
+    {
+        if (!string.Equals(ruleVersion, HeroProgressionV2, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("Unsupported Hero progression rule version.", nameof(ruleVersion));
+        }
+    }
+
+    private static void RequireHeroLevel(int level)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(level, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(level, HeroLevelThresholds.Length);
+    }
 }
