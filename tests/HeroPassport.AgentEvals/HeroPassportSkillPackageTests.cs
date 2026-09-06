@@ -1,0 +1,85 @@
+using Xunit;
+
+namespace HeroPassport.AgentEvals;
+
+public sealed class HeroPassportSkillPackageTests
+{
+    private static readonly string[] RequiredReferences =
+    [
+        "lifecycle.md",
+        "finish-attestations.md",
+        "recovery.md",
+        "presentation.md",
+    ];
+
+    [Fact]
+    public void SkillPackageMatchesPortableAgentSkillsFormatAndContractMetadata()
+    {
+        var skillRoot = SkillRoot();
+        var skillPath = Path.Combine(skillRoot, "SKILL.md");
+        Assert.True(File.Exists(skillPath), $"Missing required Agent Skills entrypoint: {skillPath}");
+
+        var lines = File.ReadAllLines(skillPath);
+        Assert.InRange(lines.Length, 1, 500);
+        Assert.Equal("---", lines[0]);
+        Assert.Contains(lines, static line => string.Equals(line.Trim(), "name: hero-passport", StringComparison.Ordinal));
+
+        var description = Assert.Single(lines.Where(static line => line.StartsWith("description:", StringComparison.Ordinal)));
+        var descriptionValue = description["description:".Length..].Trim();
+        Assert.InRange(descriptionValue.Length, 1, 1024);
+        Assert.Contains("project", descriptionValue, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("quest", descriptionValue, StringComparison.OrdinalIgnoreCase);
+
+        var text = File.ReadAllText(skillPath);
+        Assert.Contains("hero-passport-skill/1", text, StringComparison.Ordinal);
+        Assert.Contains("HP-MCP/2", text, StringComparison.Ordinal);
+
+        foreach (var reference in RequiredReferences)
+        {
+            var referencePath = Path.Combine(skillRoot, "references", reference);
+            Assert.True(File.Exists(referencePath), $"Missing required progressive-disclosure reference: {referencePath}");
+            Assert.Contains($"references/{reference}", text, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void CoreInstructionsPreserveConservativeLifecycleRecoveryAndRetryPolicy()
+    {
+        var text = File.ReadAllText(Path.Combine(SkillRoot(), "SKILL.md"));
+
+        Assert.Contains("hero.get_context", text, StringComparison.Ordinal);
+        Assert.Contains("hero.start_quest", text, StringComparison.Ordinal);
+        Assert.Contains("hero.finish_quest", text, StringComparison.Ordinal);
+        Assert.Contains("autoStartQuest", text, StringComparison.Ordinal);
+        Assert.Contains("autoFinishQuest", text, StringComparison.Ordinal);
+        Assert.Contains("heroId", text, StringComparison.Ordinal);
+        Assert.Contains("questId", text, StringComparison.Ordinal);
+        Assert.Contains("startRequestId", text, StringComparison.Ordinal);
+        Assert.Contains("finishRequestId", text, StringComparison.Ordinal);
+        Assert.Contains("HP133", text, StringComparison.Ordinal);
+        Assert.Contains("HP135", text, StringComparison.Ordinal);
+        Assert.Contains("HP136", text, StringComparison.Ordinal);
+        Assert.Contains("observed", text, StringComparison.Ordinal);
+        Assert.Contains("reported", text, StringComparison.Ordinal);
+        Assert.Contains("source", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("raw logs", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string SkillRoot() => Path.Combine(RepoRoot(), "skills", "hero-passport");
+
+    private static string RepoRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "HeroPassport.slnx")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Hero Passport repository root was not found from the AgentEvals output directory.");
+    }
+}
