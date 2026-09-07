@@ -26,7 +26,7 @@ public sealed class UnlockSchemaTests
                 1,
                 await ScalarLongAsync(
                     path,
-                    "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='ix_quest_sessions_hero_id';",
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='ix_quest_sessions_hero_id' AND sql IS NOT NULL AND instr(upper(sql),'WHERE')=0;",
                     token));
 
             Assert.Equal(
