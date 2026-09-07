@@ -86,6 +86,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/task22-authority-migrate.yml
-          git add src tests
+          git add \
+            src/HeroPassport.Application/Runtime/HeroPassportVersions.cs \
+            src/HeroPassport.Domain/Engine/MinimalQuestFinishRules.cs \
+            src/HeroPassport.Infrastructure/Persistence/SqliteHeroPassportStateStore.FinishQuest.cs \
+            src/HeroPassport.Infrastructure/Persistence/SqliteHeroPassportStateStore.HeroAdministration.cs
           git commit -m "refactor(rpg): route hero progression through versioned authorities"
           git push origin HEAD:feat/hero-progression-rank-rules
