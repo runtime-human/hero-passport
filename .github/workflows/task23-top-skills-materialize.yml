@@ -1,0 +1,140 @@
+name: task23-top-skills-materialize
+
+on:
+  push:
+    branches:
+      - feat/card-top-skills
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: feat/card-top-skills
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: 10.0.302
+      - name: Materialize top Skills read model
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/HeroPassport.Infrastructure/Persistence/SqliteHeroPassportStateStore.HeroAdministration.cs')
+          text = path.read_text(encoding='utf-8-sig')
+
+          def replace_once(old: str, new: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one replacement, found {count}: {old!r}')
+              text = text.replace(old, new)
+
+          replace_once(
+              '        var unlock = await HeroUnlockCardAsync(connection, heroId, rules.Unlock, cancellationToken).ConfigureAwait(false);\n        return new HeroCardResult(',
+              '        var unlock = await HeroUnlockCardAsync(connection, heroId, rules.Unlock, cancellationToken).ConfigureAwait(false);\n        var heroTopSkills = await HeroTopSkillsAsync(connection, heroId, rules.SkillProgression, cancellationToken).ConfigureAwait(false);\n        var projectTopSkills = projectId is null\n            ? Array.Empty<CardSkillSnapshot>()\n            : await ProjectTopSkillsAsync(connection, heroId, projectId, rules.SkillProgression, cancellationToken).ConfigureAwait(false);\n        return new HeroCardResult(')
+
+          replace_once(
+              '                hero.SuccessStreak,\n                Array.Empty<CardSkillSnapshot>(),\n                unlock.Traits,',
+              '                hero.SuccessStreak,\n                heroTopSkills,\n                unlock.Traits,')
+
+          replace_once(
+              '                totalXpEarned,\n                successRatePermille,\n                Array.Empty<CardSkillSnapshot>()));',
+              '                totalXpEarned,\n                successRatePermille,\n                projectTopSkills));')
+
+          marker = '    private static void RequireSetup(SettingsRow settings)\n'
+          helpers = '''    private static async Task<IReadOnlyList<CardSkillSnapshot>> HeroTopSkillsAsync(
+              SqliteConnection connection,
+              HeroId heroId,
+              string skillProgressionVersion,
+              CancellationToken cancellationToken)
+          {
+              await using var command = Command(
+                  connection,
+                  null,
+                  """
+                  SELECT skill_key,xp
+                  FROM hero_skills
+                  WHERE hero_id=$hero AND xp>0
+                  ORDER BY xp DESC,skill_key ASC
+                  LIMIT 3;
+                  """,
+                  ("$hero", heroId.ToString()));
+              return await ReadCardSkillsAsync(command, skillProgressionVersion, cancellationToken).ConfigureAwait(false);
+          }
+
+          private static async Task<IReadOnlyList<CardSkillSnapshot>> ProjectTopSkillsAsync(
+              SqliteConnection connection,
+              HeroId heroId,
+              string projectId,
+              string skillProgressionVersion,
+              CancellationToken cancellationToken)
+          {
+              await using var command = Command(
+                  connection,
+                  null,
+                  """
+                  SELECT report_skill.skill_key,SUM(report_skill.xp_gained) AS xp
+                  FROM quest_sessions AS quest
+                  INNER JOIN quest_reports AS report ON report.quest_id=quest.id
+                  INNER JOIN quest_report_skills AS report_skill ON report_skill.quest_report_id=report.id
+                  WHERE quest.hero_id=$hero AND quest.project_id=$project AND report_skill.xp_gained>0
+                  GROUP BY report_skill.skill_key
+                  HAVING SUM(report_skill.xp_gained)>0
+                  ORDER BY xp DESC,report_skill.skill_key ASC
+                  LIMIT 3;
+                  """,
+                  ("$hero", heroId.ToString()),
+                  ("$project", projectId));
+              return await ReadCardSkillsAsync(command, skillProgressionVersion, cancellationToken).ConfigureAwait(false);
+          }
+
+          private static async Task<IReadOnlyList<CardSkillSnapshot>> ReadCardSkillsAsync(
+              SqliteCommand command,
+              string skillProgressionVersion,
+              CancellationToken cancellationToken)
+          {
+              await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+              var skills = new List<CardSkillSnapshot>(3);
+              while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+              {
+                  var skillKey = reader.GetString(0);
+                  var xp = reader.GetInt64(1);
+                  var progression = SkillProgressionRules.Apply(xp, 0, skillProgressionVersion);
+                  skills.Add(new CardSkillSnapshot(
+                      skillKey,
+                      xp,
+                      progression.LevelAfter,
+                      progression.IsLevelCapped,
+                      progression.NextLevelXpRequired));
+              }
+
+              return skills.ToArray();
+          }
+
+'''
+          if text.count(marker) != 1:
+              raise SystemExit('RequireSetup marker not unique')
+          text = text.replace(marker, helpers + marker)
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Verify focused Green
+        shell: bash
+        run: |
+          dotnet restore HeroPassport.slnx
+          dotnet build HeroPassport.slnx -c Release --no-restore
+          dotnet test tests/HeroPassport.Application.Tests/HeroPassport.Application.Tests.csproj -c Release --no-build --filter FullyQualifiedName~HeroCardTopSkillsTests
+      - name: Commit exact product change and remove materializer
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/task23-top-skills-materialize.yml
+          git add src/HeroPassport.Infrastructure/Persistence/SqliteHeroPassportStateStore.HeroAdministration.cs
+          git commit -m "feat(card): derive global and project top skills"
+          git push origin HEAD:feat/card-top-skills
