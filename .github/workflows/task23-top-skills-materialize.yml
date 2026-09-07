@@ -117,7 +117,7 @@ jobs:
               return skills.ToArray();
           }
 
-'''
+          '''
           if text.count(marker) != 1:
               raise SystemExit('RequireSetup marker not unique')
           text = text.replace(marker, helpers + marker)
