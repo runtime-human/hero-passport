@@ -8,5 +8,6 @@ public sealed class HeroPassportDbContext(DbContextOptions<HeroPassportDbContext
     {
         HeroPassportStorageModel.Configure(modelBuilder);
         TrustStrainStorageModel.Configure(modelBuilder);
+        UnlockStorageModel.Configure(modelBuilder);
     }
 }
