@@ -56,9 +56,28 @@ Canonical command:
 hero-passport init
 ```
 
-Interactive CLI may ask step-by-step terminal questions. Script/non-interactive paths use explicit flags/input and never hang for prompts.
+The current scriptable/non-interactive form is:
 
-The CLI ultimately executes the same bootstrap Application use case and crash-safe request semantics.
+```text
+hero-passport init \
+  --locale en-US \
+  --hero-name "Nova" \
+  [--presentation-style rpg_engineering] \
+  [--auto-start-quest true] \
+  [--auto-finish-quest true] \
+  [--request-id <uuidv7>] \
+  [--json]
+```
+
+`--locale` and `--hero-name` are required in this form. Presentation style, auto-start and auto-finish use the canonical defaults above when omitted.
+
+`--request-id` is the caller-owned Bootstrap retry identity. Supplying the same lowercase canonical UUIDv7 with the same canonical arguments replays the persisted Bootstrap result; omitting it creates a fresh UUIDv7 and is therefore appropriate only for a fresh invocation, not a crash retry that must recover the original intent.
+
+`--json` writes one machine-readable result to stdout. Parse/validation failures do not run Bootstrap. Safe diagnostics use stderr and must not expose source, paths, SQL, prompts or secrets.
+
+This implementation slice intentionally does not prompt. A later interactive `init` experience may ask the five onboarding questions step-by-step, but script/non-interactive paths must remain explicit and must never hang waiting for terminal input.
+
+The CLI executes the same Bootstrap Application use case and crash-safe request semantics as the MCP adapter; it does not own a second onboarding or game engine.
 
 ## 5. MCP first run
 
