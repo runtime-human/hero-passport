@@ -25,11 +25,11 @@ public sealed class UnlockSchemaTests
 
             Assert.Equal(
                 [
-                    "polyglot_crafter:unlock-catalog/1",
-                    "precise_executor:unlock-catalog/1",
-                    "scope_keeper:unlock-catalog/1",
-                    "steady_hand:unlock-catalog/1",
-                    "test_scout:unlock-catalog/1",
+                    "polyglot_crafter:unlock/2.0.0",
+                    "precise_executor:unlock/2.0.0",
+                    "scope_keeper:unlock/2.0.0",
+                    "steady_hand:unlock/2.0.0",
+                    "test_scout:unlock/2.0.0",
                 ],
                 await StringsAsync(
                     path,
@@ -38,11 +38,11 @@ public sealed class UnlockSchemaTests
 
             Assert.Equal(
                 [
-                    "master_of_many_tools:5:unlock-catalog/1",
-                    "unbroken_builder:4:unlock-catalog/1",
-                    "skill_specialist:3:unlock-catalog/1",
-                    "veteran_of_the_merge:2:unlock-catalog/1",
-                    "rising_adventurer:1:unlock-catalog/1",
+                    "master_of_many_tools:5:unlock/2.0.0",
+                    "unbroken_builder:4:unlock/2.0.0",
+                    "skill_specialist:3:unlock/2.0.0",
+                    "veteran_of_the_merge:2:unlock/2.0.0",
+                    "rising_adventurer:1:unlock/2.0.0",
                 ],
                 await StringsAsync(
                     path,
