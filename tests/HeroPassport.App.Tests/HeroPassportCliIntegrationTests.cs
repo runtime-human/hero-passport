@@ -89,6 +89,56 @@ public sealed class HeroPassportCliIntegrationTests
     }
 
     [Fact]
+    public async Task MissingRequiredInitOptionFailsBeforeDatabaseInitialization()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var home = CreateHome();
+        try
+        {
+            var result = await RunCliAsync(home, token, "init", "--locale", "en-US", "--json");
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.False(File.Exists(Path.Combine(home, "hero-passport.db")));
+            Assert.True(string.IsNullOrWhiteSpace(result.StandardOutput), result.StandardOutput);
+            Assert.False(string.IsNullOrWhiteSpace(result.StandardError));
+            Assert.DoesNotContain("Exception", result.StandardError, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteHome(home);
+        }
+    }
+
+    [Fact]
+    public async Task MalformedRequestIdReturnsSafeErrorBeforeDatabaseInitialization()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var home = CreateHome();
+        try
+        {
+            var result = await RunCliAsync(
+                home,
+                token,
+                "init",
+                "--locale", "en-US",
+                "--hero-name", "CLI Nova",
+                "--request-id", "not-a-uuid",
+                "--json");
+
+            Assert.Equal(2, result.ExitCode);
+            Assert.False(File.Exists(Path.Combine(home, "hero-passport.db")));
+            Assert.True(string.IsNullOrWhiteSpace(result.StandardOutput), result.StandardOutput);
+            Assert.Contains("HP300", result.StandardError, StringComparison.Ordinal);
+            Assert.DoesNotContain("Exception", result.StandardError, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(home, result.StandardError, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteHome(home);
+        }
+    }
+
+    [Fact]
     public async Task RootHelpPublishesInitAndMcpCommands()
     {
         var token = TestContext.Current.CancellationToken;
@@ -100,6 +150,7 @@ public sealed class HeroPassportCliIntegrationTests
             Assert.Equal(0, result.ExitCode);
             Assert.Contains("init", result.StandardOutput, StringComparison.Ordinal);
             Assert.Contains("mcp", result.StandardOutput, StringComparison.Ordinal);
+            Assert.False(File.Exists(Path.Combine(home, "hero-passport.db")));
         }
         finally
         {
