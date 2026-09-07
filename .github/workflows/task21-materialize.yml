@@ -1,0 +1,105 @@
+name: task21-materialize
+
+on:
+  push:
+    branches:
+      - feat/unlock-traits-titles-milestones
+    paths:
+      - .task21-materialize
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: feat/unlock-traits-titles-milestones
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: 10.0.302
+      - name: Patch Finish and Card
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, got {count}: {old[:100]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          finish = 'src/HeroPassport.Infrastructure/Persistence/SqliteHeroPassportStateStore.FinishQuest.cs'
+          replace_once(
+              finish,
+              '        var timestamp = Timestamp(now);\n        var reportId = QuestReportId.New();\n',
+              '''        var timestamp = Timestamp(now);\n        var reportId = QuestReportId.New();\n        var preparedSkills = await PrepareSkillProgressAsync(\n            connection, transaction, quest.HeroId, allocations, rules.SkillProgression, cancellationToken).ConfigureAwait(false);\n        var preparedUnlocks = await PrepareUnlockProgressAsync(\n            connection, transaction, quest.HeroId, quest.QuestType, command,\n            levelBefore, levelAfter, rankBefore, rankAfter, streak.Before, streak.After,\n            preparedSkills, rules.Unlock, now, cancellationToken).ConfigureAwait(false);\n''')
+          replace_once(
+              finish,
+              '                $streakBefore,$streakAfter,NULL,NULL,$time);',
+              '                $streakBefore,$streakAfter,$activeTitleBefore,$activeTitleAfter,$time);')
+          replace_once(
+              finish,
+              '            ("$streakBefore", streak.Before),\n            ("$streakAfter", streak.After),\n            ("$time", timestamp)).ConfigureAwait(false);',
+              '            ("$streakBefore", streak.Before),\n            ("$streakAfter", streak.After),\n            ("$activeTitleBefore", preparedUnlocks.ActiveTitleBefore),\n            ("$activeTitleAfter", preparedUnlocks.ActiveTitleAfter),\n            ("$time", timestamp)).ConfigureAwait(false);')
+          replace_once(
+              finish,
+              '''        var skillProgress = await ApplySkillAllocationsAsync(\n            connection, transaction, reportId, quest.HeroId, allocations, rules.SkillProgression, timestamp, cancellationToken).ConfigureAwait(false);\n''',
+              '''        var skillProgress = await PersistSkillProgressAsync(\n            connection, transaction, reportId, quest.HeroId, preparedSkills, timestamp, cancellationToken).ConfigureAwait(false);\n        await PersistUnlockProgressAsync(\n            connection, transaction, reportId, command.QuestId, quest.HeroId, preparedUnlocks, timestamp, cancellationToken).ConfigureAwait(false);\n''')
+          replace_once(
+              finish,
+              '''            rules.Streak,\n            activeTitle: null,\n            replayed: false,''',
+              '''            rules.Streak,\n            preparedUnlocks.ActiveTitleAfter,\n            replayed: false,''')
+          replace_once(
+              finish,
+              '''            SkillProgress = skillProgress,\n            TrustStrain = TrustStrainSnapshot(trustStrain),\n            Streak = new StreakSnapshot(streak.Before, streak.After, streak.RuleVersion),\n''',
+              '''            SkillProgress = skillProgress,\n            TraitsUnlocked = preparedUnlocks.Result.TraitsUnlocked,\n            TitlesUnlocked = preparedUnlocks.Result.TitlesUnlocked,\n            ActiveTitle = preparedUnlocks.ActiveTitleAfter,\n            Milestones = MilestoneSnapshots(preparedUnlocks.Result),\n            TrustStrain = TrustStrainSnapshot(trustStrain),\n            Streak = new StreakSnapshot(streak.Before, streak.After, streak.RuleVersion),\n''')
+          replace_once(
+              finish,
+              '''        var skillProgress = await SkillProgressForReportAsync(connection, transaction, report.ReportId, report.SkillProgressionVersion, cancellationToken).ConfigureAwait(false);\n        return CreateResult(''',
+              '''        var skillProgress = await SkillProgressForReportAsync(connection, transaction, report.ReportId, report.SkillProgressionVersion, cancellationToken).ConfigureAwait(false);\n        var unlock = await StoredUnlockResultAsync(connection, transaction, report.ReportId, cancellationToken).ConfigureAwait(false);\n        return CreateResult(''')
+          replace_once(
+              finish,
+              '''            SkillProgress = skillProgress,\n            TrustStrain = new TrustStrainSnapshot(\n                report.TrustBefore,''',
+              '''            SkillProgress = skillProgress,\n            TraitsUnlocked = unlock.TraitsUnlocked,\n            TitlesUnlocked = unlock.TitlesUnlocked,\n            ActiveTitle = report.ActiveTitleAfter,\n            Milestones = unlock.Milestones,\n            TrustStrain = new TrustStrainSnapshot(\n                report.TrustBefore,''')
+
+          card = 'src/HeroPassport.Infrastructure/Persistence/SqliteHeroPassportStateStore.HeroAdministration.cs'
+          replace_once(
+              card,
+              '''        var nextLevelXpRequired = MinimalQuestFinishRules.NextHeroLevelXpRequired(level, rules.HeroProgression);\n        return new HeroCardResult(''',
+              '''        var nextLevelXpRequired = MinimalQuestFinishRules.NextHeroLevelXpRequired(level, rules.HeroProgression);\n        var unlock = await HeroUnlockCardAsync(connection, heroId, rules.Unlock, cancellationToken).ConfigureAwait(false);\n        return new HeroCardResult(''')
+          replace_once(card, '                ActiveTitle: null,', '                unlock.ActiveTitle,')
+          replace_once(
+              card,
+              '''                Array.Empty<CardSkillSnapshot>(),\n                Array.Empty<string>(),\n                Array.Empty<string>()),''',
+              '''                Array.Empty<CardSkillSnapshot>(),\n                unlock.Traits,\n                unlock.Titles),''')
+      - name: Restore and build
+        run: |
+          dotnet tool restore
+          dotnet restore HeroPassport.slnx
+          dotnet build HeroPassport.slnx --no-restore -c Release
+      - name: Generate EF migration
+        run: |
+          dotnet ef migrations add AddUnlockProgression \
+            --project src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj \
+            --configuration Release \
+            --no-build
+      - name: Verify Application slice
+        run: |
+          dotnet build HeroPassport.slnx --no-restore -c Release
+          dotnet test tests/HeroPassport.Domain.Tests/HeroPassport.Domain.Tests.csproj --no-build -c Release
+          dotnet test tests/HeroPassport.Application.Tests/HeroPassport.Application.Tests.csproj --no-build -c Release
+      - name: Commit materialized implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/HeroPassport.Infrastructure/Persistence
+          git rm .github/workflows/task21-materialize.yml .task21-materialize
+          git commit -m "feat(rpg): integrate persistent unlock progression"
+          git push origin HEAD:feat/unlock-traits-titles-milestones
