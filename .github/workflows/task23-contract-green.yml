@@ -1,0 +1,65 @@
+name: task23-contract-green
+
+on:
+  push:
+    branches:
+      - feat/card-top-skills
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: feat/card-top-skills
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: 10.0.302
+      - name: Materialize bounded top Skills contract
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          schema_path = Path('src/HeroPassport.App/Mcp/HpMcpToolCatalog.cs')
+          schema = schema_path.read_text(encoding='utf-8-sig')
+          old = '\\"topSkills\\":{\\"type\\":\\"array\\",\\"items\\":{'
+          new = '\\"topSkills\\":{\\"type\\":\\"array\\",\\"maxItems\\":3,\\"items\\":{'
+          count = schema.count(old)
+          if count != 2:
+              raise SystemExit(f'expected 2 topSkills schema arrays, found {count}')
+          schema = schema.replace(old, new)
+          schema_path.write_text(schema, encoding='utf-8')
+
+          contract_path = Path('docs/WIRE-CONTRACT.md')
+          contract = contract_path.read_text(encoding='utf-8-sig')
+          marker = '`nextLevelXpRequired` is omitted when the corresponding Hero/Skill level is capped. `activeTitle` is omitted when no Title is active.\n\nNo project internal ID/fingerprint/path is exposed.'
+          replacement = '''`nextLevelXpRequired` is omitted when the corresponding Hero/Skill level is capped. `activeTitle` is omitted when no Title is active.
+
+Both `hero.topSkills` and `project.topSkills` contain at most three positive-XP Skills and are ordered by `xp DESC, skillKey ASC` for deterministic ties. `hero.topSkills` uses the Hero-global `hero_skills` projection. `project.topSkills` is a derived read value for the explicit Hero in the invocation-bound Project, summing canonical `quest_report_skills.xp_gained`; its Skill level/cap/next requirement are derived from that Project-scoped XP under the current `skill-progression` rule version. No separate mutable Project-Skill projection is authoritative.
+
+No project internal ID/fingerprint/path is exposed.'''
+          if contract.count(marker) != 1:
+              raise SystemExit('wire contract card marker not unique')
+          contract = contract.replace(marker, replacement)
+          contract_path.write_text(contract, encoding='utf-8')
+          PY
+      - name: Verify focused contract Green
+        shell: bash
+        run: |
+          dotnet restore HeroPassport.slnx
+          dotnet build HeroPassport.slnx -c Release --no-restore
+          dotnet test tests/HeroPassport.Contract.Tests/HeroPassport.Contract.Tests.csproj -c Release --no-build --filter FullyQualifiedName~HeroCardTopSkillsContractTests
+      - name: Commit exact contract changes and remove materializer
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/task23-contract-green.yml
+          git add src/HeroPassport.App/Mcp/HpMcpToolCatalog.cs docs/WIRE-CONTRACT.md
+          git commit -m "feat(contract): bound card top skills"
+          git push origin HEAD:feat/card-top-skills
