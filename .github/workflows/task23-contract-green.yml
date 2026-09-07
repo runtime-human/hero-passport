@@ -1,6 +1,6 @@
 name: task23-contract-green
 
-"on":
+on:
   push:
     branches:
       - feat/card-top-skills
@@ -38,11 +38,8 @@ jobs:
           contract_path = Path('docs/WIRE-CONTRACT.md')
           contract = contract_path.read_text(encoding='utf-8-sig')
           marker = '`nextLevelXpRequired` is omitted when the corresponding Hero/Skill level is capped. `activeTitle` is omitted when no Title is active.\n\nNo project internal ID/fingerprint/path is exposed.'
-          replacement = '''`nextLevelXpRequired` is omitted when the corresponding Hero/Skill level is capped. `activeTitle` is omitted when no Title is active.
-
-Both `hero.topSkills` and `project.topSkills` contain at most three positive-XP Skills and are ordered by `xp DESC, skillKey ASC` for deterministic ties. `hero.topSkills` uses the Hero-global `hero_skills` projection. `project.topSkills` is a derived read value for the explicit Hero in the invocation-bound Project, summing canonical `quest_report_skills.xp_gained`; its Skill level/cap/next requirement are derived from that Project-scoped XP under the current `skill-progression` rule version. No separate mutable Project-Skill projection is authoritative.
-
-No project internal ID/fingerprint/path is exposed.'''
+          detail = 'Both `hero.topSkills` and `project.topSkills` contain at most three positive-XP Skills and are ordered by `xp DESC, skillKey ASC` for deterministic ties. `hero.topSkills` uses the Hero-global `hero_skills` projection. `project.topSkills` is a derived read value for the explicit Hero in the invocation-bound Project, summing canonical `quest_report_skills.xp_gained`; its Skill level/cap/next requirement are derived from that Project-scoped XP under the current `skill-progression` rule version. No separate mutable Project-Skill projection is authoritative.'
+          replacement = marker.replace('\n\nNo project internal ID/fingerprint/path is exposed.', '\n\n' + detail + '\n\nNo project internal ID/fingerprint/path is exposed.')
           if contract.count(marker) != 1:
               raise SystemExit('wire contract card marker not unique')
           contract = contract.replace(marker, replacement)
