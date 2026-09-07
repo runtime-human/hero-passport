@@ -140,6 +140,8 @@ internal static class HeroPassportStorageModel
                 .WithMany()
                 .HasForeignKey("project_id")
                 .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex("hero_id")
+                .HasDatabaseName("ix_quest_sessions_hero_id");
             entity.HasIndex("hero_id", "project_id")
                 .IsUnique()
                 .HasDatabaseName("ux_quest_sessions_one_open_per_hero_project")
