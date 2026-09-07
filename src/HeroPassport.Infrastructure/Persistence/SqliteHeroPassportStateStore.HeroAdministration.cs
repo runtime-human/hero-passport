@@ -228,73 +228,73 @@ public sealed partial class SqliteHeroPassportStateStore
     }
 
     private static async Task<IReadOnlyList<CardSkillSnapshot>> HeroTopSkillsAsync(
-    SqliteConnection connection,
-    HeroId heroId,
-    string skillProgressionVersion,
-    CancellationToken cancellationToken)
-{
-    await using var command = Command(
-        connection,
-        null,
-        """
-        SELECT skill_key,xp
-        FROM hero_skills
-        WHERE hero_id=$hero AND xp>0
-        ORDER BY xp DESC,skill_key ASC
-        LIMIT 3;
-        """,
-        ("$hero", heroId.ToString()));
-    return await ReadCardSkillsAsync(command, skillProgressionVersion, cancellationToken).ConfigureAwait(false);
-}
-
-private static async Task<IReadOnlyList<CardSkillSnapshot>> ProjectTopSkillsAsync(
-    SqliteConnection connection,
-    HeroId heroId,
-    string projectId,
-    string skillProgressionVersion,
-    CancellationToken cancellationToken)
-{
-    await using var command = Command(
-        connection,
-        null,
-        """
-        SELECT report_skill.skill_key,SUM(report_skill.xp_gained) AS xp
-        FROM quest_sessions AS quest
-        INNER JOIN quest_reports AS report ON report.quest_id=quest.id
-        INNER JOIN quest_report_skills AS report_skill ON report_skill.quest_report_id=report.id
-        WHERE quest.hero_id=$hero AND quest.project_id=$project AND report_skill.xp_gained>0
-        GROUP BY report_skill.skill_key
-        HAVING SUM(report_skill.xp_gained)>0
-        ORDER BY xp DESC,report_skill.skill_key ASC
-        LIMIT 3;
-        """,
-        ("$hero", heroId.ToString()),
-        ("$project", projectId));
-    return await ReadCardSkillsAsync(command, skillProgressionVersion, cancellationToken).ConfigureAwait(false);
-}
-
-private static async Task<IReadOnlyList<CardSkillSnapshot>> ReadCardSkillsAsync(
-    SqliteCommand command,
-    string skillProgressionVersion,
-    CancellationToken cancellationToken)
-{
-    await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-    var skills = new List<CardSkillSnapshot>(3);
-    while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        SqliteConnection connection,
+        HeroId heroId,
+        string skillProgressionVersion,
+        CancellationToken cancellationToken)
     {
-        var skillKey = reader.GetString(0);
-        var xp = reader.GetInt64(1);
-        var progression = SkillProgressionRules.Apply(xp, 0, skillProgressionVersion);
-        skills.Add(new CardSkillSnapshot(
-            skillKey,
-            xp,
-            progression.LevelAfter,
-            progression.IsLevelCapped,
-            progression.NextLevelXpRequired));
+        await using var command = Command(
+            connection,
+            null,
+            """
+            SELECT skill_key,xp
+            FROM hero_skills
+            WHERE hero_id=$hero AND xp>0
+            ORDER BY xp DESC,skill_key ASC
+            LIMIT 3;
+            """,
+            ("$hero", heroId.ToString()));
+        return await ReadCardSkillsAsync(command, skillProgressionVersion, cancellationToken).ConfigureAwait(false);
     }
 
-    return skills.ToArray();
-}
+    private static async Task<IReadOnlyList<CardSkillSnapshot>> ProjectTopSkillsAsync(
+        SqliteConnection connection,
+        HeroId heroId,
+        string projectId,
+        string skillProgressionVersion,
+        CancellationToken cancellationToken)
+    {
+        await using var command = Command(
+            connection,
+            null,
+            """
+            SELECT report_skill.skill_key,SUM(report_skill.xp_gained) AS xp
+            FROM quest_sessions AS quest
+            INNER JOIN quest_reports AS report ON report.quest_id=quest.id
+            INNER JOIN quest_report_skills AS report_skill ON report_skill.quest_report_id=report.id
+            WHERE quest.hero_id=$hero AND quest.project_id=$project AND report_skill.xp_gained>0
+            GROUP BY report_skill.skill_key
+            HAVING SUM(report_skill.xp_gained)>0
+            ORDER BY xp DESC,report_skill.skill_key ASC
+            LIMIT 3;
+            """,
+            ("$hero", heroId.ToString()),
+            ("$project", projectId));
+        return await ReadCardSkillsAsync(command, skillProgressionVersion, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<IReadOnlyList<CardSkillSnapshot>> ReadCardSkillsAsync(
+        SqliteCommand command,
+        string skillProgressionVersion,
+        CancellationToken cancellationToken)
+    {
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var skills = new List<CardSkillSnapshot>(3);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var skillKey = reader.GetString(0);
+            var xp = reader.GetInt64(1);
+            var progression = SkillProgressionRules.Apply(xp, 0, skillProgressionVersion);
+            skills.Add(new CardSkillSnapshot(
+                skillKey,
+                xp,
+                progression.LevelAfter,
+                progression.IsLevelCapped,
+                progression.NextLevelXpRequired));
+        }
+
+        return skills.ToArray();
+    }
 
     private static void RequireSetup(SettingsRow settings)
     {
