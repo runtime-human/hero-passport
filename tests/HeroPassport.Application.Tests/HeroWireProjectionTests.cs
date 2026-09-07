@@ -59,7 +59,12 @@ public sealed class HeroWireProjectionTests
             Assert.Empty(committed.TraitsUnlocked);
             Assert.Empty(committed.TitlesUnlocked);
             Assert.Null(committed.ActiveTitle);
-            Assert.Empty(committed.Milestones);
+            Assert.Equal(
+                [
+                    new MilestoneSnapshot("skill_level_changed", "skill_level:coding:2"),
+                    new MilestoneSnapshot("streak_changed", "streak:1"),
+                ],
+                committed.Milestones);
 
             await using (var connection = await HeroPassportDatabase.OpenConnectionAsync(path, token))
             await using (var command = connection.CreateCommand())
@@ -80,6 +85,10 @@ public sealed class HeroWireProjectionTests
             Assert.Equal(committed.Streak, replay.Streak);
             Assert.Equal(committed.HeroProgress, replay.HeroProgress);
             Assert.True(committed.SkillProgress.SequenceEqual(replay.SkillProgress));
+            Assert.Equal(committed.TraitsUnlocked, replay.TraitsUnlocked);
+            Assert.Equal(committed.TitlesUnlocked, replay.TitlesUnlocked);
+            Assert.Equal(committed.ActiveTitle, replay.ActiveTitle);
+            Assert.Equal(committed.Milestones, replay.Milestones);
 
             var card = await app.GetCardAsync(hero.HeroId, project, token);
             Assert.False(card.Hero.IsLevelCapped);
