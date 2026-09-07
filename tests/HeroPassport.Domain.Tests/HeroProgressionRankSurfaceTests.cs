@@ -22,4 +22,12 @@ public sealed class HeroProgressionRankSurfaceTests
             "rank/1.0.0",
             rank.GetField("RuleVersion")?.GetRawConstantValue());
     }
+
+    [Fact]
+    public void TransitionalMinimalFinishFacadeIsRemoved()
+    {
+        var assembly = typeof(HeroProgressionRules).Assembly;
+
+        Assert.Null(assembly.GetType("HeroPassport.Domain.Engine.MinimalQuestFinishRules"));
+    }
 }
