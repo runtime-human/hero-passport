@@ -22,6 +22,12 @@ public sealed class UnlockSchemaTests
                     path,
                     "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('traits','titles','hero_traits','hero_titles','quest_milestones');",
                     token));
+            Assert.Equal(
+                1,
+                await ScalarLongAsync(
+                    path,
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='ix_quest_sessions_hero_id';",
+                    token));
 
             Assert.Equal(
                 [
