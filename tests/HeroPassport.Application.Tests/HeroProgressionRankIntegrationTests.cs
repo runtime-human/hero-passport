@@ -82,7 +82,7 @@ public sealed class HeroProgressionRankIntegrationTests
             var card = await app.GetCardAsync(hero.HeroId, project, token);
             Assert.Equal(760, card.Hero.TotalXp);
             Assert.Equal(5, card.Hero.Level);
-            Assert.Equal("code_knight", card.Hero.Rank);
+            Assert.Equal("code_knight", card.Hero.RankKey);
 
             Assert.Equal(HeroProgressionRules.RuleVersion, HeroPassportVersions.CurrentRules.HeroProgression);
             Assert.Equal(RankRules.RuleVersion, HeroPassportVersions.CurrentRules.Rank);
