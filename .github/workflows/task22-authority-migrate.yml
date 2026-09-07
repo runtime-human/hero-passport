@@ -35,56 +35,30 @@ jobs:
               file.write_text(text.replace(old, new), encoding='utf-8')
 
           finish = 'src/HeroPassport.Infrastructure/Persistence/SqliteHeroPassportStateStore.FinishQuest.cs'
-          replace_once(
-              finish,
-              '''        var totalXpAfter = JsonSafeInteger.Require(checked(hero.TotalXp + xpGained));
-          var levelBefore = MinimalQuestFinishRules.HeroLevel(hero.TotalXp);
-          var levelAfter = MinimalQuestFinishRules.HeroLevel(totalXpAfter);
-          var rankBefore = MinimalQuestFinishRules.RankKey(levelBefore);
-          var rankAfter = MinimalQuestFinishRules.RankKey(levelAfter);''',
-              '''        var heroProgression = HeroProgressionRules.Apply(hero.TotalXp, xpGained, rules.HeroProgression);
-          var totalXpAfter = heroProgression.TotalXpAfter;
-          var levelBefore = heroProgression.LevelBefore;
-          var levelAfter = heroProgression.LevelAfter;
-          var rankBefore = RankRules.Key(levelBefore, rules.Rank);
-          var rankAfter = RankRules.Key(levelAfter, rules.Rank);''')
-          replace_once(
-              finish,
+          replace_once(finish,
+              '        var totalXpAfter = JsonSafeInteger.Require(checked(hero.TotalXp + xpGained));\n        var levelBefore = MinimalQuestFinishRules.HeroLevel(hero.TotalXp);\n        var levelAfter = MinimalQuestFinishRules.HeroLevel(totalXpAfter);\n        var rankBefore = MinimalQuestFinishRules.RankKey(levelBefore);\n        var rankAfter = MinimalQuestFinishRules.RankKey(levelAfter);',
+              '        var heroProgression = HeroProgressionRules.Apply(hero.TotalXp, xpGained, rules.HeroProgression);\n        var totalXpAfter = heroProgression.TotalXpAfter;\n        var levelBefore = heroProgression.LevelBefore;\n        var levelAfter = heroProgression.LevelAfter;\n        var rankBefore = RankRules.Key(levelBefore, rules.Rank);\n        var rankAfter = RankRules.Key(levelAfter, rules.Rank);')
+          replace_once(finish,
               '        var isLevelCapped = MinimalQuestFinishRules.IsHeroLevelCapped(levelAfter, heroProgressionVersion);',
               '        var isLevelCapped = HeroProgressionRules.IsLevelCapped(levelAfter, heroProgressionVersion);')
-          replace_once(
-              finish,
+          replace_once(finish,
               '        var levelXp = MinimalQuestFinishRules.HeroLevelXp(totalXpAfter, levelAfter, heroProgressionVersion);',
               '        var levelXp = HeroProgressionRules.LevelXp(totalXpAfter, levelAfter, heroProgressionVersion);')
-          replace_once(
-              finish,
+          replace_once(finish,
               '        var nextLevelXpRequired = MinimalQuestFinishRules.NextHeroLevelXpRequired(levelAfter, heroProgressionVersion);',
               '        var nextLevelXpRequired = HeroProgressionRules.NextLevelXpRequired(levelAfter, heroProgressionVersion);')
 
           admin = 'src/HeroPassport.Infrastructure/Persistence/SqliteHeroPassportStateStore.HeroAdministration.cs'
-          replace_once(
-              admin,
-              '''        var level = MinimalQuestFinishRules.HeroLevel(hero.TotalXp);
-          var isLevelCapped = MinimalQuestFinishRules.IsHeroLevelCapped(level, rules.HeroProgression);
-          var levelXp = MinimalQuestFinishRules.HeroLevelXp(hero.TotalXp, level, rules.HeroProgression);
-          var nextLevelXpRequired = MinimalQuestFinishRules.NextHeroLevelXpRequired(level, rules.HeroProgression);''',
-              '''        var level = HeroProgressionRules.Level(hero.TotalXp, rules.HeroProgression);
-          var isLevelCapped = HeroProgressionRules.IsLevelCapped(level, rules.HeroProgression);
-          var levelXp = HeroProgressionRules.LevelXp(hero.TotalXp, level, rules.HeroProgression);
-          var nextLevelXpRequired = HeroProgressionRules.NextLevelXpRequired(level, rules.HeroProgression);''')
-          replace_once(
-              admin,
+          replace_once(admin,
+              '        var level = MinimalQuestFinishRules.HeroLevel(hero.TotalXp);\n        var isLevelCapped = MinimalQuestFinishRules.IsHeroLevelCapped(level, rules.HeroProgression);\n        var levelXp = MinimalQuestFinishRules.HeroLevelXp(hero.TotalXp, level, rules.HeroProgression);\n        var nextLevelXpRequired = MinimalQuestFinishRules.NextHeroLevelXpRequired(level, rules.HeroProgression);',
+              '        var level = HeroProgressionRules.Level(hero.TotalXp, rules.HeroProgression);\n        var isLevelCapped = HeroProgressionRules.IsLevelCapped(level, rules.HeroProgression);\n        var levelXp = HeroProgressionRules.LevelXp(hero.TotalXp, level, rules.HeroProgression);\n        var nextLevelXpRequired = HeroProgressionRules.NextLevelXpRequired(level, rules.HeroProgression);')
+          replace_once(admin,
               '                MinimalQuestFinishRules.RankKey(level),',
               '                RankRules.Key(level, rules.Rank),')
-          replace_once(
-              admin,
-              '''        var level = MinimalQuestFinishRules.HeroLevel(hero.TotalXp);
-          return new HeroListItemSnapshot(''',
-              '''        var rules = HeroPassportVersions.CurrentRules;
-          var level = HeroProgressionRules.Level(hero.TotalXp, rules.HeroProgression);
-          return new HeroListItemSnapshot(''')
-          replace_once(
-              admin,
+          replace_once(admin,
+              '        var level = MinimalQuestFinishRules.HeroLevel(hero.TotalXp);\n        return new HeroListItemSnapshot(',
+              '        var rules = HeroPassportVersions.CurrentRules;\n        var level = HeroProgressionRules.Level(hero.TotalXp, rules.HeroProgression);\n        return new HeroListItemSnapshot(')
+          replace_once(admin,
               '            MinimalQuestFinishRules.RankKey(level),',
               '            RankRules.Key(level, rules.Rank),')
 
