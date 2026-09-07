@@ -1,6 +1,6 @@
 name: task23-contract-green
 
-on:
+"on":
   push:
     branches:
       - feat/card-top-skills
