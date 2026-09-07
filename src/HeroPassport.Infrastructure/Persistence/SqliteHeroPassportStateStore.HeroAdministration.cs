@@ -195,6 +195,7 @@ public sealed partial class SqliteHeroPassportStateStore
         var isLevelCapped = MinimalQuestFinishRules.IsHeroLevelCapped(level, rules.HeroProgression);
         var levelXp = MinimalQuestFinishRules.HeroLevelXp(hero.TotalXp, level, rules.HeroProgression);
         var nextLevelXpRequired = MinimalQuestFinishRules.NextHeroLevelXpRequired(level, rules.HeroProgression);
+        var unlock = await HeroUnlockCardAsync(connection, heroId, rules.Unlock, cancellationToken).ConfigureAwait(false);
         return new HeroCardResult(
             new HeroCardSnapshot(
                 hero.HeroId,
@@ -205,13 +206,13 @@ public sealed partial class SqliteHeroPassportStateStore
                 levelXp,
                 nextLevelXpRequired,
                 MinimalQuestFinishRules.RankKey(level),
-                ActiveTitle: null,
+                unlock.ActiveTitle,
                 hero.Trust,
                 hero.Strain,
                 hero.SuccessStreak,
                 Array.Empty<CardSkillSnapshot>(),
-                Array.Empty<string>(),
-                Array.Empty<string>()),
+                unlock.Traits,
+                unlock.Titles),
             new ProjectCardSnapshot(
                 displayName,
                 questsStarted,
