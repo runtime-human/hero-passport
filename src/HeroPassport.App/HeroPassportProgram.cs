@@ -32,7 +32,16 @@ public static class HeroPassportProgram
         try
         {
             var rootCommand = CreateRootCommand();
-            return await rootCommand.Parse(args).InvokeAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+            var parseResult = rootCommand.Parse(args);
+            var invocationConfiguration = new InvocationConfiguration
+            {
+                EnableDefaultExceptionHandler = false,
+                Error = Console.Error,
+                Output = parseResult.Errors.Count == 0 ? Console.Out : Console.Error,
+            };
+            return await parseResult
+                .InvokeAsync(invocationConfiguration, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (HeroPassportException exception)
         {
