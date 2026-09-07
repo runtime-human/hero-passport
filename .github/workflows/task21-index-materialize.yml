@@ -26,18 +26,22 @@ jobs:
           from pathlib import Path
           path = Path('src/HeroPassport.Infrastructure/Persistence/HeroPassportStorageModel.cs')
           text = path.read_text(encoding='utf-8')
-          old = '''            entity.HasIndex("hero_id", "project_id")
-                .IsUnique()
-                .HasDatabaseName("ux_quest_sessions_one_open_per_hero_project")
-                .HasFilter("status = 'open'");
-'''
-          new = '''            entity.HasIndex("hero_id")
-                .HasDatabaseName("ix_quest_sessions_hero_id");
-            entity.HasIndex("hero_id", "project_id")
-                .IsUnique()
-                .HasDatabaseName("ux_quest_sessions_one_open_per_hero_project")
-                .HasFilter("status = 'open'");
-'''
+          old = "\n".join([
+              '            entity.HasIndex("hero_id", "project_id")',
+              '                .IsUnique()',
+              '                .HasDatabaseName("ux_quest_sessions_one_open_per_hero_project")',
+              '                .HasFilter("status = \'open\'");',
+              '',
+          ])
+          new = "\n".join([
+              '            entity.HasIndex("hero_id")',
+              '                .HasDatabaseName("ix_quest_sessions_hero_id");',
+              '            entity.HasIndex("hero_id", "project_id")',
+              '                .IsUnique()',
+              '                .HasDatabaseName("ux_quest_sessions_one_open_per_hero_project")',
+              '                .HasFilter("status = \'open\'");',
+              '',
+          ])
           count = text.count(old)
           if count != 1:
               raise SystemExit(f'expected exactly one Quest index block, got {count}')
