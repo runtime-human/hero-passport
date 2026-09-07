@@ -1,3 +1,4 @@
+using HeroPassport.Domain.Engine;
 using Microsoft.EntityFrameworkCore;
 
 namespace HeroPassport.Infrastructure.Persistence;
@@ -12,8 +13,6 @@ internal static class UnlockStorageModel
     private const string Title = "HeroPassport.Storage.Title";
     private const string HeroTitle = "HeroPassport.Storage.HeroTitle";
     private const string QuestMilestone = "HeroPassport.Storage.QuestMilestone";
-
-    private const string CatalogVersion = "unlock/2.0.0";
 
     public static void Configure(ModelBuilder modelBuilder)
     {
@@ -34,17 +33,13 @@ internal static class UnlockStorageModel
             entity.HasKey("trait_key");
             entity.ToTable("traits", table =>
             {
-                table.HasCheckConstraint(
-                    "ck_traits_key",
-                    "trait_key IN ('precise_executor','test_scout','scope_keeper','steady_hand','polyglot_crafter')");
+                table.HasCheckConstraint("ck_traits_key", InConstraint("trait_key", UnlockRules.TraitKeys));
                 table.HasCheckConstraint("ck_traits_catalog_version", "length(catalog_version) BETWEEN 1 AND 40");
             });
-            entity.HasData(
-                new { trait_key = "precise_executor", catalog_version = CatalogVersion },
-                new { trait_key = "test_scout", catalog_version = CatalogVersion },
-                new { trait_key = "scope_keeper", catalog_version = CatalogVersion },
-                new { trait_key = "steady_hand", catalog_version = CatalogVersion },
-                new { trait_key = "polyglot_crafter", catalog_version = CatalogVersion });
+            foreach (var traitKey in UnlockRules.TraitKeys)
+            {
+                entity.HasData(new { trait_key = traitKey, catalog_version = UnlockRules.RuleVersion });
+            }
         });
     }
 
@@ -61,16 +56,21 @@ internal static class UnlockStorageModel
             {
                 table.HasCheckConstraint(
                     "ck_titles_key",
-                    "title_key IN ('rising_adventurer','veteran_of_the_merge','skill_specialist','unbroken_builder','master_of_many_tools')");
-                table.HasCheckConstraint("ck_titles_priority", "priority BETWEEN 1 AND 5");
+                    InConstraint("title_key", UnlockRules.TitleCatalog.Select(static title => title.TitleKey)));
+                table.HasCheckConstraint(
+                    "ck_titles_priority",
+                    $"priority BETWEEN {UnlockRules.TitleCatalog.Min(static title => title.Priority)} AND {UnlockRules.TitleCatalog.Max(static title => title.Priority)}");
                 table.HasCheckConstraint("ck_titles_catalog_version", "length(catalog_version) BETWEEN 1 AND 40");
             });
-            entity.HasData(
-                new { title_key = "rising_adventurer", priority = 1, catalog_version = CatalogVersion },
-                new { title_key = "veteran_of_the_merge", priority = 2, catalog_version = CatalogVersion },
-                new { title_key = "skill_specialist", priority = 3, catalog_version = CatalogVersion },
-                new { title_key = "unbroken_builder", priority = 4, catalog_version = CatalogVersion },
-                new { title_key = "master_of_many_tools", priority = 5, catalog_version = CatalogVersion });
+            foreach (var title in UnlockRules.TitleCatalog)
+            {
+                entity.HasData(new
+                {
+                    title_key = title.TitleKey,
+                    priority = title.Priority,
+                    catalog_version = UnlockRules.RuleVersion,
+                });
+            }
         });
     }
 
@@ -124,4 +124,7 @@ internal static class UnlockStorageModel
             });
         });
     }
+
+    private static string InConstraint(string columnName, IEnumerable<string> values) =>
+        $"{columnName} IN ({string.Join(',', values.Select(static value => $"'{value.Replace("'", "''", StringComparison.Ordinal)}'"))})";
 }
