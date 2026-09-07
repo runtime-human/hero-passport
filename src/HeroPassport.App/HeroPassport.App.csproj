@@ -9,6 +9,7 @@
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="System.CommandLine" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="../../skills/hero-passport/**/*"
