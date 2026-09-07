@@ -27,8 +27,8 @@ jobs:
 
           schema_path = Path('src/HeroPassport.App/Mcp/HpMcpToolCatalog.cs')
           schema = schema_path.read_text(encoding='utf-8-sig')
-          old = '\\"topSkills\\":{\\"type\\":\\"array\\",\\"items\\":{'
-          new = '\\"topSkills\\":{\\"type\\":\\"array\\",\\"maxItems\\":3,\\"items\\":{'
+          old = '"topSkills":{"type":"array","items":{'
+          new = '"topSkills":{"type":"array","maxItems":3,"items":{'
           count = schema.count(old)
           if count != 2:
               raise SystemExit(f'expected 2 topSkills schema arrays, found {count}')
