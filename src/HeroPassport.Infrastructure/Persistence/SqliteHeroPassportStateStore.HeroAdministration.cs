@@ -191,10 +191,10 @@ public sealed partial class SqliteHeroPassportStateStore
             ? 0
             : checked((int)(((decimal)questsSucceeded * 1000m) / questsFinished));
         var rules = HeroPassportVersions.CurrentRules;
-        var level = MinimalQuestFinishRules.HeroLevel(hero.TotalXp);
-        var isLevelCapped = MinimalQuestFinishRules.IsHeroLevelCapped(level, rules.HeroProgression);
-        var levelXp = MinimalQuestFinishRules.HeroLevelXp(hero.TotalXp, level, rules.HeroProgression);
-        var nextLevelXpRequired = MinimalQuestFinishRules.NextHeroLevelXpRequired(level, rules.HeroProgression);
+        var level = HeroProgressionRules.Level(hero.TotalXp, rules.HeroProgression);
+        var isLevelCapped = HeroProgressionRules.IsLevelCapped(level, rules.HeroProgression);
+        var levelXp = HeroProgressionRules.LevelXp(hero.TotalXp, level, rules.HeroProgression);
+        var nextLevelXpRequired = HeroProgressionRules.NextLevelXpRequired(level, rules.HeroProgression);
         var unlock = await HeroUnlockCardAsync(connection, heroId, rules.Unlock, cancellationToken).ConfigureAwait(false);
         return new HeroCardResult(
             new HeroCardSnapshot(
@@ -205,7 +205,7 @@ public sealed partial class SqliteHeroPassportStateStore
                 isLevelCapped,
                 levelXp,
                 nextLevelXpRequired,
-                MinimalQuestFinishRules.RankKey(level),
+                RankRules.Key(level, rules.Rank),
                 unlock.ActiveTitle,
                 hero.Trust,
                 hero.Strain,
@@ -270,7 +270,8 @@ public sealed partial class SqliteHeroPassportStateStore
 
     private static HeroListItemSnapshot ToListSnapshot(AdministrationHeroRow hero, string? activeHeroId)
     {
-        var level = MinimalQuestFinishRules.HeroLevel(hero.TotalXp);
+        var rules = HeroPassportVersions.CurrentRules;
+        var level = HeroProgressionRules.Level(hero.TotalXp, rules.HeroProgression);
         return new HeroListItemSnapshot(
             hero.HeroId,
             hero.Name,
@@ -278,7 +279,7 @@ public sealed partial class SqliteHeroPassportStateStore
             string.Equals(activeHeroId, hero.HeroId.ToString(), StringComparison.Ordinal),
             hero.TotalXp,
             level,
-            MinimalQuestFinishRules.RankKey(level),
+            RankRules.Key(level, rules.Rank),
             hero.Trust,
             hero.Strain);
     }
