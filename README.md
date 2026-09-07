@@ -32,7 +32,7 @@ Typical start:
 
 Canonical clean coding finish is **95 XP** before any future rule-version change.
 
-## v3.2.1 implementation baseline — 6 September 2026
+## v3.2.1 implementation baseline — 7 September 2026
 
 ```text
 C# 14 / .NET 10 LTS / SDK 10.0.302
@@ -41,13 +41,32 @@ MCP semantics 2026-07-28; qualification path 2025-11-25
 EF Core SQLite / Microsoft.Data.Sqlite 10.0.10
 SQLitePCLRaw.bundle_e_sqlite3 3.0.5
 qualified actual SQLite runtime >= 3.53.4
-System.CommandLine 2.0.10
+System.CommandLine 2.0.11
 xunit.v3 3.2.2
 ```
 
 The v3.2.1 product/architecture contract remains the 11 August 2026 baseline; dependency qualification is refreshed independently as implementation proceeds.
 
 0.1 ships MCP Core + Agent Skill + CLI. Local Web UI is 0.2.
+
+## CLI bootstrap
+
+The current non-interactive first-run path uses the same durable Bootstrap Application semantics as MCP:
+
+```text
+hero-passport init \
+  --locale en-US \
+  --hero-name "Nova" \
+  --json
+```
+
+`presentationStyle=rpg_engineering`, `autoStartQuest=true` and `autoFinishQuest=true` are the defaults. Retry-sensitive automation should also pass a stable `--request-id <uuidv7>` so a crash/restart can replay the same Bootstrap intent. See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for the complete CLI contract.
+
+The existing local MCP host remains:
+
+```text
+hero-passport mcp [--project-root <directory>]
+```
 
 ## Durable identity and retries
 
