@@ -2,7 +2,7 @@
 
 **Status:** Accepted v3.2.1 dependency policy  
 **Architecture snapshot:** 2026-08-11  
-**Verification refresh:** 2026-09-06
+**Verification refresh:** 2026-09-07
 
 Versions are pinned to stable releases verified during architecture/implementation passes. Task 0 of the implementation plan performs a real package restore gate before product work proceeds; later implementation slices may refresh a dependency within the accepted major when official sources and qualification support it.
 
@@ -60,10 +60,10 @@ Microsoft.Data.Sqlite connection strings expose Foreign Keys/Pooling/Default Tim
 ## 5. CLI
 
 ```text
-System.CommandLine 2.0.10
+System.CommandLine 2.0.11
 ```
 
-Do not adopt a preview major for 0.1 without a separate requirement/qualification.
+Stable 2.0.11 was released 2026-08-11 and is the qualified 0.1 CLI baseline. Hero Passport uses the stable 2.x `RootCommand` / subcommand / `SetAction` model for parsing and invocation. The newer 3.0 line remains prerelease and is not adopted for 0.1 without a separate requirement and qualification pass.
 
 ## 6. Testing
 
