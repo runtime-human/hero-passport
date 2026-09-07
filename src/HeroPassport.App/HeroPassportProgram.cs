@@ -139,6 +139,7 @@ public static class HeroPassportProgram
             parseResult.GetValue(jsonOption),
             token));
         rootCommand.Subcommands.Add(initCommand);
+        rootCommand.Subcommands.Add(HeroPassportHeroCli.CreateCommand());
 
         return rootCommand;
     }
