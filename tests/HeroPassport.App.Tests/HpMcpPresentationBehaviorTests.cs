@@ -10,6 +10,7 @@ namespace HeroPassport.App.Tests;
 public sealed class HpMcpPresentationBehaviorTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly string[] ScopeControlSkills = ["scope_control"];
 
     [Fact]
     public async Task StartFinishAndCardUseLocalizedDisplayWithoutChangingCanonicalWireKeys()
@@ -83,7 +84,7 @@ public sealed class HpMcpPresentationBehaviorTests
                         testsStatus = "not_run",
                         testsEvidence = "none",
                     },
-                    skillsUsed = new[] { "scope_control" },
+                    skillsUsed = ScopeControlSkills,
                 }),
                 token);
             var finishJson = Structured(finished);
