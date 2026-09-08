@@ -163,8 +163,8 @@ public static class HeroPassportDatabaseDoctor
     }
 
     private static string DetermineMigrationState(
-        IReadOnlyList<string> availableMigrations,
-        IReadOnlyList<string> appliedMigrations,
+        string[] availableMigrations,
+        string[] appliedMigrations,
         bool historyTableExists)
     {
         if (!historyTableExists)
@@ -177,8 +177,8 @@ public static class HeroPassportDatabaseDoctor
             return "current";
         }
 
-        if (appliedMigrations.Count <= availableMigrations.Count &&
-            appliedMigrations.SequenceEqual(availableMigrations.Take(appliedMigrations.Count), StringComparer.Ordinal))
+        if (appliedMigrations.Length <= availableMigrations.Length &&
+            appliedMigrations.SequenceEqual(availableMigrations.Take(appliedMigrations.Length), StringComparer.Ordinal))
         {
             return "pending";
         }
