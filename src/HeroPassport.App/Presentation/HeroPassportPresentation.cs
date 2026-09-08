@@ -4,19 +4,19 @@ using System.Resources;
 
 namespace HeroPassport.App.Presentation;
 
-public sealed class HeroPassportPresentation
+public static class HeroPassportPresentation
 {
     private static readonly ResourceManager Resources = new(
         "HeroPassport.App.Presentation.HeroPassportResources",
         typeof(HeroPassportPresentation).Assembly);
 
-    public string SkillLabel(string locale, string skillKey) =>
+    public static string SkillLabel(string locale, string skillKey) =>
         Get(SkillResourceKey(skillKey), Culture(locale));
 
-    public string RewardComponentLabel(string locale, string componentKey) =>
+    public static string RewardComponentLabel(string locale, string componentKey) =>
         Get(RewardResourceKey(componentKey), Culture(locale));
 
-    public string RenderStart(string locale, string presentationStyle, string title, bool replayed)
+    public static string RenderStart(string locale, string presentationStyle, string title, bool replayed)
     {
         ArgumentNullException.ThrowIfNull(title);
         var culture = Culture(locale);
@@ -33,7 +33,7 @@ public sealed class HeroPassportPresentation
         return Format(resourceKey, culture, title);
     }
 
-    public string RenderFinish(string locale, string presentationStyle, FinishQuestResult result)
+    public static string RenderFinish(string locale, string presentationStyle, FinishQuestResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
         var culture = Culture(locale);
@@ -83,7 +83,7 @@ public sealed class HeroPassportPresentation
             : rendered;
     }
 
-    public string RenderCard(string locale, string presentationStyle, HeroCardResult result)
+    public static string RenderCard(string locale, string presentationStyle, HeroCardResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
         var culture = Culture(locale);
