@@ -241,7 +241,7 @@ public static class HeroPassportProgram
     {
         if (!confirmed)
         {
-            throw new HeroPassportException("HP300", "Logical delete confirmation is required.");
+            throw new HeroPassportException("HP300", "Option --confirm-logical-delete is required.");
         }
 
         var heroId = ParseHeroId(heroIdValue);
