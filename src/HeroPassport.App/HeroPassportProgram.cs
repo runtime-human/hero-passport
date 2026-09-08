@@ -95,6 +95,32 @@ public static class HeroPassportProgram
             RunDoctorAsync(parseResult.GetValue(doctorJsonOption), token));
         rootCommand.Subcommands.Add(doctorCommand);
 
+        var confirmProcessesStoppedOption = new Option<bool>("--confirm-processes-stopped")
+        {
+            Description = "Explicitly confirm that all competing Hero Passport processes have been stopped before migration-lock repair.",
+            Required = true,
+        };
+        var repairJsonOption = new Option<bool>("--json")
+        {
+            Description = "Write one machine-readable repair result to stdout.",
+        };
+        var migrationLockCommand = new Command(
+            "migration-lock",
+            "Explicitly clear an abandoned EF SQLite migration lock after safety and integrity checks.")
+        {
+            confirmProcessesStoppedOption,
+            repairJsonOption,
+        };
+        migrationLockCommand.SetAction((parseResult, token) => RunMigrationLockRepairAsync(
+            parseResult.GetValue(confirmProcessesStoppedOption),
+            parseResult.GetValue(repairJsonOption),
+            token));
+        var repairCommand = new Command("repair", "Explicit storage repair commands.")
+        {
+            migrationLockCommand,
+        };
+        rootCommand.Subcommands.Add(repairCommand);
+
         var localeOption = new Option<string>("--locale")
         {
             Description = "Initial locale: ru-RU or en-US.",
@@ -217,6 +243,45 @@ public static class HeroPassportProgram
         Console.Out.WriteLine($"Foreign key violations: {report.ForeignKeyViolationCount}");
         Console.Out.WriteLine($"Healthy: {report.Healthy}");
         return report.Healthy ? 0 : 1;
+    }
+
+    private static async Task<int> RunMigrationLockRepairAsync(
+        bool confirmedProcessesStopped,
+        bool json,
+        CancellationToken cancellationToken)
+    {
+        if (!confirmedProcessesStopped)
+        {
+            throw new HeroPassportException("HP300", "Option --confirm-processes-stopped is required.");
+        }
+
+        var databasePath = HeroPassportRuntimePaths.ResolveDatabasePath();
+        var result = await HeroPassportMigrationLockRepair
+            .RepairAsync(databasePath, competingProcessesStopped: true, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (json)
+        {
+            var payload = new
+            {
+                result.LockCleared,
+                beforeMigrationLockSuspected = result.Before.MigrationLockSuspected,
+                afterMigrationLockSuspected = result.After.MigrationLockSuspected,
+                migrationState = result.After.MigrationState,
+                quickCheckPassed = result.After.QuickCheckPassed,
+                foreignKeyViolationCount = result.After.ForeignKeyViolationCount,
+                healthy = result.After.Healthy,
+            };
+            Console.Out.WriteLine(JsonSerializer.Serialize(payload, CliJsonOptions));
+            return result.After.Healthy ? 0 : 1;
+        }
+
+        Console.Out.WriteLine($"Migration lock cleared: {result.LockCleared}");
+        Console.Out.WriteLine($"Migration state: {result.After.MigrationState}");
+        Console.Out.WriteLine($"Quick check: {(result.After.QuickCheckPassed ? "ok" : "failed")}");
+        Console.Out.WriteLine($"Foreign key violations: {result.After.ForeignKeyViolationCount}");
+        Console.Out.WriteLine($"Healthy: {result.After.Healthy}");
+        return result.After.Healthy ? 0 : 1;
     }
 
     private static async Task<int> RunInitAsync(
