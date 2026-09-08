@@ -80,6 +80,20 @@ public static class HeroPassportProgram
             RunMcpAsync(parseResult.GetValue(projectRootOption), token));
         rootCommand.Subcommands.Add(mcpCommand);
 
+        var doctorJsonOption = new Option<bool>("--json")
+        {
+            Description = "Write one machine-readable diagnostic report to stdout.",
+        };
+        var doctorCommand = new Command(
+            "doctor",
+            "Inspect Hero Passport SQLite policy, migrations, lock state and integrity without modifying the database.")
+        {
+            doctorJsonOption,
+        };
+        doctorCommand.SetAction((parseResult, token) =>
+            RunDoctorAsync(parseResult.GetValue(doctorJsonOption), token));
+        rootCommand.Subcommands.Add(doctorCommand);
+
         var localeOption = new Option<string>("--locale")
         {
             Description = "Initial locale: ru-RU or en-US.",
@@ -175,6 +189,33 @@ public static class HeroPassportProgram
         rootCommand.Subcommands.Add(heroCommand);
 
         return rootCommand;
+    }
+
+    private static async Task<int> RunDoctorAsync(bool json, CancellationToken cancellationToken)
+    {
+        var databasePath = HeroPassportRuntimePaths.ResolveDatabasePath();
+        var report = await HeroPassportDatabaseDoctor
+            .InspectAsync(databasePath, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(report, CliJsonOptions));
+            return report.Healthy ? 0 : 1;
+        }
+
+        Console.Out.WriteLine($"Database: {(report.DatabaseExists ? "present" : "not initialized")}");
+        Console.Out.WriteLine($"SQLite: {report.SqliteVersion ?? "unavailable"} (supported: {report.SqliteVersionSupported})");
+        Console.Out.WriteLine($"Journal mode: {report.JournalMode ?? "unavailable"}");
+        Console.Out.WriteLine($"Synchronous: {report.Synchronous?.ToString() ?? "unavailable"}");
+        Console.Out.WriteLine($"Foreign keys: {report.ForeignKeys?.ToString() ?? "unavailable"}");
+        Console.Out.WriteLine($"Trusted schema: {report.TrustedSchema?.ToString() ?? "unavailable"}");
+        Console.Out.WriteLine($"Migrations: {report.MigrationState}");
+        Console.Out.WriteLine($"Migration lock suspected: {report.MigrationLockSuspected}");
+        Console.Out.WriteLine($"Quick check: {(report.QuickCheckPassed ? "ok" : "failed")}");
+        Console.Out.WriteLine($"Foreign key violations: {report.ForeignKeyViolationCount}");
+        Console.Out.WriteLine($"Healthy: {report.Healthy}");
+        return report.Healthy ? 0 : 1;
     }
 
     private static async Task<int> RunInitAsync(
