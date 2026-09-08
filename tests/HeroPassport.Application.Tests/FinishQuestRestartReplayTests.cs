@@ -29,6 +29,7 @@ public sealed class FinishQuestRestartReplayTests
                     "Prove persisted Finish replay after an Application restart"),
                 project,
                 token)).Quest;
+            await app.ConfigureAsync(new ConfigureRequest("ru-RU", "rpg_engineering", true, true), token);
             var request = new FinishQuestRequest(
                 MutationRequestId.New(),
                 quest.QuestId,
@@ -45,6 +46,8 @@ public sealed class FinishQuestRestartReplayTests
             Assert.False(replay.AlreadyFinalized);
             Assert.Equal(committed.QuestId, replay.QuestId);
             Assert.Equal(committed.Result, replay.Result);
+            Assert.Equal("en-US", committed.QuestLocale);
+            Assert.Equal(committed.QuestLocale, replay.QuestLocale);
             Assert.Equal(committed.Reward, replay.Reward);
             Assert.Equal(committed.HeroProgress, replay.HeroProgress);
             Assert.Equal(committed.TrustStrain.TrustBefore, replay.TrustStrain.TrustBefore);
