@@ -14,21 +14,17 @@ public sealed partial class HeroPassportPresentationTests
     [Fact]
     public void RussianCanonicalLabelsUseAcceptedTerminology()
     {
-        var presentation = new HeroPassportPresentation();
-
-        Assert.Equal("Контроль", presentation.SkillLabel("ru-RU", "scope_control"));
-        Assert.Equal("Бонус за контроль", presentation.RewardComponentLabel("ru-RU", "clean_scope_bonus"));
-        Assert.Equal("Выход за задачу", presentation.RewardComponentLabel("ru-RU", "scope_violation_penalty"));
+        Assert.Equal("Контроль", HeroPassportPresentation.SkillLabel("ru-RU", "scope_control"));
+        Assert.Equal("Бонус за контроль", HeroPassportPresentation.RewardComponentLabel("ru-RU", "clean_scope_bonus"));
+        Assert.Equal("Выход за задачу", HeroPassportPresentation.RewardComponentLabel("ru-RU", "scope_violation_penalty"));
     }
 
     [Fact]
     public void StartPresentationHasThreeLocalizedStyleVariants()
     {
-        var presentation = new HeroPassportPresentation();
-
-        var minimal = presentation.RenderStart("en-US", "minimal", "Ship localization", replayed: false);
-        var engineering = presentation.RenderStart("en-US", "rpg_engineering", "Ship localization", replayed: false);
-        var classic = presentation.RenderStart("en-US", "classic_rpg", "Ship localization", replayed: false);
+        var minimal = HeroPassportPresentation.RenderStart("en-US", "minimal", "Ship localization", replayed: false);
+        var engineering = HeroPassportPresentation.RenderStart("en-US", "rpg_engineering", "Ship localization", replayed: false);
+        var classic = HeroPassportPresentation.RenderStart("en-US", "classic_rpg", "Ship localization", replayed: false);
 
         Assert.Equal("⚔ Ship localization", minimal);
         Assert.Contains("Quest", engineering, StringComparison.Ordinal);
@@ -39,12 +35,11 @@ public sealed partial class HeroPassportPresentationTests
     [Fact]
     public void FinishAndCardPresentationRespectCapAndDoNotInventNextThreshold()
     {
-        var presentation = new HeroPassportPresentation();
         var finish = CappedFinish();
         var card = CappedCard(finish.HeroProgress.HeroId);
 
-        var finishText = presentation.RenderFinish("ru-RU", "rpg_engineering", finish);
-        var cardText = presentation.RenderCard("ru-RU", "minimal", card);
+        var finishText = HeroPassportPresentation.RenderFinish("ru-RU", "rpg_engineering", finish);
+        var cardText = HeroPassportPresentation.RenderCard("ru-RU", "minimal", card);
 
         Assert.Contains("+95 XP", finishText, StringComparison.Ordinal);
         Assert.Contains("ур. 50", finishText, StringComparison.OrdinalIgnoreCase);
