@@ -146,4 +146,7 @@ public sealed record FinishQuestResult(
     string? ActiveTitle,
     IReadOnlyList<MilestoneSnapshot> Milestones,
     bool Replayed,
-    bool AlreadyFinalized);
+    bool AlreadyFinalized)
+{
+    public string QuestLocale { get; init; } = string.Empty;
+}
