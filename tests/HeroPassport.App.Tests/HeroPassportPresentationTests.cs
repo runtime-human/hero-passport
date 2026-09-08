@@ -51,6 +51,7 @@ public sealed partial class HeroPassportPresentationTests
         Assert.Contains("макс", finishText, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("следующ", finishText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Контроль", finishText, StringComparison.Ordinal);
+        Assert.Contains("Несломленный создатель", finishText, StringComparison.Ordinal);
         Assert.Contains("Легендарный архитектор", cardText, StringComparison.Ordinal);
         Assert.DoesNotContain("следующ", cardText, StringComparison.OrdinalIgnoreCase);
     }
