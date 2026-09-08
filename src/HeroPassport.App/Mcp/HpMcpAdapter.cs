@@ -1,3 +1,4 @@
+using HeroPassport.App.Presentation;
 using HeroPassport.Application.Runtime;
 using HeroPassport.Domain.Primitives;
 using HeroPassport.Infrastructure.ProjectIdentity;
@@ -196,6 +197,7 @@ public sealed class HpMcpAdapter(
     {
         var args = RequireExact(arguments, "startRequestId", "heroId", "questType", "title", "goal");
         var project = await projectProvider(token).ConfigureAwait(false);
+        var settings = await PresentationSettingsAsync(project, token).ConfigureAwait(false);
         var result = await application.StartQuestAsync(
             new StartQuestRequest(
                 MutationRequestId.Parse(RequireString(args, "startRequestId")),
@@ -226,7 +228,11 @@ public sealed class HpMcpAdapter(
                 hero.RankKey,
             },
             result.Replayed,
-            displayText = result.Replayed ? "Quest start replayed." : "Quest started.",
+            displayText = HeroPassportPresentation.RenderStart(
+                result.Quest.Locale,
+                settings.PresentationStyle,
+                result.Quest.Title,
+                result.Replayed),
         });
     }
 
@@ -259,6 +265,7 @@ public sealed class HpMcpAdapter(
                 skills),
             project,
             token).ConfigureAwait(false);
+        var settings = await PresentationSettingsAsync(project, token).ConfigureAwait(false);
 
         return Success(new
         {
@@ -301,7 +308,10 @@ public sealed class HpMcpAdapter(
             titlesUnlocked = result.TitlesUnlocked,
             activeTitle = OptionalString(result.ActiveTitle),
             milestones = result.Milestones,
-            displayText = result.Replayed ? "Quest finish replayed." : result.AlreadyFinalized ? "Quest was already finalized with the same payload." : "Quest finished.",
+            displayText = HeroPassportPresentation.RenderFinish(
+                result.QuestLocale,
+                settings.PresentationStyle,
+                result),
         });
     }
 
@@ -310,6 +320,7 @@ public sealed class HpMcpAdapter(
         var args = RequireExact(arguments, "heroId");
         var project = await projectProvider(token).ConfigureAwait(false);
         var result = await application.GetCardAsync(HeroId.Parse(RequireString(args, "heroId")), project, token).ConfigureAwait(false);
+        var settings = await PresentationSettingsAsync(project, token).ConfigureAwait(false);
         return Success(new
         {
             hero = new
@@ -340,8 +351,19 @@ public sealed class HpMcpAdapter(
                 result.Project.SuccessRatePermille,
                 topSkills = result.Project.TopSkills,
             },
-            displayText = $"Hero card for {result.Hero.Name}.",
+            displayText = HeroPassportPresentation.RenderCard(
+                settings.Locale,
+                settings.PresentationStyle,
+                result),
         });
+    }
+
+    private async Task<SettingsSnapshot> PresentationSettingsAsync(
+        ProjectBindingContext project,
+        CancellationToken token)
+    {
+        var context = await application.GetRuntimeContextAsync(project, token).ConfigureAwait(false);
+        return context.Settings ?? throw new HeroPassportException("HP001", "Hero Passport setup is required.");
     }
 
     private static object Identity(HeroIdentitySnapshot hero) => new { heroId = hero.HeroId.ToString(), hero.Name };
