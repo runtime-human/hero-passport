@@ -87,7 +87,7 @@ public sealed partial class SqliteHeroPassportStateStore : IHeroPassportStateSto
         await using var command = Command(
             connection,
             transaction,
-            "SELECT args_encoding_version,args_hash,result_entity_id FROM mutation_receipts WHERE operation_key=$operation AND request_id=$requestId;",
+            "SELECT args_encoding_version,args_hash,result_entity_id,result_status FROM mutation_receipts WHERE operation_key=$operation AND request_id=$requestId;",
             ("$operation", operation),
             ("$requestId", requestId));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -96,7 +96,11 @@ public sealed partial class SqliteHeroPassportStateStore : IHeroPassportStateSto
             return null;
         }
 
-        return new ReceiptRow(reader.GetString(0), reader.GetFieldValue<byte[]>(1), reader.IsDBNull(2) ? null : reader.GetString(2));
+        return new ReceiptRow(
+            reader.GetString(0),
+            reader.GetFieldValue<byte[]>(1),
+            reader.IsDBNull(2) ? null : reader.GetString(2),
+            reader.GetString(3));
     }
 
     private static void EnsureReceipt(ReceiptRow receipt, string encodingVersion, byte[] hash)
@@ -106,6 +110,11 @@ public sealed partial class SqliteHeroPassportStateStore : IHeroPassportStateSto
             !CryptographicOperations.FixedTimeEquals(receipt.Hash, hash))
         {
             throw new HeroPassportException("HP135", "The mutation request ID was already used with different arguments.");
+        }
+
+        if (string.Equals(receipt.ResultStatus, "target_deleted", StringComparison.Ordinal))
+        {
+            throw new HeroPassportException("HP140", "Hero was not found.");
         }
     }
 
@@ -167,5 +176,5 @@ public sealed partial class SqliteHeroPassportStateStore : IHeroPassportStateSto
         public SettingsSnapshot Snapshot() => new(Locale, PresentationStyle, AutoStartQuest, AutoFinishQuest);
     }
 
-    private sealed record ReceiptRow(string EncodingVersion, byte[] Hash, string? ResultEntityId);
+    private sealed record ReceiptRow(string EncodingVersion, byte[] Hash, string? ResultEntityId, string ResultStatus);
 }
