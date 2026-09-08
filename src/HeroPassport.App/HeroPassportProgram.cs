@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.CommandLine;
+using System.Globalization;
 using System.Text.Json;
 
 namespace HeroPassport.App;
@@ -207,7 +208,7 @@ public static class HeroPassportProgram
         Console.Out.WriteLine($"Database: {(report.DatabaseExists ? "present" : "not initialized")}");
         Console.Out.WriteLine($"SQLite: {report.SqliteVersion ?? "unavailable"} (supported: {report.SqliteVersionSupported})");
         Console.Out.WriteLine($"Journal mode: {report.JournalMode ?? "unavailable"}");
-        Console.Out.WriteLine($"Synchronous: {report.Synchronous?.ToString() ?? "unavailable"}");
+        Console.Out.WriteLine($"Synchronous: {report.Synchronous?.ToString(CultureInfo.InvariantCulture) ?? "unavailable"}");
         Console.Out.WriteLine($"Foreign keys: {report.ForeignKeys?.ToString() ?? "unavailable"}");
         Console.Out.WriteLine($"Trusted schema: {report.TrustedSchema?.ToString() ?? "unavailable"}");
         Console.Out.WriteLine($"Migrations: {report.MigrationState}");
