@@ -161,6 +161,28 @@ public static class HeroPassportProgram
             token));
         rootCommand.Subcommands.Add(backupCommand);
 
+        var exportOutputOption = new Option<string>("--output")
+        {
+            Description = "New destination path for the privacy-bounded JSON export. Existing files are never overwritten.",
+            Required = true,
+        };
+        var exportJsonOption = new Option<bool>("--json")
+        {
+            Description = "Write one machine-readable export result to stdout.",
+        };
+        var exportCommand = new Command(
+            "export",
+            "Create a user-facing RPG/Quest JSON snapshot without private persistence metadata.")
+        {
+            exportOutputOption,
+            exportJsonOption,
+        };
+        exportCommand.SetAction((parseResult, token) => RunExportAsync(
+            parseResult.GetValue(exportOutputOption)!,
+            parseResult.GetValue(exportJsonOption),
+            token));
+        rootCommand.Subcommands.Add(exportCommand);
+
         var localeOption = new Option<string>("--locale")
         {
             Description = "Initial locale: ru-RU or en-US.",
@@ -374,6 +396,28 @@ public static class HeroPassportProgram
         Console.Out.WriteLine($"Size bytes: {result.SizeBytes.ToString(CultureInfo.InvariantCulture)}");
         Console.Out.WriteLine($"Migration state: {result.MigrationState}");
         return result.Validated ? 0 : 1;
+    }
+
+    private static async Task<int> RunExportAsync(
+        string outputPath,
+        bool json,
+        CancellationToken cancellationToken)
+    {
+        var databasePath = HeroPassportRuntimePaths.ResolveDatabasePath();
+        var result = await HeroPassportDataExport
+            .CreateAsync(databasePath, outputPath, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(result, CliJsonOptions));
+            return 0;
+        }
+
+        Console.Out.WriteLine($"Export schema: {result.SchemaVersion}");
+        Console.Out.WriteLine($"Destination: {result.DestinationPath}");
+        Console.Out.WriteLine($"Size bytes: {result.SizeBytes.ToString(CultureInfo.InvariantCulture)}");
+        return 0;
     }
 
     private static async Task<int> RunInitAsync(
