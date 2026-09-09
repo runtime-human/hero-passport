@@ -294,6 +294,7 @@ public static class HeroPassportProgram
         }
 
         Console.Out.WriteLine($"Database: {(report.DatabaseExists ? "present" : "not initialized")}");
+        Console.Out.WriteLine($"Storage: {report.StorageLocationKind} ({report.StorageDriveType}, supported: {report.StorageLocationSupported})");
         Console.Out.WriteLine($"SQLite: {report.SqliteVersion ?? "unavailable"} (supported: {report.SqliteVersionSupported})");
         Console.Out.WriteLine($"Journal mode: {report.JournalMode ?? "unavailable"}");
         Console.Out.WriteLine($"Synchronous: {report.Synchronous?.ToString(CultureInfo.InvariantCulture) ?? "unavailable"}");
