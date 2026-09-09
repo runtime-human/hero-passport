@@ -7,6 +7,7 @@ CODEX_VERSION=0.153.4
 CODEX_SHA256=f479424eca092484dc40d87ae28c44f4cc40234a60045d6131e493800d814a30
 CODEX_URL="https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/codex-x86_64-unknown-linux-musl.tar.gz"
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 publish_dir="$(cd "$HERO_PASSPORT_PUBLISH_DIR" && pwd)"
 app_dll="$publish_dir/HeroPassport.App.dll"
 skill_dir="$publish_dir/skills/hero-passport"
@@ -62,3 +63,6 @@ grep -F -- "--project-root" <<<"$get_output" >/dev/null
 grep -F 'mcp_servers.hero-passport' "$CODEX_HOME/config.toml" >/dev/null
 
 printf 'Codex host configuration smoke passed for %s\n' "$CODEX_VERSION"
+python3 "$repo_root/tests/qualification/codex-host-runtime-smoke.py" \
+  --codex "$codex_bin" \
+  --project-dir "$project_dir"
