@@ -41,7 +41,8 @@ public sealed class CodexHostRuntimeSmokeContractTests
         var smoke = File.ReadAllText(smokePath);
         Assert.Contains("codex-host-runtime-smoke.py", smoke, StringComparison.Ordinal);
 
-        var workflowPath = Path.Combine(root, ".github", "workflows", "ci.yml"));
+        var workflowPath = Path.Combine(root, ".github", "workflows", "ci.yml");
+        var workflow = File.ReadAllText(workflowPath);
         Assert.Contains("Codex host runtime smoke", workflow, StringComparison.Ordinal);
         Assert.Contains("bash tests/qualification/codex-host-config-smoke.sh", workflow, StringComparison.Ordinal);
     }
