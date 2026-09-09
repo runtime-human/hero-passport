@@ -328,7 +328,11 @@ public static class HeroPassportProjectionRebuilder
         {
             var remaining = group.ToList();
             long xp = 0;
-            var updatedAtUtc = remaining.Max(static row => row.CreatedAtUtc, StringComparer.Ordinal);
+            var updatedAtUtc = remaining[0].CreatedAtUtc;
+            foreach (var row in remaining)
+            {
+                updatedAtUtc = MaxTimestamp(updatedAtUtc, row.CreatedAtUtc);
+            }
 
             while (remaining.Count > 0)
             {
