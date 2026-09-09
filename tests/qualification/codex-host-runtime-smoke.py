@@ -26,6 +26,12 @@ EXPECTED_TOOLS = {
 EXPECTED_CODEX_NAMESPACE = "mcp__hero_passport"
 EXPECTED_CODEX_TOOLS = {tool.replace(".", "_") for tool in EXPECTED_TOOLS}
 EXPECTED_REPO_SKILL_RELATIVE = ".agents/skills/hero-passport/SKILL.md"
+CONTEXT_CALL_ID = "call-hero-get-context"
+CONTEXT_TOOL = "hero_get_context"
+EXPECTED_CONTEXT_MARKERS = (
+    "setupCompleted",
+    "Hero Passport setup is required.",
+)
 
 
 class CaptureServer(ThreadingHTTPServer):
@@ -39,9 +45,10 @@ class CaptureServer(ThreadingHTTPServer):
         host, port = self.server_address
         return f"http://{host}:{port}/v1"
 
-    def record(self, payload: dict[str, Any]) -> None:
+    def record(self, payload: dict[str, Any]) -> int:
         with self.lock:
             self.requests.append(payload)
+            return len(self.requests)
 
 
 class CaptureHandler(BaseHTTPRequestHandler):
@@ -86,38 +93,45 @@ class CaptureHandler(BaseHTTPRequestHandler):
             self.send_error(400, "expected Responses request object")
             return
 
-        self.server.record(payload)
-        response_id = "resp-hero-passport-runtime-smoke"
-        events = [
-            {"type": "response.created", "response": {"id": response_id}},
-            {
-                "type": "response.output_item.done",
-                "item": {
-                    "type": "message",
-                    "role": "assistant",
-                    "id": "msg-hero-passport-runtime-smoke",
-                    "content": [
-                        {
-                            "type": "output_text",
-                            "text": "HERO_PASSPORT_RUNTIME_SMOKE",
-                        }
-                    ],
-                },
-            },
-            {
-                "type": "response.completed",
-                "response": {
-                    "id": response_id,
-                    "usage": {
-                        "input_tokens": 1,
-                        "input_tokens_details": None,
-                        "output_tokens": 1,
-                        "output_tokens_details": None,
-                        "total_tokens": 2,
+        request_number = self.server.record(payload)
+        has_context_output, _ = function_call_output(payload, CONTEXT_CALL_ID)
+        response_id = f"resp-hero-passport-runtime-smoke-{request_number}"
+
+        if has_context_output:
+            events = [
+                {"type": "response.created", "response": {"id": response_id}},
+                {
+                    "type": "response.output_item.done",
+                    "item": {
+                        "type": "message",
+                        "role": "assistant",
+                        "id": "msg-hero-passport-runtime-smoke",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "HERO_PASSPORT_RUNTIME_SMOKE",
+                            }
+                        ],
                     },
                 },
-            },
-        ]
+                completed_event(response_id),
+            ]
+        else:
+            events = [
+                {"type": "response.created", "response": {"id": response_id}},
+                {
+                    "type": "response.output_item.done",
+                    "item": {
+                        "type": "function_call",
+                        "call_id": CONTEXT_CALL_ID,
+                        "namespace": EXPECTED_CODEX_NAMESPACE,
+                        "name": CONTEXT_TOOL,
+                        "arguments": "{}",
+                    },
+                },
+                completed_event(response_id),
+            ]
+
         body = "".join(
             f"event: {event['type']}\ndata: {json.dumps(event)}\n\n" for event in events
         ).encode("utf-8")
@@ -136,6 +150,44 @@ class CaptureHandler(BaseHTTPRequestHandler):
         self.send_header("content-length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+
+def completed_event(response_id: str) -> dict[str, Any]:
+    return {
+        "type": "response.completed",
+        "response": {
+            "id": response_id,
+            "usage": {
+                "input_tokens": 1,
+                "input_tokens_details": None,
+                "output_tokens": 1,
+                "output_tokens_details": None,
+                "total_tokens": 2,
+            },
+        },
+    }
+
+
+def function_call_output(payload: dict[str, Any], call_id: str) -> tuple[bool, Any]:
+    inputs = payload.get("input")
+    if not isinstance(inputs, list):
+        return False, None
+
+    for item in inputs:
+        if (
+            isinstance(item, dict)
+            and item.get("type") == "function_call_output"
+            and item.get("call_id") == call_id
+        ):
+            return True, item.get("output")
+
+    return False, None
+
+
+def output_search_text(output: Any) -> str:
+    if isinstance(output, str):
+        return output
+    return json.dumps(output, ensure_ascii=False, sort_keys=True)
 
 
 def namespace_tools(payload: dict[str, Any]) -> dict[str, set[str]]:
@@ -246,6 +298,29 @@ def require_repo_skill_visible(texts: list[str], project_dir: Path) -> None:
     )
 
 
+def require_context_round_trip(requests: list[dict[str, Any]]) -> None:
+    outputs: list[str] = []
+    for request in requests:
+        found, output = function_call_output(request, CONTEXT_CALL_ID)
+        if found:
+            outputs.append(output_search_text(output))
+
+    if not outputs:
+        raise SystemExit(
+            "Codex exposed Hero Passport tools but did not return the hero.get_context MCP result "
+            "to the model provider"
+        )
+
+    if not any(
+        all(marker in output for marker in EXPECTED_CONTEXT_MARKERS)
+        for output in outputs
+    ):
+        raise SystemExit(
+            "Codex executed hero.get_context but the model-visible tool result did not contain "
+            f"the expected pre-bootstrap context markers: {EXPECTED_CONTEXT_MARKERS}; outputs={outputs}"
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--codex", required=True, type=Path)
@@ -281,7 +356,7 @@ def main() -> int:
         "mcp_optional_startup_grace_ms=0",
         "-c",
         provider,
-        "Return exactly HERO_PASSPORT_RUNTIME_SMOKE. Do not call any tools.",
+        "Use the available Hero Passport context tool, then return exactly HERO_PASSPORT_RUNTIME_SMOKE.",
     ]
 
     try:
@@ -328,10 +403,13 @@ def main() -> int:
             f"namespaces={sorted(discovered)}"
         )
 
+    require_context_round_trip(server.requests)
+
     print(
         "Codex host runtime smoke passed: "
         f"skill=hero-passport namespace={EXPECTED_CODEX_NAMESPACE} raw_tools={len(EXPECTED_TOOLS)} "
-        f"model_visible_tools={len(hero_tools)} responses_requests={len(server.requests)}"
+        f"model_visible_tools={len(hero_tools)} tool_round_trip=hero_get_context "
+        f"responses_requests={len(server.requests)}"
     )
     return 0
 
