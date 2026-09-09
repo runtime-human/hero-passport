@@ -6,11 +6,11 @@ using Microsoft.EntityFrameworkCore;
 
 if (args.Length == 3 && string.Equals(args[0], "migration-lock", StringComparison.Ordinal))
 {
-    var databasePath = Path.GetFullPath(args[1]);
-    var signalPath = Path.GetFullPath(args[2]);
+    var migrationDatabasePath = Path.GetFullPath(args[1]);
+    var migrationSignalPath = Path.GetFullPath(args[2]);
     var connectionString = new SqliteConnectionStringBuilder
     {
-        DataSource = databasePath,
+        DataSource = migrationDatabasePath,
         Mode = SqliteOpenMode.ReadWrite,
         Cache = SqliteCacheMode.Default,
         ForeignKeys = true,
@@ -22,7 +22,7 @@ if (args.Length == 3 && string.Equals(args[0], "migration-lock", StringCompariso
         .UseSqlite(connectionString)
         .UseAsyncSeeding((_, _, cancellationToken) =>
         {
-            File.WriteAllText(signalPath, "migration-lock-acquired");
+            File.WriteAllText(migrationSignalPath, "migration-lock-acquired");
             return Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         })
         .Options;
