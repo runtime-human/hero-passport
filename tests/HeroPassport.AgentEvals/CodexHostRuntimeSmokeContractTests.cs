@@ -41,10 +41,25 @@ public sealed class CodexHostRuntimeSmokeContractTests
         var smoke = File.ReadAllText(smokePath);
         Assert.Contains("codex-host-runtime-smoke.py", smoke, StringComparison.Ordinal);
 
-        var workflowPath = Path.Combine(root, ".github", "workflows", "ci.yml");
-        var workflow = File.ReadAllText(workflowPath);
+        var workflowPath = Path.Combine(root, ".github", "workflows", "ci.yml"));
         Assert.Contains("Codex host runtime smoke", workflow, StringComparison.Ordinal);
         Assert.Contains("bash tests/qualification/codex-host-config-smoke.sh", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void QualificationExecutesReadOnlyContextThroughCodexMcpRoundTrip()
+    {
+        var path = Path.Combine(RepoRoot(), "tests", "qualification", "codex-host-runtime-smoke.py");
+        Assert.True(File.Exists(path), $"Missing Codex runtime smoke harness: {path}");
+
+        var harness = File.ReadAllText(path);
+        Assert.Contains("call-hero-get-context", harness, StringComparison.Ordinal);
+        Assert.Contains("function_call", harness, StringComparison.Ordinal);
+        Assert.Contains("mcp__hero_passport", harness, StringComparison.Ordinal);
+        Assert.Contains("hero_get_context", harness, StringComparison.Ordinal);
+        Assert.Contains("function_call_output", harness, StringComparison.Ordinal);
+        Assert.Contains("setupCompleted", harness, StringComparison.Ordinal);
+        Assert.Contains("Hero Passport setup is required.", harness, StringComparison.Ordinal);
     }
 
     private static string RepoRoot()
