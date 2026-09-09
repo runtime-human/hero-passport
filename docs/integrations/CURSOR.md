@@ -2,7 +2,7 @@
 
 **Status:** documented compatibility candidate; release smoke required  
 **Architecture:** Hero Passport v3.2.1  
-**Verified:** 2026-09-09 against current official Cursor Agent Skills and MCP documentation
+Verified: 2026-09-09 against current official Cursor Agent Skills and MCP documentation
 
 Cursor currently has native Agent Skills support and local STDIO MCP support. This page records those verified host mechanisms; it does **not** promote Cursor to Qualified until the exact supported Cursor build passes Hero Passport host smoke.
 
