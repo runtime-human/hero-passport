@@ -9,6 +9,8 @@ namespace HeroPassport.App.Tests;
 
 public sealed class HeroPassportCliProjectionRebuildIntegrationTests
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     [Fact]
     public async Task ProjectionRebuildPublishesBoundedResultAndRestoresCorruptedProjections()
     {
@@ -41,7 +43,9 @@ public sealed class HeroPassportCliProjectionRebuildIntegrationTests
                 project,
                 token);
 
-            var before = await app.GetCardAsync(hero.HeroId, project, token);
+            var before = JsonSerializer.Serialize(
+                await app.GetCardAsync(hero.HeroId, project, token),
+                JsonOptions);
             await using (var connection = await HeroPassportDatabase.OpenConnectionAsync(databasePath, token))
             await using (var command = connection.CreateCommand())
             {
@@ -66,7 +70,9 @@ public sealed class HeroPassportCliProjectionRebuildIntegrationTests
             Assert.True(root.GetProperty("healthy").GetBoolean());
             Assert.Equal(4, root.EnumerateObject().Count());
 
-            Assert.Equal(before, await app.GetCardAsync(hero.HeroId, project, token));
+            Assert.Equal(
+                before,
+                JsonSerializer.Serialize(await app.GetCardAsync(hero.HeroId, project, token), JsonOptions));
         }
         finally
         {
