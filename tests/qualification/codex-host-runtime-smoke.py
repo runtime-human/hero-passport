@@ -193,6 +193,8 @@ def main() -> int:
         "-c",
         'model_provider="hero_passport_qualification"',
         "-c",
+        "mcp_optional_startup_grace_ms=0",
+        "-c",
         provider,
         "Return exactly HERO_PASSPORT_RUNTIME_SMOKE. Do not call any tools.",
     ]
