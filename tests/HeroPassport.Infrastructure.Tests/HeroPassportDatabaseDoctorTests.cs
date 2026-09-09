@@ -6,6 +6,8 @@ namespace HeroPassport.Infrastructure.Tests;
 
 public sealed class HeroPassportDatabaseDoctorTests
 {
+    private static readonly string[] LocalDriveTypes = ["fixed", "removable", "ram"];
+
     [Fact]
     public async Task MissingDatabaseInspectionDoesNotCreateStorage()
     {
@@ -59,7 +61,7 @@ public sealed class HeroPassportDatabaseDoctorTests
             Assert.Equal(0, report.ForeignKeyViolationCount);
             Assert.True(report.StorageLocationSupported);
             Assert.Equal("local", report.StorageLocationKind);
-            Assert.Contains(report.StorageDriveType, new[] { "fixed", "removable", "ram" });
+            Assert.Contains(report.StorageDriveType, LocalDriveTypes);
             Assert.True(report.Healthy);
 
             var after = await SnapshotAsync(path, token);
