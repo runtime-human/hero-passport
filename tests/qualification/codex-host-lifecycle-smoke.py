@@ -6,20 +6,13 @@ import json
 import os
 import subprocess
 import threading
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 NAMESPACE = "mcp__hero_passport"
 MODEL = "hero-passport-qualification-model"
-
-BOOTSTRAP_CALL_ID = "call-lifecycle-bootstrap"
-START_CALL_ID = "call-lifecycle-start"
-FINISH_CALL_ID = "call-lifecycle-finish"
-CONTEXT_CALL_ID = "call-lifecycle-context"
-CARD_CALL_ID = "call-lifecycle-card"
-START_REPLAY_CALL_ID = "call-lifecycle-start-replay"
-FINISH_REPLAY_CALL_ID = "call-lifecycle-finish-replay"
 
 BOOTSTRAP_REQUEST_ID = "01994c0b-5f00-7000-8000-000000000001"
 START_REQUEST_ID = "01994c0b-5f00-7000-8000-000000000002"
@@ -67,6 +60,13 @@ def finish_args(quest_id: str) -> dict[str, Any]:
     }
 
 
+@dataclass(frozen=True)
+class ToolCall:
+    call_id: str
+    model_name: str
+    arguments: dict[str, Any]
+
+
 def completed_event(response_id: str) -> dict[str, Any]:
     return {
         "type": "response.completed",
@@ -83,17 +83,17 @@ def completed_event(response_id: str) -> dict[str, Any]:
     }
 
 
-def function_call_event(response_id: str, call_id: str, name: str, arguments: dict[str, Any]) -> list[dict[str, Any]]:
+def call_events(response_id: str, call: ToolCall) -> list[dict[str, Any]]:
     return [
         {"type": "response.created", "response": {"id": response_id}},
         {
             "type": "response.output_item.done",
             "item": {
                 "type": "function_call",
-                "call_id": call_id,
+                "call_id": call.call_id,
                 "namespace": NAMESPACE,
-                "name": name,
-                "arguments": json.dumps(arguments, separators=(",", ":")),
+                "name": call.model_name,
+                "arguments": json.dumps(call.arguments, separators=(",", ":")),
             },
         },
         completed_event(response_id),
@@ -116,178 +116,72 @@ def message_events(response_id: str, marker: str) -> list[dict[str, Any]]:
     ]
 
 
-def function_call_output(payload: dict[str, Any], call_id: str) -> tuple[bool, Any]:
+def has_function_call_output(payload: dict[str, Any], call_id: str) -> bool:
     inputs = payload.get("input")
     if not isinstance(inputs, list):
-        return False, None
-    for item in inputs:
-        if (
-            isinstance(item, dict)
-            and item.get("type") == "function_call_output"
-            and item.get("call_id") == call_id
-        ):
-            return True, item.get("output")
-    return False, None
+        return False
+    return any(
+        isinstance(item, dict)
+        and item.get("type") == "function_call_output"
+        and item.get("call_id") == call_id
+        for item in inputs
+    )
 
 
-def walk_json(value: Any, depth: int = 0) -> Iterable[Any]:
-    if depth > 12:
-        return
-    yield value
-    if isinstance(value, dict):
-        for nested in value.values():
-            yield from walk_json(nested, depth + 1)
-    elif isinstance(value, list):
-        for nested in value:
-            yield from walk_json(nested, depth + 1)
-    elif isinstance(value, str):
-        stripped = value.strip()
-        if not stripped or stripped[0] not in "{[\"-0123456789tfn":
-            return
-        try:
-            decoded = json.loads(stripped)
-        except json.JSONDecodeError:
-            return
-        if decoded != value:
-            yield from walk_json(decoded, depth + 1)
-
-
-def values_for_key(output: Any, key: str) -> list[Any]:
-    values: list[Any] = []
-    for node in walk_json(output):
-        if isinstance(node, dict) and key in node:
-            values.append(node[key])
-    return values
-
-
-def require_value(output: Any, key: str, expected: Any) -> None:
-    values = values_for_key(output, key)
-    if expected not in values:
-        raise RuntimeError(f"expected {key}={expected!r}; observed={values!r}; output={output!r}")
-
-
-def require_string(output: Any, key: str) -> str:
-    values = [value for value in values_for_key(output, key) if isinstance(value, str) and value]
-    if not values:
-        raise RuntimeError(f"expected non-empty {key}; output={output!r}")
-    return values[0]
-
-
-def require_output(payload: dict[str, Any], call_id: str) -> Any:
-    found, output = function_call_output(payload, call_id)
-    if not found:
-        raise RuntimeError(f"Codex did not return MCP output for {call_id}")
-    return output
-
-
-class CaptureServer(ThreadingHTTPServer):
-    def __init__(self) -> None:
-        super().__init__(("127.0.0.1", 0), CaptureHandler)
+class SequenceServer(ThreadingHTTPServer):
+    def __init__(self, calls: list[ToolCall], marker: str) -> None:
+        if not calls:
+            raise ValueError("at least one tool call is required")
+        super().__init__(("127.0.0.1", 0), SequenceHandler)
+        self.calls = calls
+        self.marker = marker
         self.lock = threading.Lock()
-        self.requests: list[dict[str, Any]] = []
-        self.stage = "phase1-bootstrap"
-        self.hero_id: str | None = None
-        self.quest_id: str | None = None
+        self.requests = 0
+        self.next_index = 0
+        self.awaiting_call_id: str | None = None
+        self.completed = False
 
     @property
     def base_url(self) -> str:
         host, port = self.server_address
         return f"http://{host}:{port}/v1"
 
-    def begin_replay(self) -> None:
-        with self.lock:
-            if self.stage != "phase1-done" or self.hero_id is None or self.quest_id is None:
-                raise RuntimeError(
-                    f"phase 1 did not complete before restart: stage={self.stage} hero={self.hero_id} quest={self.quest_id}"
-                )
-            self.stage = "replay-context"
-
-    def require_replay_done(self) -> None:
-        with self.lock:
-            if self.stage != "replay-done":
-                raise RuntimeError(f"replay lifecycle did not complete: stage={self.stage}")
-
     def events_for(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
         with self.lock:
-            self.requests.append(payload)
-            response_id = f"resp-hero-passport-lifecycle-{len(self.requests)}"
+            self.requests += 1
+            response_id = f"resp-hero-passport-lifecycle-{self.requests}"
 
-            if self.stage == "phase1-bootstrap":
-                self.stage = "phase1-bootstrap-output"
-                return function_call_event(response_id, BOOTSTRAP_CALL_ID, "hero_bootstrap", BOOTSTRAP_ARGS)
+            if self.completed:
+                raise RuntimeError("unexpected Responses request after lifecycle sequence completed")
 
-            if self.stage == "phase1-bootstrap-output":
-                output = require_output(payload, BOOTSTRAP_CALL_ID)
-                require_value(output, "replayed", False)
-                self.hero_id = require_string(output, "heroId")
-                self.stage = "phase1-start-output"
-                return function_call_event(response_id, START_CALL_ID, "hero_start_quest", start_args(self.hero_id))
+            if self.awaiting_call_id is not None:
+                if not has_function_call_output(payload, self.awaiting_call_id):
+                    raise RuntimeError(
+                        f"Codex did not return MCP function_call_output for {self.awaiting_call_id}"
+                    )
+                self.awaiting_call_id = None
 
-            if self.stage == "phase1-start-output":
-                output = require_output(payload, START_CALL_ID)
-                require_value(output, "replayed", False)
-                self.quest_id = require_string(output, "questId")
-                self.stage = "phase1-finish-output"
-                return function_call_event(response_id, FINISH_CALL_ID, "hero_finish_quest", finish_args(self.quest_id))
+            if self.next_index < len(self.calls):
+                call = self.calls[self.next_index]
+                self.next_index += 1
+                self.awaiting_call_id = call.call_id
+                return call_events(response_id, call)
 
-            if self.stage == "phase1-finish-output":
-                output = require_output(payload, FINISH_CALL_ID)
-                require_value(output, "replayed", False)
-                require_value(output, "alreadyFinalized", False)
-                require_value(output, "xpGained", 85)
-                self.stage = "phase1-done"
-                return message_events(response_id, PHASE1_MARKER)
+            self.completed = True
+            return message_events(response_id, self.marker)
 
-            if self.stage == "replay-context":
-                self.stage = "replay-context-output"
-                return function_call_event(response_id, CONTEXT_CALL_ID, "hero_get_context", {})
-
-            if self.stage == "replay-context-output":
-                output = require_output(payload, CONTEXT_CALL_ID)
-                require_value(output, "setupCompleted", True)
-                require_value(output, "heroId", self.hero_id)
-                require_value(output, "displayName", "project")
-                require_value(output, "openQuests", [])
-                self.stage = "replay-card-output"
-                return function_call_event(response_id, CARD_CALL_ID, "hero_get_card", {"heroId": self.hero_id})
-
-            if self.stage == "replay-card-output":
-                output = require_output(payload, CARD_CALL_ID)
-                require_value(output, "heroId", self.hero_id)
-                require_value(output, "totalXp", 85)
-                self.stage = "replay-start-output"
-                return function_call_event(
-                    response_id,
-                    START_REPLAY_CALL_ID,
-                    "hero_start_quest",
-                    start_args(self.hero_id or ""),
+    def verify_complete(self) -> None:
+        with self.lock:
+            if not self.completed or self.awaiting_call_id is not None or self.next_index != len(self.calls):
+                raise RuntimeError(
+                    "Codex lifecycle provider sequence incomplete: "
+                    f"completed={self.completed} awaiting={self.awaiting_call_id} "
+                    f"next={self.next_index}/{len(self.calls)} requests={self.requests}"
                 )
 
-            if self.stage == "replay-start-output":
-                output = require_output(payload, START_REPLAY_CALL_ID)
-                require_value(output, "replayed", True)
-                require_value(output, "questId", self.quest_id)
-                self.stage = "replay-finish-output"
-                return function_call_event(
-                    response_id,
-                    FINISH_REPLAY_CALL_ID,
-                    "hero_finish_quest",
-                    finish_args(self.quest_id or ""),
-                )
 
-            if self.stage == "replay-finish-output":
-                output = require_output(payload, FINISH_REPLAY_CALL_ID)
-                require_value(output, "replayed", True)
-                require_value(output, "questId", self.quest_id)
-                require_value(output, "xpGained", 85)
-                self.stage = "replay-done"
-                return message_events(response_id, REPLAY_MARKER)
-
-            raise RuntimeError(f"unexpected Responses request after lifecycle completion: stage={self.stage}")
-
-
-class CaptureHandler(BaseHTTPRequestHandler):
-    server: CaptureServer
+class SequenceHandler(BaseHTTPRequestHandler):
+    server: SequenceServer
 
     def log_message(self, _format: str, *_args: object) -> None:
         return None
@@ -297,7 +191,14 @@ class CaptureHandler(BaseHTTPRequestHandler):
             self._send_json(
                 {
                     "object": "list",
-                    "data": [{"id": MODEL, "object": "model", "created": 0, "owned_by": "qualification"}],
+                    "data": [
+                        {
+                            "id": MODEL,
+                            "object": "model",
+                            "created": 0,
+                            "owned_by": "qualification",
+                        }
+                    ],
                 }
             )
             return
@@ -315,6 +216,7 @@ class CaptureHandler(BaseHTTPRequestHandler):
                 raise ValueError("expected Responses request object")
             events = self.server.events_for(payload)
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RuntimeError) as exc:
+            print(f"Codex lifecycle provider error: {exc}", file=os.sys.stderr, flush=True)
             self.send_error(500, f"lifecycle qualification failed: {exc}")
             return
 
@@ -337,7 +239,16 @@ class CaptureHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def run_codex(codex: Path, project_dir: Path, server: CaptureServer, prompt: str, marker: str) -> None:
+def run_sequence(
+    codex: Path,
+    project_dir: Path,
+    calls: list[ToolCall],
+    marker: str,
+    prompt: str,
+) -> str:
+    server = SequenceServer(calls, marker)
+    thread = threading.Thread(target=server.serve_forever, name="lifecycle-responses", daemon=True)
+    thread.start()
     provider = (
         "model_providers.hero_passport_qualification="
         f"{{ name = 'Hero Passport lifecycle qualification', base_url = '{server.base_url}', "
@@ -359,23 +270,73 @@ def run_codex(codex: Path, project_dir: Path, server: CaptureServer, prompt: str
         provider,
         prompt,
     ]
-    completed = subprocess.run(
-        command,
-        cwd=project_dir,
-        env=os.environ.copy(),
-        text=True,
-        capture_output=True,
-        timeout=90,
-        check=False,
-    )
-    if completed.stdout:
-        print(completed.stdout, end="")
-    if completed.stderr:
-        print(completed.stderr, end="", file=os.sys.stderr)
-    if completed.returncode != 0:
-        raise RuntimeError(f"codex exec failed with exit code {completed.returncode}")
-    if marker not in completed.stdout:
-        raise RuntimeError(f"codex exec completed without lifecycle marker {marker}")
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=project_dir,
+            env=os.environ.copy(),
+            text=True,
+            capture_output=True,
+            timeout=90,
+            check=False,
+        )
+        if completed.stdout:
+            print(completed.stdout, end="")
+        if completed.stderr:
+            print(completed.stderr, end="", file=os.sys.stderr)
+        if completed.returncode != 0:
+            raise RuntimeError(f"codex exec failed with exit code {completed.returncode}")
+        if marker not in completed.stdout:
+            raise RuntimeError(f"codex exec completed without lifecycle marker {marker}")
+        server.verify_complete()
+        return completed.stdout
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def tool_results(stdout: str, tool_name: str) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict) or event.get("type") != "item.completed":
+            continue
+        item = event.get("item")
+        if (
+            not isinstance(item, dict)
+            or item.get("type") != "mcp_tool_call"
+            or item.get("tool") != tool_name
+        ):
+            continue
+        if item.get("status") != "completed" or item.get("error") is not None:
+            raise RuntimeError(f"Codex reported failed MCP call {tool_name}: {item}")
+        result = item.get("result")
+        if not isinstance(result, dict):
+            raise RuntimeError(f"Codex MCP call {tool_name} did not publish a result object: {item}")
+        structured = result.get("structured_content")
+        if not isinstance(structured, dict):
+            raise RuntimeError(
+                f"Codex MCP call {tool_name} did not publish structured_content: {result}"
+            )
+        results.append(structured)
+    return results
+
+
+def single_tool_result(stdout: str, tool_name: str) -> dict[str, Any]:
+    results = tool_results(stdout, tool_name)
+    if len(results) != 1:
+        raise RuntimeError(f"expected exactly one completed {tool_name} call; observed={len(results)}")
+    return results[0]
+
+
+def require_equal(obj: dict[str, Any], key: str, expected: Any) -> None:
+    actual = obj.get(key)
+    if actual != expected:
+        raise RuntimeError(f"expected {key}={expected!r}; actual={actual!r}; object={obj!r}")
 
 
 def main() -> int:
@@ -392,39 +353,112 @@ def main() -> int:
         raise SystemExit(f"Qualification project is not a Git repository: {project_dir}")
     hero_home = os.environ.get("HERO_PASSPORT_HOME")
     if not hero_home:
-        raise SystemExit("HERO_PASSPORT_HOME must be stable across both Codex lifecycle phases")
+        raise SystemExit("HERO_PASSPORT_HOME must be stable across Codex lifecycle restarts")
 
-    server = CaptureServer()
-    thread = threading.Thread(target=server.serve_forever, name="lifecycle-responses", daemon=True)
-    thread.start()
     try:
-        run_codex(
+        bootstrap_stdout = run_sequence(
             codex,
             project_dir,
-            server,
-            "Use Hero Passport to bootstrap Codex Nova, start the qualification quest, finish it, then return the requested marker.",
+            [ToolCall("call-lifecycle-bootstrap", "hero_bootstrap", BOOTSTRAP_ARGS)],
+            "HERO_PASSPORT_LIFECYCLE_BOOTSTRAP",
+            "Bootstrap the deterministic Hero Passport qualification state.",
+        )
+        bootstrap = single_tool_result(bootstrap_stdout, "hero.bootstrap")
+        require_equal(bootstrap, "replayed", False)
+        hero = bootstrap.get("hero")
+        if not isinstance(hero, dict) or not isinstance(hero.get("heroId"), str):
+            raise RuntimeError(f"bootstrap did not return a Hero identity: {bootstrap}")
+        hero_id = hero["heroId"]
+
+        start_stdout = run_sequence(
+            codex,
+            project_dir,
+            [ToolCall("call-lifecycle-start", "hero_start_quest", start_args(hero_id))],
+            "HERO_PASSPORT_LIFECYCLE_START",
+            "Start the deterministic Hero Passport qualification quest.",
+        )
+        start = single_tool_result(start_stdout, "hero.start_quest")
+        require_equal(start, "replayed", False)
+        quest = start.get("quest")
+        if not isinstance(quest, dict) or not isinstance(quest.get("questId"), str):
+            raise RuntimeError(f"start did not return a Quest identity: {start}")
+        quest_id = quest["questId"]
+
+        finish_stdout = run_sequence(
+            codex,
+            project_dir,
+            [ToolCall("call-lifecycle-finish", "hero_finish_quest", finish_args(quest_id))],
             PHASE1_MARKER,
+            "Finish the deterministic Hero Passport qualification quest before restart.",
         )
-        server.begin_replay()
-        run_codex(
+        finish = single_tool_result(finish_stdout, "hero.finish_quest")
+        require_equal(finish, "replayed", False)
+        require_equal(finish, "alreadyFinalized", False)
+        reward = finish.get("reward")
+        if not isinstance(reward, dict):
+            raise RuntimeError(f"finish did not return reward projection: {finish}")
+        require_equal(reward, "xpGained", 85)
+
+        replay_stdout = run_sequence(
             codex,
             project_dir,
-            server,
-            "Recover the persisted Hero Passport state after host restart, inspect the card, replay the same Start and Finish identities, then return the requested marker.",
+            [
+                ToolCall("call-lifecycle-context", "hero_get_context", {}),
+                ToolCall("call-lifecycle-card", "hero_get_card", {"heroId": hero_id}),
+                ToolCall(
+                    "call-lifecycle-start-replay",
+                    "hero_start_quest",
+                    start_args(hero_id),
+                ),
+                ToolCall(
+                    "call-lifecycle-finish-replay",
+                    "hero_finish_quest",
+                    finish_args(quest_id),
+                ),
+            ],
             REPLAY_MARKER,
+            "Recover the persisted Hero Passport state after restart, inspect it, and replay the original request identities.",
         )
-        server.require_replay_done()
+
+        context = single_tool_result(replay_stdout, "hero.get_context")
+        require_equal(context, "setupCompleted", True)
+        active_hero = context.get("activeHero")
+        if not isinstance(active_hero, dict):
+            raise RuntimeError(f"restarted context did not contain active Hero: {context}")
+        require_equal(active_hero, "heroId", hero_id)
+        project = context.get("project")
+        if not isinstance(project, dict):
+            raise RuntimeError(f"restarted context did not contain project binding: {context}")
+        require_equal(project, "displayName", project_dir.name)
+        require_equal(context, "openQuests", [])
+
+        card = single_tool_result(replay_stdout, "hero.get_card")
+        card_hero = card.get("hero")
+        if not isinstance(card_hero, dict):
+            raise RuntimeError(f"card did not contain Hero projection: {card}")
+        require_equal(card_hero, "heroId", hero_id)
+        require_equal(card_hero, "totalXp", 85)
+
+        start_replay = single_tool_result(replay_stdout, "hero.start_quest")
+        require_equal(start_replay, "replayed", True)
+        replay_quest = start_replay.get("quest")
+        if not isinstance(replay_quest, dict):
+            raise RuntimeError(f"Start replay did not contain Quest projection: {start_replay}")
+        require_equal(replay_quest, "questId", quest_id)
+
+        finish_replay = single_tool_result(replay_stdout, "hero.finish_quest")
+        require_equal(finish_replay, "replayed", True)
+        replay_reward = finish_replay.get("reward")
+        if not isinstance(replay_reward, dict):
+            raise RuntimeError(f"Finish replay did not contain reward projection: {finish_replay}")
+        require_equal(replay_reward, "xpGained", 85)
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=2)
 
     print(
         "Codex host lifecycle restart smoke passed: "
-        f"hero={server.hero_id} quest={server.quest_id} persistent_home={Path(hero_home).name} "
-        f"responses_requests={len(server.requests)}"
+        f"hero={hero_id} quest={quest_id} persistent_home={Path(hero_home).name} "
+        "host_processes=4 replayed=true"
     )
     return 0
 
