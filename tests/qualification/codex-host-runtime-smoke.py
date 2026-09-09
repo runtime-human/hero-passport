@@ -25,6 +25,7 @@ EXPECTED_TOOLS = {
 }
 EXPECTED_CODEX_NAMESPACE = "mcp__hero_passport"
 EXPECTED_CODEX_TOOLS = {tool.replace(".", "_") for tool in EXPECTED_TOOLS}
+EXPECTED_REPO_SKILL_RELATIVE = ".agents/skills/hero-passport/SKILL.md"
 
 
 class CaptureServer(ThreadingHTTPServer):
@@ -162,6 +163,89 @@ def namespace_tools(payload: dict[str, Any]) -> dict[str, set[str]]:
     return discovered
 
 
+def developer_texts(payload: dict[str, Any]) -> list[str]:
+    texts: list[str] = []
+    inputs = payload.get("input")
+    if not isinstance(inputs, list):
+        return texts
+
+    for item in inputs:
+        if (
+            not isinstance(item, dict)
+            or item.get("type") != "message"
+            or item.get("role") != "developer"
+        ):
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            continue
+
+        for span in content:
+            if not isinstance(span, dict) or span.get("type") != "input_text":
+                continue
+            text = span.get("text")
+            if isinstance(text, str):
+                texts.append(text)
+
+    return texts
+
+
+def normalized_path(path: Path) -> str:
+    return str(path).replace("\\", "/").rstrip("/")
+
+
+def skill_root_aliases(texts: list[str]) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for text in texts:
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line.startswith("- `") or "` = `" not in line or not line.endswith("`"):
+                continue
+            left, right = line.split("` = `", 1)
+            alias = left.removeprefix("- `")
+            root = right.removesuffix("`")
+            if alias and root:
+                aliases[alias] = root.replace("\\", "/").rstrip("/")
+    return aliases
+
+
+def require_repo_skill_visible(texts: list[str], project_dir: Path) -> None:
+    if not texts:
+        raise SystemExit("Codex Responses request did not contain developer input_text messages")
+    if not any("### Available skills" in text for text in texts):
+        raise SystemExit("Codex developer context did not contain the available skills catalog")
+
+    skill_entries = [
+        line.strip()
+        for text in texts
+        for line in text.splitlines()
+        if line.strip().startswith("- hero-passport:")
+    ]
+    if not skill_entries:
+        raise SystemExit("Codex available skills catalog did not advertise hero-passport")
+
+    expected_skill_path = normalized_path(project_dir / EXPECTED_REPO_SKILL_RELATIVE)
+    if any(f"(file: {expected_skill_path})" in entry for entry in skill_entries):
+        return
+
+    expected_root = normalized_path(project_dir / ".agents" / "skills")
+    aliases = skill_root_aliases(texts)
+    matching_aliases = {
+        alias for alias, root in aliases.items() if root == expected_root
+    }
+    if any(
+        f"(file: {alias}/hero-passport/SKILL.md)" in entry
+        for alias in matching_aliases
+        for entry in skill_entries
+    ):
+        return
+
+    raise SystemExit(
+        "Codex advertised hero-passport, but not from the qualification project's repo skill root. "
+        f"expected={expected_skill_path}; entries={skill_entries}; aliases={aliases}"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--codex", required=True, type=Path)
@@ -226,9 +310,13 @@ def main() -> int:
         raise SystemExit("Codex did not send a Responses API request")
 
     discovered: dict[str, set[str]] = {}
+    observed_developer_texts: list[str] = []
     for request in server.requests:
+        observed_developer_texts.extend(developer_texts(request))
         for namespace, tools in namespace_tools(request).items():
             discovered.setdefault(namespace, set()).update(tools)
+
+    require_repo_skill_visible(observed_developer_texts, project_dir)
 
     hero_tools = discovered.get(EXPECTED_CODEX_NAMESPACE, set())
     missing = sorted(EXPECTED_CODEX_TOOLS - hero_tools)
@@ -242,7 +330,7 @@ def main() -> int:
 
     print(
         "Codex host runtime smoke passed: "
-        f"namespace={EXPECTED_CODEX_NAMESPACE} raw_tools={len(EXPECTED_TOOLS)} "
+        f"skill=hero-passport namespace={EXPECTED_CODEX_NAMESPACE} raw_tools={len(EXPECTED_TOOLS)} "
         f"model_visible_tools={len(hero_tools)} responses_requests={len(server.requests)}"
     )
     return 0
