@@ -139,6 +139,28 @@ public static class HeroPassportProgram
         };
         rootCommand.Subcommands.Add(rebuildCommand);
 
+        var backupOutputOption = new Option<string>("--output")
+        {
+            Description = "New destination path for the validated SQLite backup. Existing files are never overwritten.",
+            Required = true,
+        };
+        var backupJsonOption = new Option<bool>("--json")
+        {
+            Description = "Write one machine-readable backup result to stdout.",
+        };
+        var backupCommand = new Command(
+            "backup",
+            "Create and validate an online SQLite backup without raw-copying the active WAL database.")
+        {
+            backupOutputOption,
+            backupJsonOption,
+        };
+        backupCommand.SetAction((parseResult, token) => RunBackupAsync(
+            parseResult.GetValue(backupOutputOption)!,
+            parseResult.GetValue(backupJsonOption),
+            token));
+        rootCommand.Subcommands.Add(backupCommand);
+
         var localeOption = new Option<string>("--locale")
         {
             Description = "Initial locale: ru-RU or en-US.",
@@ -329,6 +351,29 @@ public static class HeroPassportProgram
         Console.Out.WriteLine($"Hero project stats rebuilt: {result.HeroProjectStatsRebuilt}");
         Console.Out.WriteLine($"Healthy: {result.After.Healthy}");
         return result.After.Healthy ? 0 : 1;
+    }
+
+    private static async Task<int> RunBackupAsync(
+        string outputPath,
+        bool json,
+        CancellationToken cancellationToken)
+    {
+        var databasePath = HeroPassportRuntimePaths.ResolveDatabasePath();
+        var result = await HeroPassportDatabaseBackup
+            .CreateAsync(databasePath, outputPath, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(result, CliJsonOptions));
+            return result.Validated ? 0 : 1;
+        }
+
+        Console.Out.WriteLine($"Backup validated: {result.Validated}");
+        Console.Out.WriteLine($"Destination: {result.DestinationPath}");
+        Console.Out.WriteLine($"Size bytes: {result.SizeBytes.ToString(CultureInfo.InvariantCulture)}");
+        Console.Out.WriteLine($"Migration state: {result.MigrationState}");
+        return result.Validated ? 0 : 1;
     }
 
     private static async Task<int> RunInitAsync(
