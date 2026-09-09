@@ -40,6 +40,14 @@ export CODEX_HOME="$work_dir/codex-home"
 export HOME="$work_dir/home"
 mkdir -p "$CODEX_HOME" "$HOME"
 
+# Keep this qualification hermetic: Hero Passport exercises native repo Skills and MCP,
+# not Codex's unrelated curated plugin marketplace. Stable Codex enables plugins by
+# default and performs curated marketplace synchronization in a background thread.
+cat > "$CODEX_HOME/config.toml" <<'EOF'
+[features]
+plugins = false
+EOF
+
 project_dir="$work_dir/project"
 mkdir -p "$project_dir/.agents/skills"
 git -C "$project_dir" init -q
@@ -60,6 +68,7 @@ grep -F "HeroPassport.App.dll" <<<"$get_output" >/dev/null
 grep -F -- "--project-root" <<<"$get_output" >/dev/null
 
 [[ -f "$CODEX_HOME/config.toml" ]] || { echo "Codex did not persist isolated MCP configuration" >&2; exit 1; }
+grep -F 'plugins = false' "$CODEX_HOME/config.toml" >/dev/null
 grep -F 'mcp_servers.hero-passport' "$CODEX_HOME/config.toml" >/dev/null
 
 printf 'Codex host configuration smoke passed for %s\n' "$CODEX_VERSION"
