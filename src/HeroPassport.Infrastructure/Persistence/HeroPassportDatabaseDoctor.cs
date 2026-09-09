@@ -6,6 +6,9 @@ namespace HeroPassport.Infrastructure.Persistence;
 
 public sealed record HeroPassportDatabaseDoctorReport(
     bool DatabaseExists,
+    bool StorageLocationSupported,
+    string StorageLocationKind,
+    string StorageDriveType,
     string? SqliteVersion,
     bool SqliteVersionSupported,
     string? JournalMode,
@@ -31,6 +34,7 @@ public static class HeroPassportDatabaseDoctor
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
 
         var fullPath = Path.GetFullPath(databasePath);
+        var storageLocation = HeroPassportStorageLocationPolicy.Inspect(fullPath);
         var availableMigrations = GetAvailableMigrations(fullPath);
         var latestAvailableMigration = availableMigrations.LastOrDefault();
 
@@ -38,6 +42,9 @@ public static class HeroPassportDatabaseDoctor
         {
             return new HeroPassportDatabaseDoctorReport(
                 DatabaseExists: false,
+                StorageLocationSupported: storageLocation.Supported,
+                StorageLocationKind: storageLocation.Kind,
+                StorageDriveType: storageLocation.DriveType,
                 SqliteVersion: null,
                 SqliteVersionSupported: false,
                 JournalMode: null,
@@ -79,7 +86,8 @@ public static class HeroPassportDatabaseDoctor
         var quickCheckPassed = await QuickCheckPassedAsync(connection, cancellationToken).ConfigureAwait(false);
         var foreignKeyViolationCount = await CountRowsAsync(connection, "PRAGMA foreign_key_check;", cancellationToken).ConfigureAwait(false);
 
-        var healthy = sqliteVersionSupported &&
+        var healthy = storageLocation.Supported &&
+            sqliteVersionSupported &&
             string.Equals(journalMode, "wal", StringComparison.OrdinalIgnoreCase) &&
             synchronous == 2 &&
             foreignKeys &&
@@ -91,6 +99,9 @@ public static class HeroPassportDatabaseDoctor
 
         return new HeroPassportDatabaseDoctorReport(
             DatabaseExists: true,
+            StorageLocationSupported: storageLocation.Supported,
+            StorageLocationKind: storageLocation.Kind,
+            StorageDriveType: storageLocation.DriveType,
             SqliteVersion: sqliteVersion,
             SqliteVersionSupported: sqliteVersionSupported,
             JournalMode: journalMode,
