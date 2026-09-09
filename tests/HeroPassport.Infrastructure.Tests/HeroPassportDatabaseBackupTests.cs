@@ -2,6 +2,7 @@ using HeroPassport.Application.Runtime;
 using HeroPassport.Domain.Primitives;
 using HeroPassport.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
+using System.Globalization;
 using Xunit;
 
 namespace HeroPassport.Infrastructure.Tests;
@@ -38,7 +39,9 @@ public sealed class HeroPassportDatabaseBackupTests
             {
                 pinCommand.Transaction = pinnedTransaction;
                 pinCommand.CommandText = "SELECT COUNT(*) FROM heroes;";
-                Assert.Equal(1L, Convert.ToInt64(await pinCommand.ExecuteScalarAsync(token)));
+                Assert.Equal(
+                    1L,
+                    Convert.ToInt64(await pinCommand.ExecuteScalarAsync(token), CultureInfo.InvariantCulture));
             }
 
             var project = new ProjectBindingContext("Backup Qualification", new string('d', 64), "project-identity/1");
@@ -93,7 +96,9 @@ public sealed class HeroPassportDatabaseBackupTests
             await using (var command = backup.CreateCommand())
             {
                 command.CommandText = "SELECT COUNT(*) FROM quest_reports;";
-                Assert.Equal(1L, Convert.ToInt64(await command.ExecuteScalarAsync(token)));
+                Assert.Equal(
+                    1L,
+                    Convert.ToInt64(await command.ExecuteScalarAsync(token), CultureInfo.InvariantCulture));
             }
 
             await pinnedTransaction.RollbackAsync(token);
