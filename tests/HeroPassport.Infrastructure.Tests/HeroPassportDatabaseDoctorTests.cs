@@ -20,6 +20,9 @@ public sealed class HeroPassportDatabaseDoctorTests
             Assert.False(report.Healthy);
             Assert.Equal("not_initialized", report.MigrationState);
             Assert.Null(report.SqliteVersion);
+            Assert.True(report.StorageLocationSupported);
+            Assert.Equal("local", report.StorageLocationKind);
+            Assert.False(string.IsNullOrWhiteSpace(report.StorageDriveType));
             Assert.False(File.Exists(path));
             Assert.False(Directory.Exists(root));
         }
@@ -54,6 +57,9 @@ public sealed class HeroPassportDatabaseDoctorTests
             Assert.False(report.MigrationLockSuspected);
             Assert.True(report.QuickCheckPassed);
             Assert.Equal(0, report.ForeignKeyViolationCount);
+            Assert.True(report.StorageLocationSupported);
+            Assert.Equal("local", report.StorageLocationKind);
+            Assert.Contains(report.StorageDriveType, new[] { "fixed", "removable", "ram" });
             Assert.True(report.Healthy);
 
             var after = await SnapshotAsync(path, token);
@@ -103,6 +109,36 @@ public sealed class HeroPassportDatabaseDoctorTests
         {
             DeleteDatabase(path);
         }
+    }
+
+    [Theory]
+    [InlineData(DriveType.Fixed, true, "local")]
+    [InlineData(DriveType.Removable, true, "local")]
+    [InlineData(DriveType.Ram, true, "local")]
+    [InlineData(DriveType.Network, false, "network")]
+    [InlineData(DriveType.Unknown, false, "unknown")]
+    [InlineData(DriveType.NoRootDirectory, false, "unknown")]
+    [InlineData(DriveType.CDRom, false, "unsupported")]
+    public void StorageLocationPolicyFailsClosedForNonLocalOrUnknownDrives(
+        DriveType driveType,
+        bool expectedSupported,
+        string expectedKind)
+    {
+        var evaluation = HeroPassportStorageLocationPolicy.Classify(driveType, isUnc: false);
+
+        Assert.Equal(expectedSupported, evaluation.Supported);
+        Assert.Equal(expectedKind, evaluation.Kind);
+        Assert.Equal(driveType.ToString().ToLowerInvariant(), evaluation.DriveType);
+    }
+
+    [Fact]
+    public void StorageLocationPolicyTreatsWindowsUncAsNetworkBeforeDriveInspection()
+    {
+        var evaluation = HeroPassportStorageLocationPolicy.Classify(DriveType.Fixed, isUnc: true);
+
+        Assert.False(evaluation.Supported);
+        Assert.Equal("network", evaluation.Kind);
+        Assert.Equal("network", evaluation.DriveType);
     }
 
     private static async Task<DatabaseSnapshot> SnapshotAsync(string path, CancellationToken token)
