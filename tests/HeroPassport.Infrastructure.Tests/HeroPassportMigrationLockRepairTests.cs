@@ -70,6 +70,16 @@ public sealed class HeroPassportMigrationLockRepairTests
     }
 
     [Fact]
+    public void RepairSafetyPolicyRejectsUnsupportedStorageEvenWhenDatabaseChecksOtherwisePass()
+    {
+        var unsupported = RepairableReport(storageLocationSupported: false);
+        var supported = RepairableReport(storageLocationSupported: true);
+
+        Assert.False(HeroPassportMigrationLockRepair.IsRepairSafe(unsupported));
+        Assert.True(HeroPassportMigrationLockRepair.IsRepairSafe(supported));
+    }
+
+    [Fact]
     public async Task MissingDatabaseRepairDoesNotCreateStorage()
     {
         var token = TestContext.Current.CancellationToken;
@@ -94,6 +104,26 @@ public sealed class HeroPassportMigrationLockRepairTests
             }
         }
     }
+
+    private static HeroPassportDatabaseDoctorReport RepairableReport(bool storageLocationSupported) =>
+        new(
+            DatabaseExists: true,
+            StorageLocationSupported: storageLocationSupported,
+            StorageLocationKind: storageLocationSupported ? "local" : "network",
+            StorageDriveType: storageLocationSupported ? "fixed" : "network",
+            SqliteVersion: "3.53.4",
+            SqliteVersionSupported: true,
+            JournalMode: "wal",
+            Synchronous: 2,
+            ForeignKeys: true,
+            TrustedSchema: false,
+            MigrationState: "current",
+            LatestAvailableMigration: "migration",
+            LatestAppliedMigration: "migration",
+            MigrationLockSuspected: true,
+            QuickCheckPassed: true,
+            ForeignKeyViolationCount: 0,
+            Healthy: false);
 
     private static async Task SeedMigrationLockAsync(string databasePath, CancellationToken token)
     {
