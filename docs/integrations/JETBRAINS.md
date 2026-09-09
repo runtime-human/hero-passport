@@ -1,29 +1,42 @@
 # JetBrains Integration
 
-**Status:** documented compatibility candidate; release smoke required  
-**Architecture:** Hero Passport v3.2.1
+**Status:** Documented Core-compatible candidate; native Hero Passport Skill orchestration is not yet qualified  
+**Architecture:** Hero Passport v3.2.1  
+**Verified: 2026-09-09** against current JetBrains AI Assistant 2026.2 MCP documentation.
 
-Use the current official JetBrains AI/MCP mechanism to launch:
+Current JetBrains AI Assistant supports local MCP servers over **STDIO** and can scope a server to the current project.
 
-```text
-hero-passport mcp
-```
+## MCP setup
 
-Bind intended project through host working directory or local `--project-root <path>` launch config.
-
-Ambient Hero Passport UX additionally requires a reusable Skill/instruction mechanism equivalent to `docs/AGENT-SKILL.md`. If current JetBrains surface cannot support that reliably, Core MCP may be compatible but integration is not fully Qualified.
-
-Release qualification verifies current product/version, not generic MCP compatibility:
+Open:
 
 ```text
-exact current HP-MCP/2 v3.2.1 inventory/schema
-get_context + bootstrap
-explicit Hero Start
-project binding
-Quest Finish/restart/all-Hero recovery
-structured result rendering
-HP135/HP136 behavior where practical
-host tool-confirmation behavior
-Skill/equivalent orchestration status
-MCP permanent delete absent
+Settings -> Tools -> AI Assistant -> Model Context Protocol (MCP)
 ```
+
+Add a local server using the current JSON shape:
+
+```json
+{
+  "mcpServers": {
+    "hero-passport": {
+      "command": "hero-passport",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Set the server working directory to the intended project. If that cannot represent the intended Hero Passport project boundary, pass `--project-root <path>` as a local launch argument. Never send a filesystem path as an HP-MCP tool argument.
+
+Official release-time reference:
+
+- https://www.jetbrains.com/help/ai-assistant/mcp.html
+
+## Skill/orchestration boundary
+
+This verification proves current JetBrains local MCP capability only. It does not establish a current portable Agent Skills installation surface equivalent to the canonical `skills/hero-passport/` package.
+
+Therefore JetBrains must not be labeled fully `Qualified` until a current host workflow is demonstrated that preserves the Hero Passport Skill lifecycle semantics (or an explicitly supported equivalent) without duplicating game/reward rules.
+
+A future host smoke must cover tool discovery, get_context/bootstrap, explicit-Hero Start, Finish, restart/recovery, structured results, HP135/HP136 where practical, host confirmation behavior and the ambient orchestration mechanism actually used.
