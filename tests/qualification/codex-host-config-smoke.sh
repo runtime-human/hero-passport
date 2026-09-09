@@ -38,7 +38,8 @@ grep -F "$CODEX_VERSION" <<<"$version_output" >/dev/null
 
 export CODEX_HOME="$work_dir/codex-home"
 export HOME="$work_dir/home"
-mkdir -p "$CODEX_HOME" "$HOME"
+export HERO_PASSPORT_HOME="$work_dir/hero-home"
+mkdir -p "$CODEX_HOME" "$HOME" "$HERO_PASSPORT_HOME"
 
 # Keep this qualification hermetic: Hero Passport exercises native repo Skills and MCP,
 # not Codex's unrelated curated plugin marketplace. Stable Codex enables plugins by
@@ -57,6 +58,22 @@ ln -s "$skill_dir" "$project_dir/.agents/skills/hero-passport"
 cd "$project_dir"
 "$codex_bin" mcp add hero-passport -- dotnet "$app_dll" mcp --project-root "$project_dir"
 
+# The lifecycle qualification uses deterministic model responses to drive known Hero Passport
+# mutations. Make this isolated server required and pre-approved instead of using a global
+# dangerous approval/sandbox bypass. No external model or untrusted tool can participate here.
+python3 - "$CODEX_HOME/config.toml" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+needle = "[mcp_servers.hero-passport]\n"
+if needle not in text:
+    raise SystemExit("Codex MCP configuration table was not persisted")
+replacement = needle + 'required = true\ndefault_tools_approval_mode = "approve"\n'
+path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+PY
+
 list_output="$($codex_bin mcp list 2>&1)"
 printf '%s\n' "$list_output"
 grep -F "hero-passport" <<<"$list_output" >/dev/null
@@ -69,9 +86,14 @@ grep -F -- "--project-root" <<<"$get_output" >/dev/null
 
 [[ -f "$CODEX_HOME/config.toml" ]] || { echo "Codex did not persist isolated MCP configuration" >&2; exit 1; }
 grep -F 'plugins = false' "$CODEX_HOME/config.toml" >/dev/null
+grep -F 'required = true' "$CODEX_HOME/config.toml" >/dev/null
+grep -F 'default_tools_approval_mode = "approve"' "$CODEX_HOME/config.toml" >/dev/null
 grep -F 'mcp_servers.hero-passport' "$CODEX_HOME/config.toml" >/dev/null
 
 printf 'Codex host configuration smoke passed for %s\n' "$CODEX_VERSION"
 python3 "$repo_root/tests/qualification/codex-host-runtime-smoke.py" \
+  --codex "$codex_bin" \
+  --project-dir "$project_dir"
+python3 "$repo_root/tests/qualification/codex-host-lifecycle-smoke.py" \
   --codex "$codex_bin" \
   --project-dir "$project_dir"
