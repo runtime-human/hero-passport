@@ -33,6 +33,14 @@ public sealed class ReleaseIntegrationDocumentationTests
             "${workspaceFolder}");
 
         AssertContainsAll(
+            Path.Combine(integrations, "CURSOR.md"),
+            "Verified: 2026-09-09",
+            ".agents/skills/hero-passport",
+            ".cursor/mcp.json",
+            "\"type\": \"stdio\"",
+            "${workspaceFolder}");
+
+        AssertContainsAll(
             Path.Combine(integrations, "ZED.md"),
             "Verified: 2026-09-09",
             ".agents/skills/hero-passport",
@@ -46,6 +54,22 @@ public sealed class ReleaseIntegrationDocumentationTests
             "\"mcpServers\"",
             "\"command\": \"hero-passport\"",
             "\"args\": [\"mcp\"]");
+    }
+
+    [Fact]
+    public void ReleaseDocumentationMatchesPinnedMcpSdkVersion()
+    {
+        var root = RepoRoot();
+        var packages = File.ReadAllText(Path.Combine(root, "Directory.Packages.props"));
+        Assert.Contains("<PackageVersion Include=\"ModelContextProtocol\" Version=\"2.2.0\" />", packages, StringComparison.Ordinal);
+
+        foreach (var relativePath in new[] { "docs/DISTRIBUTION.md", "docs/TESTING-QUALITY.md" })
+        {
+            var text = File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+            Assert.Contains("2.2.0", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("ModelContextProtocol 2.1.0", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("C# SDK 2.1.0", text, StringComparison.Ordinal);
+        }
     }
 
     private static void AssertContainsAll(string path, params string[] expected)
