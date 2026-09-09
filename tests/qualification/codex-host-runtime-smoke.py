@@ -23,6 +23,8 @@ EXPECTED_TOOLS = {
     "hero.finish_quest",
     "hero.get_card",
 }
+EXPECTED_CODEX_NAMESPACE = "mcp__hero_passport"
+EXPECTED_CODEX_TOOLS = {tool.replace(".", "_") for tool in EXPECTED_TOOLS}
 
 
 class CaptureServer(ThreadingHTTPServer):
@@ -135,22 +137,21 @@ class CaptureHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def nested_namespace_tools(payload: dict[str, Any]) -> tuple[set[str], set[str]]:
-    names: set[str] = set()
-    namespaces: set[str] = set()
+def namespace_tools(payload: dict[str, Any]) -> dict[str, set[str]]:
+    discovered: dict[str, set[str]] = {}
     tools = payload.get("tools")
     if not isinstance(tools, list):
-        return names, namespaces
+        return discovered
 
     for spec in tools:
         if not isinstance(spec, dict) or spec.get("type") != "namespace":
             continue
         namespace = spec.get("name")
-        if isinstance(namespace, str):
-            namespaces.add(namespace)
         nested = spec.get("tools")
-        if not isinstance(nested, list):
+        if not isinstance(namespace, str) or not isinstance(nested, list):
             continue
+
+        names = discovered.setdefault(namespace, set())
         for tool in nested:
             if not isinstance(tool, dict) or tool.get("type") != "function":
                 continue
@@ -158,7 +159,7 @@ def nested_namespace_tools(payload: dict[str, Any]) -> tuple[set[str], set[str]]
             if isinstance(name, str):
                 names.add(name)
 
-    return names, namespaces
+    return discovered
 
 
 def main() -> int:
@@ -224,30 +225,25 @@ def main() -> int:
     if not server.requests:
         raise SystemExit("Codex did not send a Responses API request")
 
-    discovered: set[str] = set()
-    namespaces: set[str] = set()
+    discovered: dict[str, set[str]] = {}
     for request in server.requests:
-        request_tools, request_namespaces = nested_namespace_tools(request)
-        discovered.update(request_tools)
-        namespaces.update(request_namespaces)
+        for namespace, tools in namespace_tools(request).items():
+            discovered.setdefault(namespace, set()).update(tools)
 
-    missing = sorted(EXPECTED_TOOLS - discovered)
-    if missing:
-        observed = sorted(discovered)
+    hero_tools = discovered.get(EXPECTED_CODEX_NAMESPACE, set())
+    missing = sorted(EXPECTED_CODEX_TOOLS - hero_tools)
+    unexpected = sorted(hero_tools - EXPECTED_CODEX_TOOLS)
+    if missing or unexpected:
         raise SystemExit(
-            "Codex launched the turn but did not expose the complete Hero Passport MCP tool set. "
-            f"missing={missing}; observed={observed}; namespaces={sorted(namespaces)}"
-        )
-
-    if "hero-passport" not in namespaces:
-        raise SystemExit(
-            "Hero Passport tools were not exposed through the configured hero-passport namespace; "
-            f"observed namespaces={sorted(namespaces)}"
+            "Codex launched Hero Passport MCP but its model-visible tool surface was not exact. "
+            f"missing={missing}; unexpected={unexpected}; observed={sorted(hero_tools)}; "
+            f"namespaces={sorted(discovered)}"
         )
 
     print(
         "Codex host runtime smoke passed: "
-        f"namespace=hero-passport tools={len(EXPECTED_TOOLS)} responses_requests={len(server.requests)}"
+        f"namespace={EXPECTED_CODEX_NAMESPACE} raw_tools={len(EXPECTED_TOOLS)} "
+        f"model_visible_tools={len(hero_tools)} responses_requests={len(server.requests)}"
     )
     return 0
 
