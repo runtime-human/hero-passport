@@ -31,7 +31,10 @@ public sealed class PrivacySurfaceContractTests
         foreach (var tool in HpMcpToolCatalog.ProtocolTools)
         {
             CollectSchemaPropertyNames(tool.InputSchema, propertyNames);
-            CollectSchemaPropertyNames(tool.OutputSchema, propertyNames);
+            if (tool.OutputSchema is JsonElement outputSchema)
+            {
+                CollectSchemaPropertyNames(outputSchema, propertyNames);
+            }
         }
 
         Assert.Contains("title", propertyNames);
