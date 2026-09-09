@@ -101,7 +101,7 @@ Physical backup uses SQLite backup API and independent integrity/schema validati
 Before publishing:
 
 ```text
-restore pinned stable dependencies (including actual ModelContextProtocol 2.1.0 restore)
+restore pinned stable dependencies (including actual ModelContextProtocol 2.2.0 restore)
 build Release
 run full test/eval matrix
 publish platform artifact
