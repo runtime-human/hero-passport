@@ -55,6 +55,9 @@ public sealed class HeroPassportCliDoctorIntegrationTests
             var root = document.RootElement;
             Assert.True(root.GetProperty("databaseExists").GetBoolean());
             Assert.True(root.GetProperty("healthy").GetBoolean());
+            Assert.True(root.GetProperty("storageLocationSupported").GetBoolean());
+            Assert.Equal("local", root.GetProperty("storageLocationKind").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("storageDriveType").GetString()));
             Assert.True(root.GetProperty("sqliteVersionSupported").GetBoolean());
             Assert.Equal("wal", root.GetProperty("journalMode").GetString());
             Assert.Equal(2, root.GetProperty("synchronous").GetInt32());
@@ -64,6 +67,36 @@ public sealed class HeroPassportCliDoctorIntegrationTests
             Assert.False(root.GetProperty("migrationLockSuspected").GetBoolean());
             Assert.True(root.GetProperty("quickCheckPassed").GetBoolean());
             Assert.Equal(0, root.GetProperty("foreignKeyViolationCount").GetInt32());
+        }
+        finally
+        {
+            DeleteHome(home);
+        }
+    }
+
+    [Fact]
+    public async Task DoctorTextReportsStorageSupportAlongsideDatabaseHealth()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var home = CreateHome();
+        try
+        {
+            var initialized = await RunCliAsync(
+                home,
+                token,
+                "init",
+                "--locale", "en-US",
+                "--hero-name", "Doctor Text Hero",
+                "--json");
+            Assert.Equal(0, initialized.ExitCode);
+
+            var result = await RunCliAsync(home, token, "doctor");
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.True(string.IsNullOrWhiteSpace(result.StandardError), result.StandardError);
+            Assert.Contains("Storage: local (", result.StandardOutput, StringComparison.Ordinal);
+            Assert.Contains("supported: True", result.StandardOutput, StringComparison.Ordinal);
+            Assert.Contains("Healthy: True", result.StandardOutput, StringComparison.Ordinal);
         }
         finally
         {
