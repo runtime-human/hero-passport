@@ -182,7 +182,7 @@ def main() -> int:
         "model_providers.hero_passport_qualification="
         f"{{ name = 'Hero Passport qualification capture', base_url = '{server.base_url}', "
         "wire_api = 'responses', requires_openai_auth = false, request_max_retries = 0, "
-        "stream_max_retries = 0 }}"
+        "stream_max_retries = 0 }"
     )
     command = [
         str(codex),
