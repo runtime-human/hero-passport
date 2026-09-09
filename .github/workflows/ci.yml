@@ -40,7 +40,7 @@ jobs:
         run: dotnet test tests/HeroPassport.AgentEvals/HeroPassport.AgentEvals.csproj --no-build -c Release --logger "console;verbosity=normal"
       - name: Publish packaged app
         run: dotnet publish src/HeroPassport.App/HeroPassport.App.csproj --no-restore -c Release --no-self-contained -o "$GITHUB_WORKSPACE/artifacts/publish/hero-passport"
-      - name: Codex host configuration smoke
+      - name: Codex host runtime smoke
         env:
           HERO_PASSPORT_PUBLISH_DIR: ${{ github.workspace }}/artifacts/publish/hero-passport
         run: bash tests/qualification/codex-host-config-smoke.sh
