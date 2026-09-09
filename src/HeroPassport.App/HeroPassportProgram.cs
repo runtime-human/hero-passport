@@ -121,6 +121,24 @@ public static class HeroPassportProgram
         };
         rootCommand.Subcommands.Add(repairCommand);
 
+        var rebuildJsonOption = new Option<bool>("--json")
+        {
+            Description = "Write one machine-readable projection rebuild result to stdout.",
+        };
+        var projectionsCommand = new Command(
+            "projections",
+            "Rebuild mutable Hero Passport projections from persisted canonical history.")
+        {
+            rebuildJsonOption,
+        };
+        projectionsCommand.SetAction((parseResult, token) =>
+            RunProjectionRebuildAsync(parseResult.GetValue(rebuildJsonOption), token));
+        var rebuildCommand = new Command("rebuild", "Explicit rebuild commands.")
+        {
+            projectionsCommand,
+        };
+        rootCommand.Subcommands.Add(rebuildCommand);
+
         var localeOption = new Option<string>("--locale")
         {
             Description = "Initial locale: ru-RU or en-US.",
@@ -280,6 +298,35 @@ public static class HeroPassportProgram
         Console.Out.WriteLine($"Migration state: {result.After.MigrationState}");
         Console.Out.WriteLine($"Quick check: {(result.After.QuickCheckPassed ? "ok" : "failed")}");
         Console.Out.WriteLine($"Foreign key violations: {result.After.ForeignKeyViolationCount}");
+        Console.Out.WriteLine($"Healthy: {result.After.Healthy}");
+        return result.After.Healthy ? 0 : 1;
+    }
+
+    private static async Task<int> RunProjectionRebuildAsync(
+        bool json,
+        CancellationToken cancellationToken)
+    {
+        var databasePath = HeroPassportRuntimePaths.ResolveDatabasePath();
+        var result = await HeroPassportProjectionRebuilder
+            .RebuildAsync(databasePath, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (json)
+        {
+            var payload = new
+            {
+                result.HeroesRebuilt,
+                result.HeroSkillsRebuilt,
+                result.HeroProjectStatsRebuilt,
+                healthy = result.After.Healthy,
+            };
+            Console.Out.WriteLine(JsonSerializer.Serialize(payload, CliJsonOptions));
+            return result.After.Healthy ? 0 : 1;
+        }
+
+        Console.Out.WriteLine($"Heroes rebuilt: {result.HeroesRebuilt}");
+        Console.Out.WriteLine($"Hero skills rebuilt: {result.HeroSkillsRebuilt}");
+        Console.Out.WriteLine($"Hero project stats rebuilt: {result.HeroProjectStatsRebuilt}");
         Console.Out.WriteLine($"Healthy: {result.After.Healthy}");
         return result.After.Healthy ? 0 : 1;
     }
