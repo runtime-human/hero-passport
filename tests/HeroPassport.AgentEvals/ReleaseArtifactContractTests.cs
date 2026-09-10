@@ -5,6 +5,7 @@ namespace HeroPassport.AgentEvals;
 public sealed class ReleaseArtifactContractTests
 {
     private const string AttestActionCommit = "1e69f48acb82d1966a394da916b4c1698aa569d6";
+    private const string DownloadArtifactActionCommit = "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c";
 
     [Fact]
     public void ReleaseArtifactUsesSingleVersionAuthorityDeterministicArchiveAndPinnedProvenance()
@@ -39,11 +40,21 @@ public sealed class ReleaseArtifactContractTests
         Assert.Contains("-p:UseAppHost=false", workflow, StringComparison.Ordinal);
         Assert.Contains("id-token: write", workflow, StringComparison.Ordinal);
         Assert.Contains("attestations: write", workflow, StringComparison.Ordinal);
+        Assert.Contains("build-release-candidate:", workflow, StringComparison.Ordinal);
+        Assert.Contains("qualify-exact-archive:", workflow, StringComparison.Ordinal);
+        Assert.Contains("provenance:", workflow, StringComparison.Ordinal);
+        Assert.Contains("ubuntu-24.04", workflow, StringComparison.Ordinal);
+        Assert.Contains("windows-2025", workflow, StringComparison.Ordinal);
+        Assert.Contains("macos-15", workflow, StringComparison.Ordinal);
+        Assert.Contains($"actions/download-artifact@{DownloadArtifactActionCommit}", workflow, StringComparison.Ordinal);
+        Assert.Contains("needs: build-release-candidate", workflow, StringComparison.Ordinal);
+        Assert.Contains("needs: qualify-exact-archive", workflow, StringComparison.Ordinal);
         Assert.Contains($"actions/attest@{AttestActionCommit}", workflow, StringComparison.Ordinal);
         Assert.Contains("subject-path:", workflow, StringComparison.Ordinal);
         Assert.Contains("package-release.py", workflow, StringComparison.Ordinal);
         Assert.Contains("SHA256SUMS", workflow, StringComparison.Ordinal);
         Assert.Contains("HeroPassport.PackagedE2E", workflow, StringComparison.Ordinal);
+        Assert.Contains("matrix.os == 'ubuntu-24.04'", workflow, StringComparison.Ordinal);
         Assert.Contains("gh attestation verify", workflow, StringComparison.Ordinal);
 
         var distribution = File.ReadAllText(Path.Combine(root, "docs", "DISTRIBUTION.md"));
@@ -52,10 +63,12 @@ public sealed class ReleaseArtifactContractTests
         Assert.Contains("dotnet HeroPassport.App.dll", distribution, StringComparison.Ordinal);
         Assert.Contains("compatible .NET 10 runtime", distribution, StringComparison.Ordinal);
         Assert.Contains("not a native apphost", distribution, StringComparison.Ordinal);
+        Assert.Contains("same exact archive", distribution, StringComparison.Ordinal);
 
         var decisionLog = File.ReadAllText(Path.Combine(root, "docs", "DECISION-LOG.md"));
         Assert.Contains("ADR-073", decisionLog, StringComparison.Ordinal);
         Assert.Contains("framework-dependent portable ZIP", decisionLog, StringComparison.Ordinal);
+        Assert.Contains("same exact archive", decisionLog, StringComparison.Ordinal);
     }
 
     private static string RepoRoot()
