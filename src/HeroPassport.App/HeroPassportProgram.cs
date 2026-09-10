@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.CommandLine;
+using System.Globalization;
 using System.Text.Json;
 
 namespace HeroPassport.App;
@@ -79,6 +80,108 @@ public static class HeroPassportProgram
         mcpCommand.SetAction((parseResult, token) =>
             RunMcpAsync(parseResult.GetValue(projectRootOption), token));
         rootCommand.Subcommands.Add(mcpCommand);
+
+        var doctorJsonOption = new Option<bool>("--json")
+        {
+            Description = "Write one machine-readable diagnostic report to stdout.",
+        };
+        var doctorCommand = new Command(
+            "doctor",
+            "Inspect Hero Passport SQLite policy, migrations, lock state and integrity without modifying the database.")
+        {
+            doctorJsonOption,
+        };
+        doctorCommand.SetAction((parseResult, token) =>
+            RunDoctorAsync(parseResult.GetValue(doctorJsonOption), token));
+        rootCommand.Subcommands.Add(doctorCommand);
+
+        var confirmProcessesStoppedOption = new Option<bool>("--confirm-processes-stopped")
+        {
+            Description = "Explicitly confirm that all competing Hero Passport processes have been stopped before migration-lock repair.",
+            Required = true,
+        };
+        var repairJsonOption = new Option<bool>("--json")
+        {
+            Description = "Write one machine-readable repair result to stdout.",
+        };
+        var migrationLockCommand = new Command(
+            "migration-lock",
+            "Explicitly clear an abandoned EF SQLite migration lock after safety and integrity checks.")
+        {
+            confirmProcessesStoppedOption,
+            repairJsonOption,
+        };
+        migrationLockCommand.SetAction((parseResult, token) => RunMigrationLockRepairAsync(
+            parseResult.GetValue(confirmProcessesStoppedOption),
+            parseResult.GetValue(repairJsonOption),
+            token));
+        var repairCommand = new Command("repair", "Explicit storage repair commands.")
+        {
+            migrationLockCommand,
+        };
+        rootCommand.Subcommands.Add(repairCommand);
+
+        var rebuildJsonOption = new Option<bool>("--json")
+        {
+            Description = "Write one machine-readable projection rebuild result to stdout.",
+        };
+        var projectionsCommand = new Command(
+            "projections",
+            "Rebuild mutable Hero Passport projections from persisted canonical history.")
+        {
+            rebuildJsonOption,
+        };
+        projectionsCommand.SetAction((parseResult, token) =>
+            RunProjectionRebuildAsync(parseResult.GetValue(rebuildJsonOption), token));
+        var rebuildCommand = new Command("rebuild", "Explicit rebuild commands.")
+        {
+            projectionsCommand,
+        };
+        rootCommand.Subcommands.Add(rebuildCommand);
+
+        var backupOutputOption = new Option<string>("--output")
+        {
+            Description = "New destination path for the validated SQLite backup. Existing files are never overwritten.",
+            Required = true,
+        };
+        var backupJsonOption = new Option<bool>("--json")
+        {
+            Description = "Write one machine-readable backup result to stdout.",
+        };
+        var backupCommand = new Command(
+            "backup",
+            "Create and validate an online SQLite backup without raw-copying the active WAL database.")
+        {
+            backupOutputOption,
+            backupJsonOption,
+        };
+        backupCommand.SetAction((parseResult, token) => RunBackupAsync(
+            parseResult.GetValue(backupOutputOption)!,
+            parseResult.GetValue(backupJsonOption),
+            token));
+        rootCommand.Subcommands.Add(backupCommand);
+
+        var exportOutputOption = new Option<string>("--output")
+        {
+            Description = "New destination path for the privacy-bounded JSON export. Existing files are never overwritten.",
+            Required = true,
+        };
+        var exportJsonOption = new Option<bool>("--json")
+        {
+            Description = "Write one machine-readable export result to stdout.",
+        };
+        var exportCommand = new Command(
+            "export",
+            "Create a user-facing RPG/Quest JSON snapshot without private persistence metadata.")
+        {
+            exportOutputOption,
+            exportJsonOption,
+        };
+        exportCommand.SetAction((parseResult, token) => RunExportAsync(
+            parseResult.GetValue(exportOutputOption)!,
+            parseResult.GetValue(exportJsonOption),
+            token));
+        rootCommand.Subcommands.Add(exportCommand);
 
         var localeOption = new Option<string>("--locale")
         {
@@ -175,6 +278,147 @@ public static class HeroPassportProgram
         rootCommand.Subcommands.Add(heroCommand);
 
         return rootCommand;
+    }
+
+    private static async Task<int> RunDoctorAsync(bool json, CancellationToken cancellationToken)
+    {
+        var databasePath = HeroPassportRuntimePaths.ResolveDatabasePath();
+        var report = await HeroPassportDatabaseDoctor
+            .InspectAsync(databasePath, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(report, CliJsonOptions));
+            return report.Healthy ? 0 : 1;
+        }
+
+        Console.Out.WriteLine($"Database: {(report.DatabaseExists ? "present" : "not initialized")}");
+        Console.Out.WriteLine($"Storage: {report.StorageLocationKind} ({report.StorageDriveType}, supported: {report.StorageLocationSupported})");
+        Console.Out.WriteLine($"SQLite: {report.SqliteVersion ?? "unavailable"} (supported: {report.SqliteVersionSupported})");
+        Console.Out.WriteLine($"Journal mode: {report.JournalMode ?? "unavailable"}");
+        Console.Out.WriteLine($"Synchronous: {report.Synchronous?.ToString(CultureInfo.InvariantCulture) ?? "unavailable"}");
+        Console.Out.WriteLine($"Foreign keys: {report.ForeignKeys?.ToString() ?? "unavailable"}");
+        Console.Out.WriteLine($"Trusted schema: {report.TrustedSchema?.ToString() ?? "unavailable"}");
+        Console.Out.WriteLine($"Migrations: {report.MigrationState}");
+        Console.Out.WriteLine($"Migration lock suspected: {report.MigrationLockSuspected}");
+        Console.Out.WriteLine($"Quick check: {(report.QuickCheckPassed ? "ok" : "failed")}");
+        Console.Out.WriteLine($"Foreign key violations: {report.ForeignKeyViolationCount}");
+        Console.Out.WriteLine($"Healthy: {report.Healthy}");
+        return report.Healthy ? 0 : 1;
+    }
+
+    private static async Task<int> RunMigrationLockRepairAsync(
+        bool confirmedProcessesStopped,
+        bool json,
+        CancellationToken cancellationToken)
+    {
+        if (!confirmedProcessesStopped)
+        {
+            throw new HeroPassportException("HP300", "Option --confirm-processes-stopped is required.");
+        }
+
+        var databasePath = HeroPassportRuntimePaths.ResolveDatabasePath();
+        var result = await HeroPassportMigrationLockRepair
+            .RepairAsync(databasePath, competingProcessesStopped: true, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (json)
+        {
+            var payload = new
+            {
+                result.LockCleared,
+                beforeMigrationLockSuspected = result.Before.MigrationLockSuspected,
+                afterMigrationLockSuspected = result.After.MigrationLockSuspected,
+                migrationState = result.After.MigrationState,
+                quickCheckPassed = result.After.QuickCheckPassed,
+                foreignKeyViolationCount = result.After.ForeignKeyViolationCount,
+                healthy = result.After.Healthy,
+            };
+            Console.Out.WriteLine(JsonSerializer.Serialize(payload, CliJsonOptions));
+            return result.After.Healthy ? 0 : 1;
+        }
+
+        Console.Out.WriteLine($"Migration lock cleared: {result.LockCleared}");
+        Console.Out.WriteLine($"Migration state: {result.After.MigrationState}");
+        Console.Out.WriteLine($"Quick check: {(result.After.QuickCheckPassed ? "ok" : "failed")}");
+        Console.Out.WriteLine($"Foreign key violations: {result.After.ForeignKeyViolationCount}");
+        Console.Out.WriteLine($"Healthy: {result.After.Healthy}");
+        return result.After.Healthy ? 0 : 1;
+    }
+
+    private static async Task<int> RunProjectionRebuildAsync(
+        bool json,
+        CancellationToken cancellationToken)
+    {
+        var databasePath = HeroPassportRuntimePaths.ResolveDatabasePath();
+        var result = await HeroPassportProjectionRebuilder
+            .RebuildAsync(databasePath, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (json)
+        {
+            var payload = new
+            {
+                result.HeroesRebuilt,
+                result.HeroSkillsRebuilt,
+                result.HeroProjectStatsRebuilt,
+                healthy = result.After.Healthy,
+            };
+            Console.Out.WriteLine(JsonSerializer.Serialize(payload, CliJsonOptions));
+            return result.After.Healthy ? 0 : 1;
+        }
+
+        Console.Out.WriteLine($"Heroes rebuilt: {result.HeroesRebuilt}");
+        Console.Out.WriteLine($"Hero skills rebuilt: {result.HeroSkillsRebuilt}");
+        Console.Out.WriteLine($"Hero project stats rebuilt: {result.HeroProjectStatsRebuilt}");
+        Console.Out.WriteLine($"Healthy: {result.After.Healthy}");
+        return result.After.Healthy ? 0 : 1;
+    }
+
+    private static async Task<int> RunBackupAsync(
+        string outputPath,
+        bool json,
+        CancellationToken cancellationToken)
+    {
+        var databasePath = HeroPassportRuntimePaths.ResolveDatabasePath();
+        var result = await HeroPassportDatabaseBackup
+            .CreateAsync(databasePath, outputPath, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(result, CliJsonOptions));
+            return result.Validated ? 0 : 1;
+        }
+
+        Console.Out.WriteLine($"Backup validated: {result.Validated}");
+        Console.Out.WriteLine($"Destination: {result.DestinationPath}");
+        Console.Out.WriteLine($"Size bytes: {result.SizeBytes.ToString(CultureInfo.InvariantCulture)}");
+        Console.Out.WriteLine($"Migration state: {result.MigrationState}");
+        return result.Validated ? 0 : 1;
+    }
+
+    private static async Task<int> RunExportAsync(
+        string outputPath,
+        bool json,
+        CancellationToken cancellationToken)
+    {
+        var databasePath = HeroPassportRuntimePaths.ResolveDatabasePath();
+        var result = await HeroPassportDataExport
+            .CreateAsync(databasePath, outputPath, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(result, CliJsonOptions));
+            return 0;
+        }
+
+        Console.Out.WriteLine($"Export schema: {result.SchemaVersion}");
+        Console.Out.WriteLine($"Destination: {result.DestinationPath}");
+        Console.Out.WriteLine($"Size bytes: {result.SizeBytes.ToString(CultureInfo.InvariantCulture)}");
+        return 0;
     }
 
     private static async Task<int> RunInitAsync(

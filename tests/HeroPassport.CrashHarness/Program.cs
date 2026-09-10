@@ -1,6 +1,36 @@
 using HeroPassport.Application.Runtime;
 using HeroPassport.Domain.Primitives;
 using HeroPassport.Infrastructure.Persistence;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+
+if (args.Length == 3 && string.Equals(args[0], "migration-lock", StringComparison.Ordinal))
+{
+    var migrationDatabasePath = Path.GetFullPath(args[1]);
+    var migrationSignalPath = Path.GetFullPath(args[2]);
+    var connectionString = new SqliteConnectionStringBuilder
+    {
+        DataSource = migrationDatabasePath,
+        Mode = SqliteOpenMode.ReadWrite,
+        Cache = SqliteCacheMode.Default,
+        ForeignKeys = true,
+        Pooling = false,
+        DefaultTimeout = 5,
+    }.ToString();
+
+    var options = new DbContextOptionsBuilder<HeroPassportDbContext>()
+        .UseSqlite(connectionString)
+        .UseAsyncSeeding((_, _, cancellationToken) =>
+        {
+            File.WriteAllText(migrationSignalPath, "migration-lock-acquired");
+            return Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        })
+        .Options;
+
+    await using var context = new HeroPassportDbContext(options);
+    await context.Database.MigrateAsync();
+    return 0;
+}
 
 if (args.Length is not (5 or 7))
 {
