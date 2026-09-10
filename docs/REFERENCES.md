@@ -1,6 +1,6 @@
 # Hero Passport — References
 
-**Verification snapshot:** 2026-09-06
+**Verification snapshot:** 2026-09-07
 
 Use current primary/official sources for implementation claims. Repository prior art informs design but never overrides official documentation for the actual stack.
 
@@ -16,6 +16,8 @@ Use current primary/official sources for implementation claims. Repository prior
 - SQLite EF Core provider: https://www.nuget.org/packages/Microsoft.EntityFrameworkCore.Sqlite
 - Microsoft.Data.Sqlite package: https://www.nuget.org/packages/Microsoft.Data.Sqlite
 - System.CommandLine package: https://www.nuget.org/packages/System.CommandLine
+- System.CommandLine overview/tutorial: https://learn.microsoft.com/en-us/dotnet/standard/commandline/
+- System.CommandLine get-started tutorial: https://learn.microsoft.com/en-us/dotnet/standard/commandline/get-started-tutorial
 
 Verified implementation baseline:
 
@@ -23,14 +25,15 @@ Verified implementation baseline:
 .NET SDK 10.0.302 / .NET 10 LTS
 Microsoft.EntityFrameworkCore.Sqlite 10.0.10
 Microsoft.Data.Sqlite 10.0.10
-System.CommandLine 2.0.10
+System.CommandLine 2.0.11
 ```
 
 Important verified implications:
 
 - `Foreign Keys=True` sends `PRAGMA foreign_keys=1` after open;
 - connection string exposes Cache/Foreign Keys/Default Timeout/Pooling but no `Synchronous=Full` keyword;
-- EF SQLite migration protection uses `__EFMigrationsLock`, and official docs describe abandoned-lock recovery after unexpected process termination.
+- EF SQLite migration protection uses `__EFMigrationsLock`, and official docs describe abandoned-lock recovery after unexpected process termination;
+- stable System.CommandLine 2.0.11 provides the `RootCommand` / subcommand / `SetAction` parsing and invocation surface used by the 0.1 CLI; the 3.0 line remains prerelease at this snapshot.
 
 ## MCP
 
