@@ -15,15 +15,13 @@ on:
 
 permissions:
   contents: read
-  id-token: write
-  attestations: write
 
 concurrency:
   group: release-artifact-${{ inputs.expected_sha }}
   cancel-in-progress: false
 
 jobs:
-  qualify-release-artifact:
+  build-release-candidate:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -31,12 +29,14 @@ jobs:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       RELEASE_DIR: ${{ github.workspace }}/artifacts/release
       PUBLISH_DIR: ${{ github.workspace }}/artifacts/release-publish
-      EXTRACT_DIR: ${{ github.workspace }}/artifacts/release-extracted
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
         with:
           dotnet-version: 10.0.302
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
 
       - name: Validate frozen release identity
         shell: bash
@@ -79,35 +79,95 @@ jobs:
           test "$(dotnet "$PUBLISH_DIR/HeroPassport.App.dll" --version)" = "$RELEASE_VERSION"
 
       - name: Package deterministic release archive
-        run: python3 tests/qualification/package-release.py --publish-dir "$PUBLISH_DIR" --output-dir "$RELEASE_DIR" --version "$RELEASE_VERSION" --source-sha "$GITHUB_SHA"
+        run: python tests/qualification/package-release.py --publish-dir "$PUBLISH_DIR" --output-dir "$RELEASE_DIR" --version "$RELEASE_VERSION" --source-sha "$GITHUB_SHA"
 
-      - name: Verify SHA256SUMS and extract exact archive
+      - name: Verify candidate before handoff
+        run: python tests/qualification/verify-release.py --release-dir "$RELEASE_DIR" --extract-dir "${{ github.workspace }}/artifacts/build-verify" --version "$RELEASE_VERSION" --source-sha "$GITHUB_SHA"
+
+      - name: Stage exact candidate for platform qualification
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: hero-passport-release-candidate-${{ inputs.expected_sha }}
+          path: |
+            ${{ github.workspace }}/artifacts/release/hero-passport-${{ inputs.version }}.zip
+            ${{ github.workspace }}/artifacts/release/hero-passport-${{ inputs.version }}.manifest.json
+            ${{ github.workspace }}/artifacts/release/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+
+  qualify-exact-archive:
+    needs: build-release-candidate
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+          - macos-15
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      RELEASE_DIR: ${{ github.workspace }}/artifacts/release
+      EXTRACT_DIR: ${{ github.workspace }}/artifacts/release-extracted
+      HERO_PASSPORT_PUBLISH_DIR: ${{ github.workspace }}/artifacts/release-extracted/hero-passport-${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: 10.0.302
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+
+      - name: Restore packaged E2E harness
+        run: dotnet restore tests/HeroPassport.PackagedE2E/HeroPassport.PackagedE2E.csproj
+
+      - name: Build packaged E2E harness
+        run: dotnet build tests/HeroPassport.PackagedE2E/HeroPassport.PackagedE2E.csproj --no-restore -c Release
+
+      - name: Download same exact candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: hero-passport-release-candidate-${{ inputs.expected_sha }}
+          path: ${{ github.workspace }}/artifacts/release
+
+      - name: Verify checksum manifest archive safety and version
+        run: python tests/qualification/verify-release.py --release-dir "$RELEASE_DIR" --extract-dir "$EXTRACT_DIR" --version "$RELEASE_VERSION" --source-sha "$EXPECTED_SHA"
+
+      - name: Exact archive packaged vertical E2E
+        run: dotnet test tests/HeroPassport.PackagedE2E/HeroPassport.PackagedE2E.csproj --no-build -c Release --logger "console;verbosity=normal"
+
+      - name: Exact archive Codex reference-host qualification
+        if: matrix.os == 'ubuntu-24.04'
+        run: bash tests/qualification/codex-host-config-smoke.sh
+
+  provenance:
+    needs: qualify-exact-archive
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      RELEASE_DIR: ${{ github.workspace }}/artifacts/release
+    steps:
+      - name: Download platform-qualified exact candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: hero-passport-release-candidate-${{ inputs.expected_sha }}
+          path: ${{ github.workspace }}/artifacts/release
+
+      - name: Verify exact candidate checksum before attestation
         shell: bash
         run: |
           set -euo pipefail
           cd "$RELEASE_DIR"
           sha256sum -c SHA256SUMS
-          mkdir -p "$EXTRACT_DIR"
-          python3 - "$RELEASE_DIR/hero-passport-$RELEASE_VERSION.zip" "$EXTRACT_DIR" <<'PY'
-          import sys
-          from pathlib import Path
-          from zipfile import ZipFile
-          archive = Path(sys.argv[1])
-          destination = Path(sys.argv[2])
-          with ZipFile(archive, "r") as source:
-              source.extractall(destination)
-          PY
-          test "$(dotnet "$EXTRACT_DIR/hero-passport-$RELEASE_VERSION/HeroPassport.App.dll" --version)" = "$RELEASE_VERSION"
-
-      - name: Exact archive packaged vertical E2E
-        env:
-          HERO_PASSPORT_PUBLISH_DIR: ${{ github.workspace }}/artifacts/release-extracted/hero-passport-${{ inputs.version }}
-        run: dotnet test tests/HeroPassport.PackagedE2E/HeroPassport.PackagedE2E.csproj --no-build -c Release --logger "console;verbosity=normal"
-
-      - name: Exact archive Codex reference-host qualification
-        env:
-          HERO_PASSPORT_PUBLISH_DIR: ${{ github.workspace }}/artifacts/release-extracted/hero-passport-${{ inputs.version }}
-        run: bash tests/qualification/codex-host-config-smoke.sh
 
       - name: Generate build provenance attestation
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
