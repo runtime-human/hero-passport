@@ -140,6 +140,40 @@ public static class HeroPassportProgram
             token));
         rootCommand.Subcommands.Add(initCommand);
 
+        var deleteHeroIdOption = new Option<string>("--hero-id")
+        {
+            Description = "Canonical lowercase UUIDv7 of the Hero to delete.",
+            Required = true,
+        };
+        var confirmLogicalDeleteOption = new Option<bool>("--confirm-logical-delete")
+        {
+            Description = "Explicitly confirm permanent logical deletion from Hero Passport application state; this is not forensic erasure.",
+            Required = true,
+        };
+        var deleteJsonOption = new Option<bool>("--json")
+        {
+            Description = "Write one machine-readable JSON result to stdout.",
+        };
+        var deleteCommand = new Command(
+            "delete",
+            "Permanently remove a non-active Hero from application state. Logical deletion only; not forensic erasure.")
+        {
+            deleteHeroIdOption,
+            confirmLogicalDeleteOption,
+            deleteJsonOption,
+        };
+        deleteCommand.SetAction((parseResult, token) => RunDeleteHeroAsync(
+            parseResult.GetValue(deleteHeroIdOption)!,
+            parseResult.GetValue(confirmLogicalDeleteOption),
+            parseResult.GetValue(deleteJsonOption),
+            token));
+
+        var heroCommand = new Command("hero", "Hero administration commands.")
+        {
+            deleteCommand,
+        };
+        rootCommand.Subcommands.Add(heroCommand);
+
         return rootCommand;
     }
 
@@ -199,6 +233,41 @@ public static class HeroPassportProgram
         return 0;
     }
 
+    private static async Task<int> RunDeleteHeroAsync(
+        string heroIdValue,
+        bool confirmed,
+        bool json,
+        CancellationToken cancellationToken)
+    {
+        if (!confirmed)
+        {
+            throw new HeroPassportException("HP300", "Option --confirm-logical-delete is required.");
+        }
+
+        var heroId = ParseHeroId(heroIdValue);
+        var databasePath = HeroPassportRuntimePaths.ResolveDatabasePath();
+        await HeroPassportDatabase.InitializeAsync(databasePath, cancellationToken).ConfigureAwait(false);
+        var application = new HeroPassportApplication(new SqliteHeroPassportStateStore(databasePath), TimeProvider.System);
+        await application.DeleteHeroPermanentlyAsync(heroId, cancellationToken).ConfigureAwait(false);
+
+        if (json)
+        {
+            var payload = new
+            {
+                heroId = heroId.ToString(),
+                deleted = true,
+                deletionScope = "logical_application_state",
+                forensicErasure = false,
+            };
+            Console.Out.WriteLine(JsonSerializer.Serialize(payload, CliJsonOptions));
+            return 0;
+        }
+
+        Console.Out.WriteLine($"Hero {heroId} permanently deleted from Hero Passport application state.");
+        Console.Out.WriteLine("This is logical deletion and does not provide forensic erasure of storage media.");
+        return 0;
+    }
+
     private static MutationRequestId ParseOrCreateRequestId(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -213,6 +282,18 @@ public static class HeroPassportProgram
         catch (FormatException)
         {
             throw new HeroPassportException("HP300", "Invalid requestId.");
+        }
+    }
+
+    private static HeroId ParseHeroId(string value)
+    {
+        try
+        {
+            return HeroId.Parse(value);
+        }
+        catch (FormatException)
+        {
+            throw new HeroPassportException("HP300", "Invalid heroId.");
         }
     }
 

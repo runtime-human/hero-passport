@@ -65,6 +65,9 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
     public Task<HeroPreferenceChangeResult> RestoreHeroAsync(HeroId heroId, CancellationToken cancellationToken = default) =>
         store.RestoreHeroAsync(heroId, timeProvider.GetUtcNow(), cancellationToken);
 
+    public Task DeleteHeroPermanentlyAsync(HeroId heroId, CancellationToken cancellationToken = default) =>
+        store.DeleteHeroPermanentlyAsync(heroId, cancellationToken);
+
     public Task<HeroCardResult> GetCardAsync(
         HeroId heroId,
         ProjectBindingContext project,

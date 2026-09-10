@@ -45,6 +45,10 @@ public interface IHeroPassportStateStore
         DateTimeOffset now,
         CancellationToken cancellationToken = default);
 
+    Task DeleteHeroPermanentlyAsync(
+        HeroId heroId,
+        CancellationToken cancellationToken = default);
+
     Task<HeroCardResult> GetCardAsync(
         HeroId heroId,
         ProjectBindingContext project,
