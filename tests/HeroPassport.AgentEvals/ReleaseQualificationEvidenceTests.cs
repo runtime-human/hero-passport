@@ -14,9 +14,9 @@ public sealed class ReleaseQualificationEvidenceTests
         Assert.Contains("Qualification date: 2026-09-10", text, StringComparison.Ordinal);
         Assert.Contains("Release verdict: NOT RELEASE READY", text, StringComparison.Ordinal);
 
-        Assert.Contains("head: 60fbadca4ac908c21cd6e62950498de3cf5258f0", text, StringComparison.Ordinal);
-        Assert.Contains("Linux full CI: CI #625 / run 34435083983 / success", text, StringComparison.Ordinal);
-        Assert.Contains("Cross-platform qualification: release-platform #2 / run 34435083997 / success", text, StringComparison.Ordinal);
+        Assert.Contains("head: 509f2389c10d11966772b8e7058a90bd48943d47", text, StringComparison.Ordinal);
+        Assert.Contains("Linux full CI: CI #628 / run 34435792659 / success", text, StringComparison.Ordinal);
+        Assert.Contains("Cross-platform qualification: release-platform #5 / run 34435792658 / success", text, StringComparison.Ordinal);
         Assert.Contains("Ubuntu 24.04.5 LTS", text, StringComparison.Ordinal);
         Assert.Contains("Microsoft Windows Server 2025 10.0.26100", text, StringComparison.Ordinal);
         Assert.Contains("macOS 15.7.9", text, StringComparison.Ordinal);
@@ -45,9 +45,11 @@ public sealed class ReleaseQualificationEvidenceTests
         Assert.DoesNotContain("JetBrains | Qualified", text, StringComparison.Ordinal);
         Assert.DoesNotContain("ChatGPT | Qualified", text, StringComparison.Ordinal);
 
-        Assert.Contains("current branch still identifies itself as `0.1.0-dev`", text, StringComparison.Ordinal);
+        Assert.Contains("framework-dependent portable ZIP", text, StringComparison.Ordinal);
+        Assert.Contains("single cross-platform release archive", text, StringComparison.Ordinal);
         Assert.Contains("GitHub Artifact Attestations/Sigstore", text, StringComparison.Ordinal);
         Assert.Contains("exact archive", text, StringComparison.Ordinal);
+        Assert.Contains("final `0.1.0` workflow has not yet been executed from the frozen `main` release commit", text, StringComparison.Ordinal);
     }
 
     private static string RepoRoot()

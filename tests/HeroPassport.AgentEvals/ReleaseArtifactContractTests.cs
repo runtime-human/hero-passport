@@ -34,6 +34,9 @@ public sealed class ReleaseArtifactContractTests
         var workflow = File.ReadAllText(workflowPath);
         Assert.Contains("workflow_dispatch:", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("pull_request:", workflow, StringComparison.Ordinal);
+        Assert.Contains("expected_sha:", workflow, StringComparison.Ordinal);
+        Assert.Contains("test \"$GITHUB_SHA\" = \"$EXPECTED_SHA\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("-p:UseAppHost=false", workflow, StringComparison.Ordinal);
         Assert.Contains("id-token: write", workflow, StringComparison.Ordinal);
         Assert.Contains("attestations: write", workflow, StringComparison.Ordinal);
         Assert.Contains($"actions/attest@{AttestActionCommit}", workflow, StringComparison.Ordinal);
@@ -42,6 +45,17 @@ public sealed class ReleaseArtifactContractTests
         Assert.Contains("SHA256SUMS", workflow, StringComparison.Ordinal);
         Assert.Contains("HeroPassport.PackagedE2E", workflow, StringComparison.Ordinal);
         Assert.Contains("gh attestation verify", workflow, StringComparison.Ordinal);
+
+        var distribution = File.ReadAllText(Path.Combine(root, "docs", "DISTRIBUTION.md"));
+        Assert.Contains("framework-dependent portable ZIP", distribution, StringComparison.Ordinal);
+        Assert.Contains("single cross-platform release archive", distribution, StringComparison.Ordinal);
+        Assert.Contains("dotnet HeroPassport.App.dll", distribution, StringComparison.Ordinal);
+        Assert.Contains("compatible .NET 10 runtime", distribution, StringComparison.Ordinal);
+        Assert.Contains("not a native apphost", distribution, StringComparison.Ordinal);
+
+        var decisionLog = File.ReadAllText(Path.Combine(root, "docs", "DECISION-LOG.md"));
+        Assert.Contains("ADR-073", decisionLog, StringComparison.Ordinal);
+        Assert.Contains("framework-dependent portable ZIP", decisionLog, StringComparison.Ordinal);
     }
 
     private static string RepoRoot()
