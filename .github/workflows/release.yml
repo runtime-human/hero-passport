@@ -134,7 +134,7 @@ jobs:
           path: ${{ github.workspace }}/artifacts/release
 
       - name: Verify checksum manifest archive safety and version
-        run: python tests/qualification/verify-release.py --release-dir "$RELEASE_DIR" --extract-dir "$EXTRACT_DIR" --version "$RELEASE_VERSION" --source-sha "$EXPECTED_SHA"
+        run: python tests/qualification/verify-release.py --release-dir "${{ env.RELEASE_DIR }}" --extract-dir "${{ env.EXTRACT_DIR }}" --version "${{ env.RELEASE_VERSION }}" --source-sha "${{ env.EXPECTED_SHA }}"
 
       - name: Exact archive packaged vertical E2E
         run: dotnet test tests/HeroPassport.PackagedE2E/HeroPassport.PackagedE2E.csproj --no-build -c Release --logger "console;verbosity=normal"

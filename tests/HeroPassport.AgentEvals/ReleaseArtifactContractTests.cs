@@ -30,6 +30,14 @@ public sealed class ReleaseArtifactContractTests
         Assert.Contains("1980, 1, 1, 0, 0, 0", packager, StringComparison.Ordinal);
         Assert.Contains("sorted(", packager, StringComparison.Ordinal);
 
+        var verifierPath = Path.Combine(root, "tests", "qualification", "verify-release.py");
+        Assert.True(File.Exists(verifierPath), $"Missing exact archive verifier: {verifierPath}");
+        var verifier = File.ReadAllText(verifierPath);
+        Assert.Contains("unsafe ZIP entry path", verifier, StringComparison.Ordinal);
+        Assert.Contains("duplicate ZIP entry", verifier, StringComparison.Ordinal);
+        Assert.Contains("ZIP symlink entries are not permitted", verifier, StringComparison.Ordinal);
+        Assert.Contains("release --version mismatch", verifier, StringComparison.Ordinal);
+
         var workflowPath = Path.Combine(root, ".github", "workflows", "release.yml");
         Assert.True(File.Exists(workflowPath), $"Missing release workflow: {workflowPath}");
         var workflow = File.ReadAllText(workflowPath);
@@ -52,10 +60,13 @@ public sealed class ReleaseArtifactContractTests
         Assert.Contains($"actions/attest@{AttestActionCommit}", workflow, StringComparison.Ordinal);
         Assert.Contains("subject-path:", workflow, StringComparison.Ordinal);
         Assert.Contains("package-release.py", workflow, StringComparison.Ordinal);
+        Assert.Contains("verify-release.py", workflow, StringComparison.Ordinal);
         Assert.Contains("SHA256SUMS", workflow, StringComparison.Ordinal);
         Assert.Contains("HeroPassport.PackagedE2E", workflow, StringComparison.Ordinal);
         Assert.Contains("matrix.os == 'ubuntu-24.04'", workflow, StringComparison.Ordinal);
         Assert.Contains("gh attestation verify", workflow, StringComparison.Ordinal);
+        Assert.Contains("--release-dir \"${{ env.RELEASE_DIR }}\"", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("--release-dir \"$RELEASE_DIR\" --extract-dir \"$EXTRACT_DIR\"", workflow, StringComparison.Ordinal);
 
         var distribution = File.ReadAllText(Path.Combine(root, "docs", "DISTRIBUTION.md"));
         Assert.Contains("framework-dependent portable ZIP", distribution, StringComparison.Ordinal);
