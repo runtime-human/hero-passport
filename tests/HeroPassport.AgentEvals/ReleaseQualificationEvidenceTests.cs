@@ -5,31 +5,41 @@ namespace HeroPassport.AgentEvals;
 public sealed class ReleaseQualificationEvidenceTests
 {
     [Fact]
-    public void ZeroOneReleaseMatrixRecordsCurrentExecutableEvidenceWithoutOverclaimingOtherHosts()
+    public void ZeroOneReleaseMatrixRecordsPublishedExecutableEvidenceWithoutOverclaimingOtherHosts()
     {
         var path = Path.Combine(RepoRoot(), "docs", "release", "0.1.0-qualification.md");
-        Assert.True(File.Exists(path), $"Missing Task 17 release evidence matrix: {path}");
+        Assert.True(File.Exists(path), $"Missing 0.1 release evidence matrix: {path}");
 
         var text = File.ReadAllText(path);
         Assert.Contains("Qualification date: 2026-09-10", text, StringComparison.Ordinal);
-        Assert.Contains("Release verdict: NOT RELEASE READY", text, StringComparison.Ordinal);
+        Assert.Contains("Release verdict: RELEASED / QUALIFIED", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Release verdict: NOT RELEASE READY", text, StringComparison.Ordinal);
 
-        Assert.Contains("head: 509f2389c10d11966772b8e7058a90bd48943d47", text, StringComparison.Ordinal);
-        Assert.Contains("Linux full CI: CI #628 / run 34435792659 / success", text, StringComparison.Ordinal);
-        Assert.Contains("Cross-platform qualification: release-platform #5 / run 34435792658 / success", text, StringComparison.Ordinal);
-        Assert.Contains("Ubuntu 24.04.5 LTS", text, StringComparison.Ordinal);
-        Assert.Contains("Microsoft Windows Server 2025 10.0.26100", text, StringComparison.Ordinal);
-        Assert.Contains("macOS 15.7.9", text, StringComparison.Ordinal);
-        Assert.Contains("Infrastructure 45/45 GREEN", text, StringComparison.Ordinal);
-        Assert.Contains("PackagedE2E 3/3 GREEN", text, StringComparison.Ordinal);
+        Assert.Contains("tag: v0.1.0", text, StringComparison.Ordinal);
+        Assert.Contains("release id: 386030938", text, StringComparison.Ordinal);
+        Assert.Contains("release state: stable, non-prerelease, immutable", text, StringComparison.Ordinal);
+        Assert.Contains("source commit: 31409f10465478aba18fbd1f48f1e12a87fd61d0", text, StringComparison.Ordinal);
+        Assert.Contains("post-merge main CI: CI #643 / run 34438271450 / success", text, StringComparison.Ordinal);
+        Assert.Contains("release qualification: release-artifact-qualification #1 / run 34440441304 / success", text, StringComparison.Ordinal);
+        Assert.Contains("publication workflow: publish-0.1.0 #1 / run 34442054952 / success", text, StringComparison.Ordinal);
 
-        Assert.Contains("Codex CLI: 0.153.4", text, StringComparison.Ordinal);
+        Assert.Contains("archive: hero-passport-0.1.0.zip", text, StringComparison.Ordinal);
+        Assert.Contains("payload files: 139", text, StringComparison.Ordinal);
+        Assert.Contains("SHA-256: 4bde06fa4e1df957b8ea88944e2f3493fd892c9bd28278e44417f95077596b80", text, StringComparison.Ordinal);
+        Assert.Contains("same exact archive", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Ubuntu 24.04 / ubuntu-24.04", text, StringComparison.Ordinal);
+        Assert.Contains("Windows Server 2025 / windows-2025", text, StringComparison.Ordinal);
+        Assert.Contains("macOS 15 / macos-15", text, StringComparison.Ordinal);
+
+        Assert.Contains("GitHub attestation id: 46468110", text, StringComparison.Ordinal);
+        Assert.Contains("Sigstore Rekor log index: 2778276913", text, StringComparison.Ordinal);
+        Assert.Contains("GitHub Artifact Attestations/Sigstore", text, StringComparison.Ordinal);
+        Assert.Contains("gh attestation verify", text, StringComparison.Ordinal);
+
+        Assert.Contains("Codex | Qualified reference host | stable CLI + repo Skill + packaged MCP lifecycle/restart/replay proven", text, StringComparison.Ordinal);
+        Assert.Contains("Codex CLI `0.153.4`", text, StringComparison.Ordinal);
         Assert.Contains("tool round-trip: hero.get_context", text, StringComparison.Ordinal);
         Assert.Contains("host_processes=4 replayed=true", text, StringComparison.Ordinal);
-        Assert.Contains(
-            "Codex | Qualified reference host | stable CLI + repo Skill + packaged MCP lifecycle/restart/replay proven",
-            text,
-            StringComparison.Ordinal);
 
         Assert.Contains("Claude Code | documented compatible | host smoke pending", text, StringComparison.Ordinal);
         Assert.Contains("VS Code | documented compatible | host smoke pending", text, StringComparison.Ordinal);
@@ -45,11 +55,9 @@ public sealed class ReleaseQualificationEvidenceTests
         Assert.DoesNotContain("JetBrains | Qualified", text, StringComparison.Ordinal);
         Assert.DoesNotContain("ChatGPT | Qualified", text, StringComparison.Ordinal);
 
-        Assert.Contains("framework-dependent portable ZIP", text, StringComparison.Ordinal);
-        Assert.Contains("single cross-platform release archive", text, StringComparison.Ordinal);
-        Assert.Contains("GitHub Artifact Attestations/Sigstore", text, StringComparison.Ordinal);
-        Assert.Contains("exact archive", text, StringComparison.Ordinal);
-        Assert.Contains("final `0.1.0` workflow has not yet been executed from the frozen `main` release commit", text, StringComparison.Ordinal);
+        Assert.Contains("framework-dependent portable .NET 10 distribution", text, StringComparison.Ordinal);
+        Assert.Contains("No release blocker remains for 0.1.0", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("final `0.1.0` workflow has not yet been executed", text, StringComparison.Ordinal);
     }
 
     private static string RepoRoot()
