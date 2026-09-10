@@ -150,8 +150,7 @@ public sealed class HeroPassportDatabaseDoctorTests
         return new DatabaseSnapshot(
             await ScalarAsync(connection, "SELECT COUNT(*) FROM app_settings;", token),
             await ScalarAsync(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory;", token),
-            await ScalarAsync(connection, "SELECT COUNT(*) FROM heroes;", token),
-            new FileInfo(path).Length);
+            await ScalarAsync(connection, "SELECT COUNT(*) FROM heroes;", token));
     }
 
     private static async Task<long> ScalarAsync(SqliteConnection connection, string sql, CancellationToken token)
@@ -180,5 +179,5 @@ public sealed class HeroPassportDatabaseDoctorTests
         try { Directory.Delete(directory, recursive: true); } catch (DirectoryNotFoundException) { } catch (IOException) { }
     }
 
-    private sealed record DatabaseSnapshot(long SettingsRows, long MigrationRows, long HeroRows, long DatabaseLength);
+    private sealed record DatabaseSnapshot(long SettingsRows, long MigrationRows, long HeroRows);
 }

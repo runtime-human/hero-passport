@@ -165,6 +165,7 @@ public sealed class HeroPassportMigrationLockRepairTests
 
     private static void DeleteDatabaseDirectory(string databasePath)
     {
+        SqliteConnection.ClearAllPools();
         var directory = Path.GetDirectoryName(databasePath)!;
         if (Directory.Exists(directory))
         {

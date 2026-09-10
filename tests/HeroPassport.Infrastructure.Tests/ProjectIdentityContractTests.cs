@@ -36,7 +36,7 @@ public sealed class ProjectIdentityContractTests
         }
         finally
         {
-            Directory.Delete(sandbox, recursive: true);
+            DeleteTemporaryDirectory(sandbox);
         }
     }
 
@@ -67,7 +67,7 @@ public sealed class ProjectIdentityContractTests
         }
         finally
         {
-            Directory.Delete(sandbox, recursive: true);
+            DeleteTemporaryDirectory(sandbox);
         }
     }
 
@@ -91,7 +91,7 @@ public sealed class ProjectIdentityContractTests
         }
         finally
         {
-            Directory.Delete(sandbox, recursive: true);
+            DeleteTemporaryDirectory(sandbox);
         }
     }
 
@@ -114,7 +114,7 @@ public sealed class ProjectIdentityContractTests
         }
         finally
         {
-            Directory.Delete(sandbox, recursive: true);
+            DeleteTemporaryDirectory(sandbox);
         }
     }
 
@@ -142,7 +142,7 @@ public sealed class ProjectIdentityContractTests
         }
         finally
         {
-            Directory.Delete(sandbox, recursive: true);
+            DeleteTemporaryDirectory(sandbox);
         }
     }
 
@@ -165,7 +165,7 @@ public sealed class ProjectIdentityContractTests
         }
         finally
         {
-            Directory.Delete(sandbox, recursive: true);
+            DeleteTemporaryDirectory(sandbox);
         }
     }
 
@@ -174,6 +174,31 @@ public sealed class ProjectIdentityContractTests
         var path = Path.Combine(Path.GetTempPath(), "hero-passport-project-identity-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    private static void DeleteTemporaryDirectory(string path)
+    {
+        if (!Directory.Exists(path))
+        {
+            return;
+        }
+
+        foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+        {
+            try
+            {
+                var attributes = File.GetAttributes(file);
+                if ((attributes & FileAttributes.ReadOnly) != 0)
+                {
+                    File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+                }
+            }
+            catch (FileNotFoundException)
+            {
+            }
+        }
+
+        Directory.Delete(path, recursive: true);
     }
 
     private static Task CommitEmptyAsync(string repository, CancellationToken cancellationToken) =>
