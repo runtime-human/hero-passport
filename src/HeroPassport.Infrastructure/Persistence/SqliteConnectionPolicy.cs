@@ -16,7 +16,15 @@ internal static class SqliteConnectionPolicy
 
         using var command = sqliteConnection.CreateCommand();
         command.CommandText = ConnectionPragmas;
-        command.ExecuteNonQuery();
+        try
+        {
+            command.ExecuteNonQuery();
+        }
+        catch (SqliteException exception)
+        {
+            WriteDiagnostics(sqliteConnection, exception);
+            throw;
+        }
     }
 
     public static async Task ApplyAsync(DbConnection connection, CancellationToken cancellationToken = default)
@@ -28,6 +36,35 @@ internal static class SqliteConnectionPolicy
 
         await using var command = sqliteConnection.CreateCommand();
         command.CommandText = ConnectionPragmas;
-        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (SqliteException exception)
+        {
+            WriteDiagnostics(sqliteConnection, exception);
+            throw;
+        }
+    }
+
+    private static void WriteDiagnostics(SqliteConnection connection, SqliteException exception)
+    {
+        var dataSource = connection.DataSource;
+        static string State(string path)
+        {
+            try
+            {
+                var info = new FileInfo(path);
+                return info.Exists ? $"present:{info.Length}" : "missing";
+            }
+            catch (Exception error)
+            {
+                return $"unavailable:{error.GetType().Name}";
+            }
+        }
+
+        Console.Error.WriteLine(
+            $"SQLITE_POLICY_DIAGNOSTIC code={exception.SqliteErrorCode} extended={exception.SqliteExtendedErrorCode} " +
+            $"db={State(dataSource)} wal={State(dataSource + "-wal")} shm={State(dataSource + "-shm")}");
     }
 }
