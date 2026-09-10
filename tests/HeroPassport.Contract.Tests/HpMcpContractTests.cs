@@ -99,7 +99,15 @@ public sealed class HpMcpContractTests
         var properties = output.GetProperty("properties");
         Assert.DoesNotContain("activeTitle", RequiredNames(output));
         Assert.Equal("string", properties.GetProperty("activeTitle").GetProperty("type").GetString());
-        AssertClosedObject(properties.GetProperty("reward"));
+
+        var reward = properties.GetProperty("reward");
+        AssertClosedObject(reward);
+        AssertRequired(reward,
+            "baseXp", "bonusXp", "penaltyXp", "rawXp", "outcomePermille", "xpGained", "rewardRuleVersion", "components");
+        var rewardComponent = reward.GetProperty("properties").GetProperty("components").GetProperty("items");
+        AssertClosedObject(rewardComponent);
+        AssertRequired(rewardComponent, "key", "xpDelta");
+
         AssertClosedObject(properties.GetProperty("heroProgress"));
         AssertClosedObject(properties.GetProperty("trustStrain"));
         AssertClosedObject(properties.GetProperty("streak"));

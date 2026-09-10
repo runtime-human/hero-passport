@@ -114,7 +114,7 @@ public sealed class HeroAdministrationBehaviorTests
             var card = await app.GetCardAsync(hero.HeroId, project, token);
 
             Assert.Equal(hero.HeroId, card.Hero.HeroId);
-            Assert.Equal(60, card.Hero.TotalXp);
+            Assert.Equal(85, card.Hero.TotalXp);
             Assert.Equal(1, card.Hero.Level);
             Assert.Equal("code_squire", card.Hero.RankKey);
             Assert.Empty(card.Hero.TopSkills);
@@ -124,7 +124,7 @@ public sealed class HeroAdministrationBehaviorTests
             Assert.Equal(1, card.Project.QuestsStarted);
             Assert.Equal(1, card.Project.QuestsFinished);
             Assert.Equal(1, card.Project.QuestsSucceeded);
-            Assert.Equal(60, card.Project.TotalXpEarned);
+            Assert.Equal(85, card.Project.TotalXpEarned);
             Assert.Equal(1000, card.Project.SuccessRatePermille);
         }
         finally

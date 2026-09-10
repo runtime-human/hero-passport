@@ -101,23 +101,32 @@ public sealed class QuestCrashRecoveryQualificationTests
 
             Assert.Equal(committedBeforeKill ? "finished" : "open", await ScalarStringAsync(fixture.DatabasePath, "SELECT status FROM quest_sessions;", token));
             Assert.Equal(committedBeforeKill ? 1 : 0, await ScalarLongAsync(fixture.DatabasePath, "SELECT COUNT(*) FROM quest_reports;", token));
+            Assert.Equal(committedBeforeKill ? 3 : 0, await ScalarLongAsync(fixture.DatabasePath, "SELECT COUNT(*) FROM quest_reward_components;", token));
+            Assert.Equal(committedBeforeKill ? 1 : 0, await ScalarLongAsync(fixture.DatabasePath, "SELECT COUNT(*) FROM quest_report_skills;", token));
+            Assert.Equal(committedBeforeKill ? 1 : 0, await ScalarLongAsync(fixture.DatabasePath, "SELECT COUNT(*) FROM hero_skills;", token));
             Assert.Equal(committedBeforeKill ? 1 : 0, await ScalarLongAsync(fixture.DatabasePath, "SELECT COUNT(*) FROM xp_events;", token));
             Assert.Equal(committedBeforeKill ? 1 : 0, await ScalarLongAsync(fixture.DatabasePath, "SELECT COUNT(*) FROM mutation_receipts WHERE operation_key='finish_quest';", token));
-            Assert.Equal(committedBeforeKill ? 60 : 0, await ScalarLongAsync(fixture.DatabasePath, "SELECT total_xp FROM heroes WHERE id='" + fixture.HeroId + "';", token));
+            Assert.Equal(committedBeforeKill ? 85 : 0, await ScalarLongAsync(fixture.DatabasePath, "SELECT total_xp FROM heroes WHERE id='" + fixture.HeroId + "';", token));
+            Assert.Equal(committedBeforeKill ? 85 : 0, await ScalarLongAsync(fixture.DatabasePath, "SELECT COALESCE(MAX(xp),0) FROM hero_skills WHERE hero_id='" + fixture.HeroId + "' AND skill_key='coding';", token));
             Assert.Equal(committedBeforeKill ? 1 : 0, await ScalarLongAsync(fixture.DatabasePath, "SELECT quests_finished FROM hero_project_stats;", token));
-            Assert.Equal(committedBeforeKill ? 60 : 0, await ScalarLongAsync(fixture.DatabasePath, "SELECT total_xp_earned FROM hero_project_stats;", token));
+            Assert.Equal(committedBeforeKill ? 85 : 0, await ScalarLongAsync(fixture.DatabasePath, "SELECT total_xp_earned FROM hero_project_stats;", token));
             await AssertIntegrityAsync(fixture.DatabasePath, token);
 
             var retry = await CreateApplication(fixture.DatabasePath).FinishQuestAsync(request, Project(), token);
             Assert.Equal(committedBeforeKill, retry.Replayed);
-            Assert.Equal(60, retry.Reward.XpGained);
+            Assert.Equal(85, retry.Reward.XpGained);
+            Assert.Equal(3, retry.Reward.Components.Count);
             Assert.Equal("finished", await ScalarStringAsync(fixture.DatabasePath, "SELECT status FROM quest_sessions;", token));
             Assert.Equal(1, await ScalarLongAsync(fixture.DatabasePath, "SELECT COUNT(*) FROM quest_reports;", token));
+            Assert.Equal(3, await ScalarLongAsync(fixture.DatabasePath, "SELECT COUNT(*) FROM quest_reward_components;", token));
+            Assert.Equal(1, await ScalarLongAsync(fixture.DatabasePath, "SELECT COUNT(*) FROM quest_report_skills;", token));
+            Assert.Equal(1, await ScalarLongAsync(fixture.DatabasePath, "SELECT COUNT(*) FROM hero_skills;", token));
             Assert.Equal(1, await ScalarLongAsync(fixture.DatabasePath, "SELECT COUNT(*) FROM xp_events;", token));
             Assert.Equal(1, await ScalarLongAsync(fixture.DatabasePath, "SELECT COUNT(*) FROM mutation_receipts WHERE operation_key='finish_quest';", token));
-            Assert.Equal(60, await ScalarLongAsync(fixture.DatabasePath, "SELECT total_xp FROM heroes WHERE id='" + fixture.HeroId + "';", token));
+            Assert.Equal(85, await ScalarLongAsync(fixture.DatabasePath, "SELECT total_xp FROM heroes WHERE id='" + fixture.HeroId + "';", token));
+            Assert.Equal(85, await ScalarLongAsync(fixture.DatabasePath, "SELECT xp FROM hero_skills WHERE hero_id='" + fixture.HeroId + "' AND skill_key='coding';", token));
             Assert.Equal(1, await ScalarLongAsync(fixture.DatabasePath, "SELECT quests_finished FROM hero_project_stats;", token));
-            Assert.Equal(60, await ScalarLongAsync(fixture.DatabasePath, "SELECT total_xp_earned FROM hero_project_stats;", token));
+            Assert.Equal(85, await ScalarLongAsync(fixture.DatabasePath, "SELECT total_xp_earned FROM hero_project_stats;", token));
         }
         finally
         {

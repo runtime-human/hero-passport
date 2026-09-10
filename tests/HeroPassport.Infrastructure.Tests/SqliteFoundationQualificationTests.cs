@@ -43,9 +43,11 @@ public sealed class SqliteFoundationQualificationTests
             var secondSalt = await HeroPassportDatabase.ReadProjectIdentitySaltAsync(path, cancellationToken);
 
             Assert.Equal(firstSalt, secondSalt);
+            await using var context = new HeroPassportDbContextFactory(path).CreateDbContext();
+            var declaredMigrationCount = context.Database.GetMigrations().LongCount();
             await using var connection = await HeroPassportDatabase.OpenConnectionAsync(path, cancellationToken);
             Assert.Equal(1L, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM app_settings;", cancellationToken));
-            Assert.Equal(4L, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory;", cancellationToken));
+            Assert.Equal(declaredMigrationCount, await ScalarLongAsync(connection, "SELECT COUNT(*) FROM __EFMigrationsHistory;", cancellationToken));
         }
         finally
         {

@@ -19,14 +19,76 @@ public sealed record FinishQuestRequest(
     FinishQuestMetrics Metrics,
     IReadOnlyList<string> SkillsUsed);
 
-public sealed record QuestRewardSnapshot(
-    int BaseXp,
-    int BonusXp,
-    int PenaltyXp,
-    int RawXp,
-    int OutcomePermille,
-    long XpGained,
-    string RewardRuleVersion);
+public sealed record RewardComponentSnapshot(string Key, long XpDelta);
+
+public sealed class QuestRewardSnapshot : IEquatable<QuestRewardSnapshot>
+{
+    public QuestRewardSnapshot(
+        int baseXp,
+        int bonusXp,
+        int penaltyXp,
+        int rawXp,
+        int outcomePermille,
+        long xpGained,
+        IReadOnlyList<RewardComponentSnapshot> components,
+        string rewardRuleVersion)
+    {
+        BaseXp = baseXp;
+        BonusXp = bonusXp;
+        PenaltyXp = penaltyXp;
+        RawXp = rawXp;
+        OutcomePermille = outcomePermille;
+        XpGained = xpGained;
+        Components = components;
+        RewardRuleVersion = rewardRuleVersion;
+    }
+
+    public int BaseXp { get; }
+    public int BonusXp { get; }
+    public int PenaltyXp { get; }
+    public int RawXp { get; }
+    public int OutcomePermille { get; }
+    public long XpGained { get; }
+    public IReadOnlyList<RewardComponentSnapshot> Components { get; }
+    public string RewardRuleVersion { get; }
+
+    public bool Equals(QuestRewardSnapshot? other)
+    {
+        if (ReferenceEquals(this, other))
+        {
+            return true;
+        }
+
+        return other is not null &&
+            BaseXp == other.BaseXp &&
+            BonusXp == other.BonusXp &&
+            PenaltyXp == other.PenaltyXp &&
+            RawXp == other.RawXp &&
+            OutcomePermille == other.OutcomePermille &&
+            XpGained == other.XpGained &&
+            string.Equals(RewardRuleVersion, other.RewardRuleVersion, StringComparison.Ordinal) &&
+            Components.SequenceEqual(other.Components);
+    }
+
+    public override bool Equals(object? obj) => obj is QuestRewardSnapshot other && Equals(other);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(BaseXp);
+        hash.Add(BonusXp);
+        hash.Add(PenaltyXp);
+        hash.Add(RawXp);
+        hash.Add(OutcomePermille);
+        hash.Add(XpGained);
+        hash.Add(RewardRuleVersion, StringComparer.Ordinal);
+        foreach (var component in Components)
+        {
+            hash.Add(component);
+        }
+        return hash.ToHashCode();
+    }
+}
 
 public sealed record HeroProgressSnapshot(
     HeroId HeroId,

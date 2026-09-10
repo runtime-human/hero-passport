@@ -24,6 +24,7 @@ internal static class HeroPassportStorageModel
         ConfigureMutationReceipt(modelBuilder);
         ConfigureHeroProjectStats(modelBuilder);
         ConfigureQuestReport(modelBuilder);
+        RewardSkillStorageModel.Configure(modelBuilder);
         ConfigureXpEvent(modelBuilder);
     }
 

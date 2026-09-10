@@ -91,15 +91,23 @@ public sealed class HpMcpAdapterBehaviorTests
             Assert.True(finishJson.TryGetProperty("titlesUnlocked", out _));
             Assert.True(finishJson.TryGetProperty("milestones", out _));
             Assert.False(finishJson.TryGetProperty("activeTitle", out _));
+
+            var components = finishJson.GetProperty("reward").GetProperty("components").EnumerateArray().ToArray();
+            Assert.Collection(
+                components,
+                component => AssertRewardComponent(component, "clean_scope_bonus", 10),
+                component => AssertRewardComponent(component, "clear_summary_bonus", 10),
+                component => AssertRewardComponent(component, "no_user_corrections_bonus", 5));
+
             var progress = finishJson.GetProperty("heroProgress");
             Assert.False(progress.GetProperty("isLevelCapped").GetBoolean());
-            Assert.Equal(60, progress.GetProperty("levelXp").GetInt64());
+            Assert.Equal(85, progress.GetProperty("levelXp").GetInt64());
             Assert.Equal(100, progress.GetProperty("nextLevelXpRequired").GetInt64());
 
             var card = await adapter.InvokeAsync("hero.get_card", Arguments(new { heroId }), token);
             var cardHero = Structured(card).GetProperty("hero");
             Assert.False(cardHero.GetProperty("isLevelCapped").GetBoolean());
-            Assert.Equal(60, cardHero.GetProperty("levelXp").GetInt64());
+            Assert.Equal(85, cardHero.GetProperty("levelXp").GetInt64());
             Assert.Equal(100, cardHero.GetProperty("nextLevelXpRequired").GetInt64());
             Assert.False(cardHero.TryGetProperty("activeTitle", out _));
         }
@@ -134,6 +142,12 @@ public sealed class HpMcpAdapterBehaviorTests
         {
             try { Directory.Delete(directory, recursive: true); } catch (IOException) { }
         }
+    }
+
+    private static void AssertRewardComponent(JsonElement component, string key, long xpDelta)
+    {
+        Assert.Equal(key, component.GetProperty("key").GetString());
+        Assert.Equal(xpDelta, component.GetProperty("xpDelta").GetInt64());
     }
 
     private static Dictionary<string, JsonElement> Arguments<T>(T value)
