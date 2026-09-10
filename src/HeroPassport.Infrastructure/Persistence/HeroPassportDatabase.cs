@@ -6,6 +6,10 @@ namespace HeroPassport.Infrastructure.Persistence;
 
 public static class HeroPassportDatabase
 {
+    private const int SqliteIoErrTruncate = 1546;
+    private const int WindowsWalRecoveryMaxAttempts = 4;
+    private static readonly TimeSpan WindowsWalRecoveryRetryDelay = TimeSpan.FromMilliseconds(100);
+
     public static async Task InitializeAsync(string databasePath, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
@@ -52,18 +56,30 @@ public static class HeroPassportDatabase
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
 
-        var connection = new SqliteConnection(CreateConnectionString(databasePath));
-        try
+        var fullPath = Path.GetFullPath(databasePath);
+        for (var attempt = 1; attempt <= WindowsWalRecoveryMaxAttempts; attempt++)
         {
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-            await SqliteConnectionPolicy.ApplyAsync(connection, cancellationToken).ConfigureAwait(false);
-            return connection;
+            var connection = new SqliteConnection(CreateConnectionString(fullPath));
+            try
+            {
+                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+                await SqliteConnectionPolicy.ApplyAsync(connection, cancellationToken).ConfigureAwait(false);
+                return connection;
+            }
+            catch (SqliteException exception) when (ShouldRetryWindowsWalRecovery(fullPath, exception, attempt))
+            {
+                SqliteConnection.ClearPool(connection);
+                await connection.DisposeAsync().ConfigureAwait(false);
+                await Task.Delay(WindowsWalRecoveryRetryDelay, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                await connection.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
         }
-        catch
-        {
-            await connection.DisposeAsync().ConfigureAwait(false);
-            throw;
-        }
+
+        throw new InvalidOperationException("SQLite connection recovery attempts were exhausted unexpectedly.");
     }
 
     internal static string CreateConnectionString(string databasePath)
@@ -80,6 +96,15 @@ public static class HeroPassportDatabase
 
         return builder.ToString();
     }
+
+    private static bool ShouldRetryWindowsWalRecovery(
+        string databasePath,
+        SqliteException exception,
+        int attempt) =>
+        OperatingSystem.IsWindows() &&
+        attempt < WindowsWalRecoveryMaxAttempts &&
+        exception.SqliteExtendedErrorCode == SqliteIoErrTruncate &&
+        (File.Exists(databasePath + "-wal") || File.Exists(databasePath + "-shm"));
 
     private static async Task EnsureSupportedSqliteAsync(
         SqliteConnection connection,
