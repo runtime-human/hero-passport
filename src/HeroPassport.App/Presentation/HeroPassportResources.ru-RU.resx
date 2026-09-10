@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Start_minimal" xml:space="preserve"><value>⚔ {0}</value></data>
+  <data name="Start_rpg_engineering" xml:space="preserve"><value>⚔ Квест: {0}</value></data>
+  <data name="Start_classic_rpg" xml:space="preserve"><value>⚔ Новый квест: {0}</value></data>
+  <data name="StartReplay_minimal" xml:space="preserve"><value>↻ {0}</value></data>
+  <data name="StartReplay_rpg_engineering" xml:space="preserve"><value>↻ Квест продолжен: {0}</value></data>
+  <data name="StartReplay_classic_rpg" xml:space="preserve"><value>↻ Квест возвращён в журнал: {0}</value></data>
+  <data name="Finish_minimal" xml:space="preserve"><value>{0} · +{1} XP · {2}</value></data>
+  <data name="Finish_rpg_engineering" xml:space="preserve"><value>✅ Квест завершён · {0} · +{1} XP · {2}</value></data>
+  <data name="Finish_classic_rpg" xml:space="preserve"><value>🏆 Квест завершён! {0} · +{1} XP · {2}</value></data>
+  <data name="FinishReplayPrefix" xml:space="preserve"><value>Повтор · {0}</value></data>
+  <data name="LevelPlain" xml:space="preserve"><value>ур. {0}</value></data>
+  <data name="LevelCapped" xml:space="preserve"><value>ур. {0} (макс.)</value></data>
+  <data name="RewardLine" xml:space="preserve"><value>{0} {1:+#;-#;0} XP</value></data>
+  <data name="SkillLine" xml:space="preserve"><value>{0}: +{1} XP · {2}</value></data>
+  <data name="ActiveTitleLine" xml:space="preserve"><value>Титул: {0}</value></data>
+  <data name="Card_minimal" xml:space="preserve"><value>{0} · {1} · {2} · {3} XP</value></data>
+  <data name="Card_rpg_engineering" xml:space="preserve"><value>🛡 Герой {0} · {1} · {2} · {3} XP</value></data>
+  <data name="Card_classic_rpg" xml:space="preserve"><value>📜 Карта героя: {0} · {1} · {2} · {3} XP</value></data>
+  <data name="CardStats" xml:space="preserve"><value>Доверие {0} · Напряжение {1} · Серия {2}</value></data>
+  <data name="CardSkillLine" xml:space="preserve"><value>{0}: {1} XP · {2}</value></data>
+  <data name="ProjectStats" xml:space="preserve"><value>{0} · квесты {1}/{2} · {3} XP</value></data>
+  <data name="MilestoneWrap_minimal" xml:space="preserve"><value>★ {0}</value></data>
+  <data name="MilestoneWrap_rpg_engineering" xml:space="preserve"><value>★ Рубеж · {0}</value></data>
+  <data name="MilestoneWrap_classic_rpg" xml:space="preserve"><value>✨ Новое достижение: {0}</value></data>
+  <data name="MilestoneHeroLevel" xml:space="preserve"><value>Уровень {0}</value></data>
+  <data name="MilestoneRank" xml:space="preserve"><value>Ранг: {0}</value></data>
+  <data name="MilestoneSkillLevel" xml:space="preserve"><value>{0} · ур. {1}</value></data>
+  <data name="MilestoneStreak" xml:space="preserve"><value>Серия {0}</value></data>
+  <data name="MilestoneTrait" xml:space="preserve"><value>Черта: {0}</value></data>
+  <data name="MilestoneTitle" xml:space="preserve"><value>Титул: {0}</value></data>
+  <data name="Result_success" xml:space="preserve"><value>Успех</value></data>
+  <data name="Result_partial" xml:space="preserve"><value>Частично</value></data>
+  <data name="Result_blocked" xml:space="preserve"><value>Заблокировано</value></data>
+  <data name="Result_failed" xml:space="preserve"><value>Неудача</value></data>
+  <data name="Result_abandoned" xml:space="preserve"><value>Отменено</value></data>
+  <data name="Skill_coding" xml:space="preserve"><value>Кодирование</value></data>
+  <data name="Skill_testing_awareness" xml:space="preserve"><value>Тестирование</value></data>
+  <data name="Skill_scope_control" xml:space="preserve"><value>Контроль</value></data>
+  <data name="Skill_documentation" xml:space="preserve"><value>Документация</value></data>
+  <data name="Skill_tool_use" xml:space="preserve"><value>Инструменты</value></data>
+  <data name="Skill_planning" xml:space="preserve"><value>Планирование</value></data>
+  <data name="Skill_research" xml:space="preserve"><value>Исследование</value></data>
+  <data name="Skill_debugging" xml:space="preserve"><value>Отладка</value></data>
+  <data name="Skill_review" xml:space="preserve"><value>Ревью</value></data>
+  <data name="Skill_maintenance" xml:space="preserve"><value>Сопровождение</value></data>
+  <data name="Reward_observed_tests_passed_bonus" xml:space="preserve"><value>Бонус за проверенные тесты</value></data>
+  <data name="Reward_clean_scope_bonus" xml:space="preserve"><value>Бонус за контроль</value></data>
+  <data name="Reward_clear_summary_bonus" xml:space="preserve"><value>Бонус за ясное резюме</value></data>
+  <data name="Reward_no_user_corrections_bonus" xml:space="preserve"><value>Бонус без исправлений</value></data>
+  <data name="Reward_scope_violation_penalty" xml:space="preserve"><value>Выход за задачу</value></data>
+  <data name="Reward_user_correction_penalty" xml:space="preserve"><value>Корректировка пользователя</value></data>
+  <data name="Rank_code_squire" xml:space="preserve"><value>Оруженосец кода</value></data>
+  <data name="Rank_code_knight" xml:space="preserve"><value>Рыцарь кода</value></data>
+  <data name="Rank_senior_warrior" xml:space="preserve"><value>Старший воин</value></data>
+  <data name="Rank_staff_paladin" xml:space="preserve"><value>Стафф-паладин</value></data>
+  <data name="Rank_principal_warlord" xml:space="preserve"><value>Принципал-полководец</value></data>
+  <data name="Rank_legendary_architect" xml:space="preserve"><value>Легендарный архитектор</value></data>
+  <data name="Trait_precise_executor" xml:space="preserve"><value>Точный исполнитель</value></data>
+  <data name="Trait_test_scout" xml:space="preserve"><value>Разведчик тестов</value></data>
+  <data name="Trait_scope_keeper" xml:space="preserve"><value>Хранитель контроля</value></data>
+  <data name="Trait_steady_hand" xml:space="preserve"><value>Твёрдая рука</value></data>
+  <data name="Trait_polyglot_crafter" xml:space="preserve"><value>Мастер многих ремёсел</value></data>
+  <data name="Title_rising_adventurer" xml:space="preserve"><value>Восходящий искатель</value></data>
+  <data name="Title_veteran_of_the_merge" xml:space="preserve"><value>Ветеран слияния</value></data>
+  <data name="Title_skill_specialist" xml:space="preserve"><value>Специалист</value></data>
+  <data name="Title_unbroken_builder" xml:space="preserve"><value>Несломленный создатель</value></data>
+  <data name="Title_master_of_many_tools" xml:space="preserve"><value>Мастер многих инструментов</value></data>
+</root>

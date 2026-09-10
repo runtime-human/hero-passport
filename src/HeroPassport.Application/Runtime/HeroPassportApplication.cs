@@ -95,7 +95,7 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
             cancellationToken);
     }
 
-    public Task<FinishQuestResult> FinishQuestAsync(
+    public async Task<FinishQuestResult> FinishQuestAsync(
         FinishQuestRequest request,
         ProjectBindingContext project,
         CancellationToken cancellationToken = default)
@@ -119,7 +119,7 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
             metrics.TestsEvidence,
             skillsUsed);
 
-        return store.FinishQuestAsync(
+        var finish = await store.FinishQuestAsync(
             new FinishQuestStoreCommand(
                 request.FinishRequestId,
                 HeroPassportVersions.MutationArgsVersion,
@@ -131,7 +131,9 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
                 skillsUsed,
                 validatedProject),
             timeProvider.GetUtcNow(),
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+        var questLocale = await store.GetQuestLocaleAsync(request.QuestId, cancellationToken).ConfigureAwait(false);
+        return finish with { QuestLocale = questLocale };
     }
 
     private static ProjectBindingContext ValidateProject(ProjectBindingContext project)
