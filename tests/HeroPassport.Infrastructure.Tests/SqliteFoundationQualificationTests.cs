@@ -20,6 +20,7 @@ public sealed class SqliteFoundationQualificationTests
             Assert.NotNull(context.Model.FindEntityType("HeroPassport.Storage.MutationReceipt"));
             Assert.NotNull(context.Model.FindEntityType("HeroPassport.Storage.HeroProjectStats"));
             Assert.NotNull(context.Model.FindEntityType("HeroPassport.Storage.QuestReport"));
+            Assert.NotNull(context.Model.FindEntityType("HeroPassport.Storage.QuestTrustStrainComponent"));
             Assert.NotNull(context.Model.FindEntityType("HeroPassport.Storage.XpEvent"));
             Assert.False(context.Database.HasPendingModelChanges());
         }

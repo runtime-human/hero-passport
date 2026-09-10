@@ -635,6 +635,44 @@ namespace HeroPassport.Infrastructure.Persistence.GeneratedMigrations
                         });
                 });
 
+            modelBuilder.Entity("HeroPassport.Storage.QuestTrustStrainComponent", b =>
+                {
+                    b.Property<string>("quest_report_id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ordinal")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("component_key")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("strain_delta")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("trust_delta")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("quest_report_id", "ordinal");
+
+                    b.HasIndex("quest_report_id", "component_key")
+                        .IsUnique()
+                        .HasDatabaseName("ux_quest_trust_strain_components_report_key");
+
+                    b.ToTable("quest_trust_strain_components", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_quest_trust_strain_components_key", "length(component_key) BETWEEN 1 AND 80");
+
+                            t.HasCheckConstraint("ck_quest_trust_strain_components_nonzero", "trust_delta <> 0 OR strain_delta <> 0");
+
+                            t.HasCheckConstraint("ck_quest_trust_strain_components_ordinal", "ordinal >= 0");
+
+                            t.HasCheckConstraint("ck_quest_trust_strain_components_strain_delta", "strain_delta BETWEEN -100 AND 100");
+
+                            t.HasCheckConstraint("ck_quest_trust_strain_components_trust_delta", "trust_delta BETWEEN -100 AND 100");
+                        });
+                });
+
             modelBuilder.Entity("HeroPassport.Storage.Skill", b =>
                 {
                     b.Property<string>("skill_key")
@@ -817,6 +855,15 @@ namespace HeroPassport.Infrastructure.Persistence.GeneratedMigrations
                         .WithMany()
                         .HasForeignKey("project_id")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("HeroPassport.Storage.QuestTrustStrainComponent", b =>
+                {
+                    b.HasOne("HeroPassport.Storage.QuestReport", null)
+                        .WithMany()
+                        .HasForeignKey("quest_report_id")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

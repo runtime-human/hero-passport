@@ -47,7 +47,12 @@ public sealed class FinishQuestRestartReplayTests
             Assert.Equal(committed.Result, replay.Result);
             Assert.Equal(committed.Reward, replay.Reward);
             Assert.Equal(committed.HeroProgress, replay.HeroProgress);
-            Assert.Equal(committed.TrustStrain, replay.TrustStrain);
+            Assert.Equal(committed.TrustStrain.TrustBefore, replay.TrustStrain.TrustBefore);
+            Assert.Equal(committed.TrustStrain.TrustAfter, replay.TrustStrain.TrustAfter);
+            Assert.Equal(committed.TrustStrain.StrainBefore, replay.TrustStrain.StrainBefore);
+            Assert.Equal(committed.TrustStrain.StrainAfter, replay.TrustStrain.StrainAfter);
+            Assert.Equal(committed.TrustStrain.RuleVersion, replay.TrustStrain.RuleVersion);
+            Assert.True(committed.TrustStrain.Components.SequenceEqual(replay.TrustStrain.Components));
             Assert.Equal(committed.Streak, replay.Streak);
             Assert.True(committed.SkillProgress.SequenceEqual(replay.SkillProgress));
             Assert.True(committed.TraitsUnlocked.SequenceEqual(replay.TraitsUnlocked));

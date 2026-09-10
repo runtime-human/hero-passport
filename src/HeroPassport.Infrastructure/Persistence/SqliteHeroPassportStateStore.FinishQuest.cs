@@ -71,8 +71,18 @@ public sealed partial class SqliteHeroPassportStateStore
 
         var hero = await HeroProgressRowAsync(connection, transaction, quest.HeroId, cancellationToken).ConfigureAwait(false);
         var rules = HeroPassportVersions.CurrentRules;
+        var quality = Quality(command);
         var reward = CalculateReward(command, quest.QuestType);
         var allocations = SkillAllocationRules.Allocate(reward.XpGained, command.SkillsUsed);
+        var trustStrain = TrustStrainRules.Apply(
+            hero.Trust,
+            hero.Strain,
+            command.Result,
+            quality,
+            command.Metrics.ScopeViolations,
+            command.Metrics.UserCorrections,
+            rules.TrustStrain);
+        var streak = StreakRules.Apply(hero.SuccessStreak, command.Result, rules.Streak);
         var baseXp = reward.BaseXp;
         var bonusXp = reward.BonusXp;
         var penaltyXp = reward.PenaltyXp;
@@ -109,8 +119,8 @@ public sealed partial class SqliteHeroPassportStateStore
                 $trustStrainVersion,$streakVersion,$unlockVersion,$rankVersion,
                 $baseXp,$bonusXp,$penaltyXp,$rawXp,$outcomePermille,$xpGained,
                 $totalBefore,$totalAfter,$levelBefore,$levelAfter,
-                $rankBefore,$rankAfter,$trust,$trust,$strain,$strain,
-                $streak,$streak,NULL,NULL,$time);
+                $rankBefore,$rankAfter,$trustBefore,$trustAfter,$strainBefore,$strainAfter,
+                $streakBefore,$streakAfter,NULL,NULL,$time);
             """,
             cancellationToken,
             ("$id", reportId.ToString()),
@@ -146,12 +156,16 @@ public sealed partial class SqliteHeroPassportStateStore
             ("$levelAfter", levelAfter),
             ("$rankBefore", rankBefore),
             ("$rankAfter", rankAfter),
-            ("$trust", hero.Trust),
-            ("$strain", hero.Strain),
-            ("$streak", hero.SuccessStreak),
+            ("$trustBefore", trustStrain.TrustBefore),
+            ("$trustAfter", trustStrain.TrustAfter),
+            ("$strainBefore", trustStrain.StrainBefore),
+            ("$strainAfter", trustStrain.StrainAfter),
+            ("$streakBefore", streak.Before),
+            ("$streakAfter", streak.After),
             ("$time", timestamp)).ConfigureAwait(false);
 
         await InsertRewardComponentsAsync(connection, transaction, reportId, reward.Components, cancellationToken).ConfigureAwait(false);
+        await InsertTrustStrainComponentsAsync(connection, transaction, reportId, trustStrain.Components, cancellationToken).ConfigureAwait(false);
         var skillProgress = await ApplySkillAllocationsAsync(
             connection, transaction, reportId, quest.HeroId, allocations, rules.SkillProgression, timestamp, cancellationToken).ConfigureAwait(false);
 
@@ -183,9 +197,12 @@ public sealed partial class SqliteHeroPassportStateStore
         await ExecuteAsync(
             connection,
             transaction,
-            "UPDATE heroes SET total_xp=$total,updated_at_utc=$time WHERE id=$hero;",
+            "UPDATE heroes SET total_xp=$total,trust=$trust,strain=$strain,success_streak=$streak,updated_at_utc=$time WHERE id=$hero;",
             cancellationToken,
             ("$total", totalXpAfter),
+            ("$trust", trustStrain.TrustAfter),
+            ("$strain", trustStrain.StrainAfter),
+            ("$streak", streak.After),
             ("$time", timestamp),
             ("$hero", quest.HeroId.ToString())).ConfigureAwait(false);
 
@@ -239,17 +256,22 @@ public sealed partial class SqliteHeroPassportStateStore
             rankAfter,
             rules.HeroProgression,
             rules.Rank,
-            hero.Trust,
-            hero.Trust,
-            hero.Strain,
-            hero.Strain,
+            trustStrain.TrustBefore,
+            trustStrain.TrustAfter,
+            trustStrain.StrainBefore,
+            trustStrain.StrainAfter,
             rules.TrustStrain,
-            hero.SuccessStreak,
-            hero.SuccessStreak,
+            streak.Before,
+            streak.After,
             rules.Streak,
             activeTitle: null,
             replayed: false,
-            alreadyFinalized: false) with { SkillProgress = skillProgress };
+            alreadyFinalized: false) with
+        {
+            SkillProgress = skillProgress,
+            TrustStrain = TrustStrainSnapshot(trustStrain),
+            Streak = new StreakSnapshot(streak.Before, streak.After, streak.RuleVersion),
+        };
     }
 
     private static async Task<ProjectId?> ExistingProjectIdAsync(
@@ -422,6 +444,7 @@ public sealed partial class SqliteHeroPassportStateStore
         CancellationToken cancellationToken)
     {
         var rewardComponents = await RewardComponentsForReportAsync(connection, transaction, report.ReportId, cancellationToken).ConfigureAwait(false);
+        var trustStrainComponents = await TrustStrainComponentsForReportAsync(connection, transaction, report.ReportId, cancellationToken).ConfigureAwait(false);
         var skillProgress = await SkillProgressForReportAsync(connection, transaction, report.ReportId, report.SkillProgressionVersion, cancellationToken).ConfigureAwait(false);
         return CreateResult(
             report.QuestId,
@@ -453,7 +476,17 @@ public sealed partial class SqliteHeroPassportStateStore
             report.StreakRuleVersion,
             report.ActiveTitleAfter,
             replayed,
-            alreadyFinalized) with { SkillProgress = skillProgress };
+            alreadyFinalized) with
+        {
+            SkillProgress = skillProgress,
+            TrustStrain = new TrustStrainSnapshot(
+                report.TrustBefore,
+                report.TrustAfter,
+                report.StrainBefore,
+                report.StrainAfter,
+                trustStrainComponents,
+                report.TrustStrainRuleVersion),
+        };
     }
 
     private static FinishQuestResult CreateResult(

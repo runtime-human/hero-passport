@@ -108,12 +108,23 @@ public sealed class HpMcpContractTests
         AssertClosedObject(rewardComponent);
         AssertRequired(rewardComponent, "key", "xpDelta");
 
-        AssertClosedObject(properties.GetProperty("heroProgress"));
-        AssertClosedObject(properties.GetProperty("trustStrain"));
-        AssertClosedObject(properties.GetProperty("streak"));
-        AssertRequired(properties.GetProperty("heroProgress"),
+        var heroProgress = properties.GetProperty("heroProgress");
+        AssertClosedObject(heroProgress);
+        AssertRequired(heroProgress,
             "heroId", "totalXpBefore", "totalXpAfter", "levelBefore", "levelAfter", "isLevelCapped", "levelXp", "rankBefore", "rankAfter");
-        Assert.True(properties.GetProperty("heroProgress").GetProperty("properties").TryGetProperty("nextLevelXpRequired", out _));
+        Assert.True(heroProgress.GetProperty("properties").TryGetProperty("nextLevelXpRequired", out _));
+
+        var trustStrain = properties.GetProperty("trustStrain");
+        AssertClosedObject(trustStrain);
+        AssertRequired(trustStrain,
+            "trustBefore", "trustAfter", "strainBefore", "strainAfter", "components", "ruleVersion");
+        var trustStrainComponent = trustStrain.GetProperty("properties").GetProperty("components").GetProperty("items");
+        AssertClosedObject(trustStrainComponent);
+        AssertRequired(trustStrainComponent, "key", "trustDelta", "strainDelta");
+
+        var streak = properties.GetProperty("streak");
+        AssertClosedObject(streak);
+        AssertRequired(streak, "before", "after", "ruleVersion");
 
         var skillItem = properties.GetProperty("skillProgress").GetProperty("items");
         AssertClosedObject(skillItem);
