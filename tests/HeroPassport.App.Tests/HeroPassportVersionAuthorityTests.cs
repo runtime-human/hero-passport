@@ -18,7 +18,7 @@ public sealed class HeroPassportVersionAuthorityTests
         Assert.Equal(0, result.ExitCode);
         Assert.True(string.IsNullOrWhiteSpace(result.StandardError), result.StandardError);
         Assert.Equal(HeroPassportVersions.ProductVersion, result.StandardOutput.Trim());
-        Assert.Equal("0.1.0-dev", HeroPassportVersions.ProductVersion);
+        Assert.Matches("^0\\.1\\.0(?:-dev)?$", HeroPassportVersions.ProductVersion);
         Assert.False(Directory.Exists(home));
     }
 
