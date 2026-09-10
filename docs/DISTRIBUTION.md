@@ -133,7 +133,7 @@ The final release workflow is manual-only. It must be dispatched from the frozen
 The release pipeline must perform, in order:
 
 ```text
-restore pinned stable dependencies
+restore pinned stable dependencies, including ModelContextProtocol 2.2.0
 build/test exact product version 0.1.0
 publish framework-dependent payload with UseAppHost=false
 verify CLI/runtime version authority
