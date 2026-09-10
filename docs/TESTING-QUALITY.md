@@ -298,7 +298,7 @@ Exact JSON minification is not public business semantics.
 
 ## 17. MCP protocol qualification
 
-Exercise preferred `2026-07-28` and `2025-11-25` compatibility path through official C# SDK 2.1.0.
+Exercise preferred `2026-07-28` and `2025-11-25` compatibility path through official ModelContextProtocol C# SDK 2.2.0.
 
 Task 1 first proves actual package restore/build availability; do not rely on search indexes alone.
 

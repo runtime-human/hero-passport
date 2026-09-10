@@ -15,5 +15,17 @@
     <Content Include="../../skills/hero-passport/**/*"
              LinkBase="skills/hero-passport"
              CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../LICENSE"
+             Link="LICENSE"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../README.md"
+             Link="README.md"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../docs/*.md"
+             LinkBase="docs"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../docs/integrations/*.md"
+             LinkBase="docs/integrations"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

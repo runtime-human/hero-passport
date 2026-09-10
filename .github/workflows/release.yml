@@ -1,0 +1,192 @@
+name: release-artifact-qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact product version to build
+        required: true
+        default: 0.1.0
+        type: string
+      expected_sha:
+        description: Frozen 40-character commit SHA that must equal GITHUB_SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-artifact-${{ inputs.expected_sha }}
+  cancel-in-progress: false
+
+jobs:
+  build-release-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      RELEASE_DIR: ${{ github.workspace }}/artifacts/release
+      PUBLISH_DIR: ${{ github.workspace }}/artifacts/release-publish
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: 10.0.302
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+
+      - name: Validate frozen release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_SHA" = "$EXPECTED_SHA"
+          test "$RELEASE_VERSION" = "0.1.0"
+          echo "release version=$RELEASE_VERSION source=$GITHUB_SHA"
+
+      - name: Restore
+        run: dotnet restore HeroPassport.slnx
+
+      - name: Build exact release version
+        run: dotnet build HeroPassport.slnx --no-restore -c Release -p:Version="$RELEASE_VERSION"
+
+      - name: Core release tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for project in \
+            tests/HeroPassport.Architecture.Tests/HeroPassport.Architecture.Tests.csproj \
+            tests/HeroPassport.Domain.Tests/HeroPassport.Domain.Tests.csproj \
+            tests/HeroPassport.Application.Tests/HeroPassport.Application.Tests.csproj \
+            tests/HeroPassport.Infrastructure.Tests/HeroPassport.Infrastructure.Tests.csproj \
+            tests/HeroPassport.Contract.Tests/HeroPassport.Contract.Tests.csproj \
+            tests/HeroPassport.App.Tests/HeroPassport.App.Tests.csproj \
+            tests/HeroPassport.AgentEvals/HeroPassport.AgentEvals.csproj
+          do
+            dotnet test "$project" --no-build -c Release --logger "console;verbosity=normal"
+          done
+
+      - name: Publish portable release payload
+        run: dotnet publish src/HeroPassport.App/HeroPassport.App.csproj --no-restore -c Release --no-self-contained -p:Version="$RELEASE_VERSION" -p:UseAppHost=false -o "$PUBLISH_DIR"
+
+      - name: Verify published version authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(dotnet "$PUBLISH_DIR/HeroPassport.App.dll" --version)" = "$RELEASE_VERSION"
+
+      - name: Package deterministic release archive
+        run: python tests/qualification/package-release.py --publish-dir "$PUBLISH_DIR" --output-dir "$RELEASE_DIR" --version "$RELEASE_VERSION" --source-sha "$GITHUB_SHA"
+
+      - name: Verify candidate before handoff
+        run: python tests/qualification/verify-release.py --release-dir "$RELEASE_DIR" --extract-dir "${{ github.workspace }}/artifacts/build-verify" --version "$RELEASE_VERSION" --source-sha "$GITHUB_SHA"
+
+      - name: Stage exact candidate for platform qualification
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: hero-passport-release-candidate-${{ inputs.expected_sha }}
+          path: |
+            ${{ github.workspace }}/artifacts/release/hero-passport-${{ inputs.version }}.zip
+            ${{ github.workspace }}/artifacts/release/hero-passport-${{ inputs.version }}.manifest.json
+            ${{ github.workspace }}/artifacts/release/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+
+  qualify-exact-archive:
+    needs: build-release-candidate
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+          - macos-15
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      RELEASE_DIR: ${{ github.workspace }}/artifacts/release
+      EXTRACT_DIR: ${{ github.workspace }}/artifacts/release-extracted
+      HERO_PASSPORT_PUBLISH_DIR: ${{ github.workspace }}/artifacts/release-extracted/hero-passport-${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: 10.0.302
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+
+      - name: Restore packaged E2E harness
+        run: dotnet restore tests/HeroPassport.PackagedE2E/HeroPassport.PackagedE2E.csproj
+
+      - name: Build packaged E2E harness
+        run: dotnet build tests/HeroPassport.PackagedE2E/HeroPassport.PackagedE2E.csproj --no-restore -c Release
+
+      - name: Download same exact candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: hero-passport-release-candidate-${{ inputs.expected_sha }}
+          path: ${{ github.workspace }}/artifacts/release
+
+      - name: Verify checksum manifest archive safety and version
+        run: python tests/qualification/verify-release.py --release-dir "${{ env.RELEASE_DIR }}" --extract-dir "${{ env.EXTRACT_DIR }}" --version "${{ env.RELEASE_VERSION }}" --source-sha "${{ env.EXPECTED_SHA }}"
+
+      - name: Exact archive packaged vertical E2E
+        run: dotnet test tests/HeroPassport.PackagedE2E/HeroPassport.PackagedE2E.csproj --no-build -c Release --logger "console;verbosity=normal"
+
+      - name: Exact archive Codex reference-host qualification
+        if: matrix.os == 'ubuntu-24.04'
+        run: bash tests/qualification/codex-host-config-smoke.sh
+
+  provenance:
+    needs: qualify-exact-archive
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      RELEASE_DIR: ${{ github.workspace }}/artifacts/release
+    steps:
+      - name: Download platform-qualified exact candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: hero-passport-release-candidate-${{ inputs.expected_sha }}
+          path: ${{ github.workspace }}/artifacts/release
+
+      - name: Verify exact candidate checksum before attestation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RELEASE_DIR"
+          sha256sum -c SHA256SUMS
+
+      - name: Generate build provenance attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ github.workspace }}/artifacts/release/hero-passport-${{ inputs.version }}.zip
+
+      - name: Verify GitHub artifact attestation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh attestation verify "$RELEASE_DIR/hero-passport-$RELEASE_VERSION.zip" -R "$GITHUB_REPOSITORY"
+
+      - name: Retain qualified candidate briefly
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: hero-passport-${{ inputs.version }}-${{ inputs.expected_sha }}
+          path: |
+            ${{ github.workspace }}/artifacts/release/hero-passport-${{ inputs.version }}.zip
+            ${{ github.workspace }}/artifacts/release/hero-passport-${{ inputs.version }}.manifest.json
+            ${{ github.workspace }}/artifacts/release/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7

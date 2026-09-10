@@ -139,7 +139,30 @@ public sealed class HeroPassportCliIntegrationTests
     }
 
     [Fact]
-    public async Task RootHelpPublishesInitAndMcpCommands()
+    public async Task DataPathJsonReportsResolvedPathsWithoutInitializingStorage()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var home = Path.Combine(
+            Path.GetTempPath(),
+            "HeroPassport.Cli.DataPath.Tests",
+            Guid.NewGuid().ToString("N"));
+
+        Assert.False(Directory.Exists(home));
+        var result = await RunCliAsync(home, token, "data-path", "--json");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.True(string.IsNullOrWhiteSpace(result.StandardError), result.StandardError);
+        using var document = JsonDocument.Parse(result.StandardOutput);
+        Assert.Equal(Path.GetFullPath(home), document.RootElement.GetProperty("dataRoot").GetString());
+        Assert.Equal(
+            Path.Combine(Path.GetFullPath(home), "hero-passport.db"),
+            document.RootElement.GetProperty("databasePath").GetString());
+        Assert.False(Directory.Exists(home));
+        Assert.False(File.Exists(Path.Combine(home, "hero-passport.db")));
+    }
+
+    [Fact]
+    public async Task RootHelpPublishesInitMcpAndDataPathCommands()
     {
         var token = TestContext.Current.CancellationToken;
         var home = CreateHome();
@@ -150,6 +173,7 @@ public sealed class HeroPassportCliIntegrationTests
             Assert.Equal(0, result.ExitCode);
             Assert.Contains("init", result.StandardOutput, StringComparison.Ordinal);
             Assert.Contains("mcp", result.StandardOutput, StringComparison.Ordinal);
+            Assert.Contains("data-path", result.StandardOutput, StringComparison.Ordinal);
             Assert.False(File.Exists(Path.Combine(home, "hero-passport.db")));
         }
         finally

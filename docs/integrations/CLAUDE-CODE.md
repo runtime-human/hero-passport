@@ -1,36 +1,56 @@
 # Claude Code Integration
 
-**Status:** documented compatibility candidate; qualification evidence required per release
+**Status:** Documented compatible; current native Skill/MCP mechanisms verified, release host smoke still required  
+**Architecture:** Hero Passport v3.2.1  
+**Verified: 2026-09-09** against current official Claude Code Skills and MCP documentation.
 
 ## Integration shape
 
 ```text
 Claude Code
-  -> Hero Passport Agent Skill or equivalent supported Skill/instruction package
+  -> repo-local Hero Passport Agent Skill
   -> local hero-passport mcp (stdio)
   -> same-host SQLite
 ```
 
-Use Claude Code’s current official MCP configuration mechanism to launch `hero-passport mcp` in the project workspace. If reliable project cwd cannot be supplied, pass `--project-root <path>` as local launch configuration.
-
-Use the portable `skills/hero-passport/` package when the current host version supports the open Agent Skills-compatible workflow; otherwise map only the lifecycle guidance to the host’s supported persistent instruction surface.
-
-Do not fork reward rules or tool semantics per host.
-
-## Qualification checklist
-
-Before upgrading this page to Qualified, verify against current official Claude documentation and an actual current host build:
+Hero Passport ships one canonical Skill source in the release bundle:
 
 ```text
-11 HP-MCP tools discovered
-stdio project binding
-first-run onboarding
-Skill trigger behavior
-auto-finish behavior
-restart/recovery
-structured result rendering
-host mutation-confirmation UX
-known limitations
+skills/hero-passport/
 ```
 
-Record exact host version/OS/date. Configuration syntax is intentionally not frozen here because it is third-party compatibility data, not Hero Passport architecture.
+Do not fork reward rules or lifecycle semantics per host.
+
+## Skill installation
+
+Current Claude Code project Skills live under `.claude/skills/<skill-name>/SKILL.md`. Claude Code follows a project Skill directory symlink.
+
+Map the canonical release Skill into the intended project, for example:
+
+```text
+<repo>/.claude/skills/hero-passport -> <hero-passport-release>/skills/hero-passport
+```
+
+A byte-for-byte copy is acceptable where symlinks are unsuitable, but the canonical release package remains the policy authority.
+
+## MCP setup
+
+Current Claude Code supports local STDIO MCP servers through the CLI. For a project-scoped Hero Passport server:
+
+```text
+claude mcp add --transport stdio --scope project hero-passport -- hero-passport mcp
+claude mcp list
+```
+
+Project-scoped servers are represented in the repository `.mcp.json`. If the host launch directory cannot reliably represent the intended Hero Passport project boundary, pass `--project-root <path>` as a local process argument rather than an HP-MCP tool argument.
+
+Official release-time references:
+
+- https://code.claude.com/docs/en/skills
+- https://code.claude.com/docs/en/mcp
+
+## Qualification boundary
+
+Before changing this page to `Qualified`, record an actual current Claude Code host smoke covering Skill discovery, MCP connection/tool discovery, onboarding, explicit-Hero Start, Finish, restart/recovery, structured results and relevant confirmation/trust behavior.
+
+The packaged Core E2E does not by itself prove Claude Code host behavior.

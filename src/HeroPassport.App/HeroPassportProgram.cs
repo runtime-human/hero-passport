@@ -81,6 +81,20 @@ public static class HeroPassportProgram
             RunMcpAsync(parseResult.GetValue(projectRootOption), token));
         rootCommand.Subcommands.Add(mcpCommand);
 
+        var dataPathJsonOption = new Option<bool>("--json")
+        {
+            Description = "Write resolved Hero Passport data paths as machine-readable JSON.",
+        };
+        var dataPathCommand = new Command(
+            "data-path",
+            "Report resolved Hero Passport application data paths without initializing storage.")
+        {
+            dataPathJsonOption,
+        };
+        dataPathCommand.SetAction((parseResult, token) =>
+            RunDataPathAsync(parseResult.GetValue(dataPathJsonOption), token));
+        rootCommand.Subcommands.Add(dataPathCommand);
+
         var doctorJsonOption = new Option<bool>("--json")
         {
             Description = "Write one machine-readable diagnostic report to stdout.",
@@ -278,6 +292,25 @@ public static class HeroPassportProgram
         rootCommand.Subcommands.Add(heroCommand);
 
         return rootCommand;
+    }
+
+    private static Task<int> RunDataPathAsync(bool json, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var dataRoot = HeroPassportRuntimePaths.ResolveHome();
+        var databasePath = HeroPassportRuntimePaths.ResolveDatabasePath();
+
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(new { dataRoot, databasePath }, CliJsonOptions));
+        }
+        else
+        {
+            Console.Out.WriteLine($"Data root: {dataRoot}");
+            Console.Out.WriteLine($"Database: {databasePath}");
+        }
+
+        return Task.FromResult(0);
     }
 
     private static async Task<int> RunDoctorAsync(bool json, CancellationToken cancellationToken)

@@ -1,7 +1,7 @@
 # Hero Passport — Decision Log
 
 **Current baseline:** v3.2.1  
-**Snapshot:** 2026-09-06
+**Snapshot:** 2026-09-10
 
 Focused contracts are normative for exact schemas/rules. This log records intent and supersession.
 
@@ -248,6 +248,18 @@ Persisted `quest_reward_components.component_key` values are immutable semantic 
 Base XP and the outcome multiplier remain report fields rather than synthetic component rows. Penalty categories persist one capped aggregate row each rather than one row per violation/correction.
 
 Future reward versions may change the catalog only under a new `reward_rule_version`; existing completed Quest rows are never reinterpreted or relabeled in storage. Localization such as Russian “Бонус за контроль” remains presentation only.
+
+## ADR-073 — 0.1 release subject is one framework-dependent portable archive
+
+**Status:** Accepted 2026-09-10.
+
+Hero Passport 0.1 has one canonical binary release subject: a **framework-dependent portable ZIP** built with `UseAppHost=false`. It is intentionally not a RID-specific native apphost and does not bundle the .NET runtime; the target requires a compatible .NET 10 runtime and launches the raw payload with `dotnet HeroPassport.App.dll`.
+
+A cross-platform claim is valid only when the **same exact archive** bytes are checksum/manifest verified, safely extracted and exercised on Ubuntu, Windows and macOS. Separately rebuilding one payload per OS is useful regression evidence but is not evidence for the final release subject.
+
+The manual release workflow therefore builds the candidate once from a frozen full commit SHA, hands that immutable candidate to the three-OS PackagedE2E matrix, runs the Codex reference-host lifecycle only on Linux, and generates GitHub Artifact Attestations/Sigstore provenance only after the platform matrix succeeds.
+
+A future native launcher, installer, RID-specific apphost or self-contained distribution is a new distribution contract and requires separate qualification; it does not silently replace the 0.1 release subject.
 
 ## Historical/superseded terms
 
