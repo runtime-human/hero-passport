@@ -5,22 +5,29 @@ namespace HeroPassport.AgentEvals;
 public sealed class ReleaseQualificationEvidenceTests
 {
     [Fact]
-    public void ZeroOneReleaseMatrixRecordsEvidenceWithoutOverclaimingHostQualification()
+    public void ZeroOneReleaseMatrixRecordsCurrentExecutableEvidenceWithoutOverclaimingOtherHosts()
     {
         var path = Path.Combine(RepoRoot(), "docs", "release", "0.1.0-qualification.md");
         Assert.True(File.Exists(path), $"Missing Task 17 release evidence matrix: {path}");
 
         var text = File.ReadAllText(path);
-        Assert.Contains("Qualification date: 2026-09-09", text, StringComparison.Ordinal);
+        Assert.Contains("Qualification date: 2026-09-10", text, StringComparison.Ordinal);
         Assert.Contains("Release verdict: NOT RELEASE READY", text, StringComparison.Ordinal);
 
-        Assert.Contains("CI #617", text, StringComparison.Ordinal);
-        Assert.Contains("head a74a1a91a27257c264ede7b53c43c404bd475dde", text, StringComparison.Ordinal);
+        Assert.Contains("head: 60fbadca4ac908c21cd6e62950498de3cf5258f0", text, StringComparison.Ordinal);
+        Assert.Contains("Linux full CI: CI #625 / run 34435083983 / success", text, StringComparison.Ordinal);
+        Assert.Contains("Cross-platform qualification: release-platform #2 / run 34435083997 / success", text, StringComparison.Ordinal);
+        Assert.Contains("Ubuntu 24.04.5 LTS", text, StringComparison.Ordinal);
+        Assert.Contains("Microsoft Windows Server 2025 10.0.26100", text, StringComparison.Ordinal);
+        Assert.Contains("macOS 15.7.9", text, StringComparison.Ordinal);
+        Assert.Contains("Infrastructure 45/45 GREEN", text, StringComparison.Ordinal);
+        Assert.Contains("PackagedE2E 3/3 GREEN", text, StringComparison.Ordinal);
+
         Assert.Contains("Codex CLI: 0.153.4", text, StringComparison.Ordinal);
-        Assert.Contains("Ubuntu 24.04.4 LTS", text, StringComparison.Ordinal);
         Assert.Contains("tool round-trip: hero.get_context", text, StringComparison.Ordinal);
+        Assert.Contains("host_processes=4 replayed=true", text, StringComparison.Ordinal);
         Assert.Contains(
-            "Codex | reference host | stable CLI + repo Skill discovery + packaged MCP round-trip proven; lifecycle E2E pending",
+            "Codex | Qualified reference host | stable CLI + repo Skill + packaged MCP lifecycle/restart/replay proven",
             text,
             StringComparison.Ordinal);
 
@@ -31,13 +38,16 @@ public sealed class ReleaseQualificationEvidenceTests
         Assert.Contains("JetBrains | MCP/Core candidate | ambient Skill not qualified", text, StringComparison.Ordinal);
         Assert.Contains("ChatGPT | not release-qualified | local stdio 0.1 path not proven", text, StringComparison.Ordinal);
 
-        Assert.DoesNotContain("Codex | Qualified", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Claude Code | Qualified", text, StringComparison.Ordinal);
         Assert.DoesNotContain("VS Code | Qualified", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Cursor | Qualified", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Zed | Qualified", text, StringComparison.Ordinal);
         Assert.DoesNotContain("JetBrains | Qualified", text, StringComparison.Ordinal);
         Assert.DoesNotContain("ChatGPT | Qualified", text, StringComparison.Ordinal);
+
+        Assert.Contains("current branch still identifies itself as `0.1.0-dev`", text, StringComparison.Ordinal);
+        Assert.Contains("GitHub Artifact Attestations/Sigstore", text, StringComparison.Ordinal);
+        Assert.Contains("exact archive", text, StringComparison.Ordinal);
     }
 
     private static string RepoRoot()
