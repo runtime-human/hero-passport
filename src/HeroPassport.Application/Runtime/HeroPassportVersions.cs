@@ -11,11 +11,11 @@ public static class HeroPassportVersions
 
     public static RuleVersions CurrentRules { get; } = new(
         QuestRewardRules.RuleVersion,
-        "hero-progression/2.0.0",
+        HeroProgressionRules.RuleVersion,
         SkillProgressionRules.RuleVersion,
         SkillAllocationRules.RuleVersion,
         TrustStrainRules.RuleVersion,
         StreakRules.RuleVersion,
-        "unlock/2.0.0",
-        "rank/1.0.0");
+        UnlockRules.RuleVersion,
+        RankRules.RuleVersion);
 }

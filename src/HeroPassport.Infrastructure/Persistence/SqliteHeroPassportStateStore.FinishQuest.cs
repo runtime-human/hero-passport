@@ -89,11 +89,12 @@ public sealed partial class SqliteHeroPassportStateStore
         var rawXp = reward.RawXp;
         var outcomePermille = reward.OutcomePermille;
         var xpGained = reward.XpGained;
-        var totalXpAfter = JsonSafeInteger.Require(checked(hero.TotalXp + xpGained));
-        var levelBefore = MinimalQuestFinishRules.HeroLevel(hero.TotalXp);
-        var levelAfter = MinimalQuestFinishRules.HeroLevel(totalXpAfter);
-        var rankBefore = MinimalQuestFinishRules.RankKey(levelBefore);
-        var rankAfter = MinimalQuestFinishRules.RankKey(levelAfter);
+        var heroProgression = HeroProgressionRules.Apply(hero.TotalXp, xpGained, rules.HeroProgression);
+        var totalXpAfter = heroProgression.TotalXpAfter;
+        var levelBefore = heroProgression.LevelBefore;
+        var levelAfter = heroProgression.LevelAfter;
+        var rankBefore = RankRules.Key(levelBefore, rules.Rank);
+        var rankAfter = RankRules.Key(levelAfter, rules.Rank);
         var timestamp = Timestamp(now);
         var reportId = QuestReportId.New();
         var preparedSkills = await PrepareSkillProgressAsync(
@@ -540,9 +541,9 @@ public sealed partial class SqliteHeroPassportStateStore
         bool replayed,
         bool alreadyFinalized)
     {
-        var isLevelCapped = MinimalQuestFinishRules.IsHeroLevelCapped(levelAfter, heroProgressionVersion);
-        var levelXp = MinimalQuestFinishRules.HeroLevelXp(totalXpAfter, levelAfter, heroProgressionVersion);
-        var nextLevelXpRequired = MinimalQuestFinishRules.NextHeroLevelXpRequired(levelAfter, heroProgressionVersion);
+        var isLevelCapped = HeroProgressionRules.IsLevelCapped(levelAfter, heroProgressionVersion);
+        var levelXp = HeroProgressionRules.LevelXp(totalXpAfter, levelAfter, heroProgressionVersion);
+        var nextLevelXpRequired = HeroProgressionRules.NextLevelXpRequired(levelAfter, heroProgressionVersion);
         return new FinishQuestResult(
             questId,
             result,
