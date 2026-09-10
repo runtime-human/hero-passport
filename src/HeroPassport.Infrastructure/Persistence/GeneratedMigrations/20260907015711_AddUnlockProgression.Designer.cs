@@ -2,6 +2,7 @@
 using HeroPassport.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -9,9 +10,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HeroPassport.Infrastructure.Persistence.GeneratedMigrations
 {
     [DbContext(typeof(HeroPassportDbContext))]
-    partial class HeroPassportDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260907015711_AddUnlockProgression")]
+    partial class AddUnlockProgression
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
@@ -687,9 +690,6 @@ namespace HeroPassport.Infrastructure.Persistence.GeneratedMigrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("id");
-
-                    b.HasIndex("hero_id")
-                        .HasDatabaseName("ix_quest_sessions_hero_id");
 
                     b.HasIndex("project_id");
 

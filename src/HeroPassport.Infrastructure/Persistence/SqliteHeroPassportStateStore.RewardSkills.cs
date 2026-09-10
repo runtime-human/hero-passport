@@ -66,25 +66,75 @@ public sealed partial class SqliteHeroPassportStateStore
         return snapshots;
     }
 
-    private static async Task<IReadOnlyList<SkillProgressSnapshot>> ApplySkillAllocationsAsync(
-        SqliteConnection connection, SqliteTransaction transaction, QuestReportId reportId, HeroId heroId,
-        IReadOnlyList<SkillXpAllocation> allocations, string skillProgressionVersion,
-        string timestamp, CancellationToken cancellationToken)
+    private static async Task<PreparedSkillProgressSet> PrepareSkillProgressAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        HeroId heroId,
+        IReadOnlyList<SkillXpAllocation> allocations,
+        string skillProgressionVersion,
+        CancellationToken cancellationToken)
     {
-        var snapshots = new List<SkillProgressSnapshot>(allocations.Count);
-        for (var ordinal = 0; ordinal < allocations.Count; ordinal++)
+        var xpBySkill = new Dictionary<string, long>(StringComparer.Ordinal);
+        await using (var command = Command(
+            connection,
+            transaction,
+            "SELECT skill_key,xp FROM hero_skills WHERE hero_id=$hero;",
+            ("$hero", heroId.ToString())))
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
         {
-            var allocation = allocations[ordinal];
-            var xpBefore = await HeroSkillXpAsync(connection, transaction, heroId, allocation.SkillKey, cancellationToken).ConfigureAwait(false);
-            var progression = SkillProgressionRules.Apply(xpBefore, allocation.XpGained, skillProgressionVersion);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                xpBySkill.Add(reader.GetString(0), reader.GetInt64(1));
+            }
+        }
 
+        var prepared = new List<PreparedSkillProgress>(allocations.Count);
+        foreach (var allocation in allocations)
+        {
+            var xpBefore = xpBySkill.GetValueOrDefault(allocation.SkillKey);
+            var progression = SkillProgressionRules.Apply(xpBefore, allocation.XpGained, skillProgressionVersion);
+            xpBySkill[allocation.SkillKey] = progression.XpAfter;
+            prepared.Add(new PreparedSkillProgress(allocation.SkillKey, allocation.XpGained, progression));
+        }
+
+        var skillsAfter = xpBySkill
+            .OrderBy(static pair => pair.Key, StringComparer.Ordinal)
+            .Select(pair => new UnlockSkillState(
+                pair.Key,
+                SkillProgressionRules.Level(pair.Value, skillProgressionVersion)))
+            .ToArray();
+        var levelChanges = prepared
+            .Where(static skill => skill.Progression.LevelBefore != skill.Progression.LevelAfter)
+            .Select(static skill => new UnlockSkillLevelChange(
+                skill.SkillKey,
+                skill.Progression.LevelBefore,
+                skill.Progression.LevelAfter))
+            .ToArray();
+
+        return new PreparedSkillProgressSet(prepared.ToArray(), skillsAfter, levelChanges);
+    }
+
+    private static async Task<IReadOnlyList<SkillProgressSnapshot>> PersistSkillProgressAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        QuestReportId reportId,
+        HeroId heroId,
+        PreparedSkillProgressSet prepared,
+        string timestamp,
+        CancellationToken cancellationToken)
+    {
+        var snapshots = new List<SkillProgressSnapshot>(prepared.Progress.Count);
+        for (var ordinal = 0; ordinal < prepared.Progress.Count; ordinal++)
+        {
+            var skill = prepared.Progress[ordinal];
+            var progression = skill.Progression;
             await ExecuteAsync(connection, transaction, """
                 INSERT INTO quest_report_skills(
                     quest_report_id,ordinal,skill_key,xp_gained,xp_before,xp_after,level_before,level_after)
                 VALUES($report,$ordinal,$skill,$gained,$before,$after,$levelBefore,$levelAfter);
                 """, cancellationToken,
-                ("$report", reportId.ToString()), ("$ordinal", ordinal), ("$skill", allocation.SkillKey),
-                ("$gained", allocation.XpGained), ("$before", progression.XpBefore), ("$after", progression.XpAfter),
+                ("$report", reportId.ToString()), ("$ordinal", ordinal), ("$skill", skill.SkillKey),
+                ("$gained", skill.XpGained), ("$before", progression.XpBefore), ("$after", progression.XpAfter),
                 ("$levelBefore", progression.LevelBefore), ("$levelAfter", progression.LevelAfter)).ConfigureAwait(false);
 
             await ExecuteAsync(connection, transaction, """
@@ -92,14 +142,15 @@ public sealed partial class SqliteHeroPassportStateStore
                 VALUES($hero,$skill,$xp,$time)
                 ON CONFLICT(hero_id,skill_key) DO UPDATE SET xp=excluded.xp,updated_at_utc=excluded.updated_at_utc;
                 """, cancellationToken,
-                ("$hero", heroId.ToString()), ("$skill", allocation.SkillKey),
+                ("$hero", heroId.ToString()), ("$skill", skill.SkillKey),
                 ("$xp", progression.XpAfter), ("$time", timestamp)).ConfigureAwait(false);
 
             snapshots.Add(new SkillProgressSnapshot(
-                allocation.SkillKey, allocation.XpGained, progression.XpAfter,
+                skill.SkillKey, skill.XpGained, progression.XpAfter,
                 progression.LevelBefore, progression.LevelAfter,
                 progression.IsLevelCapped, progression.NextLevelXpRequired));
         }
+
         return snapshots;
     }
 
@@ -123,20 +174,20 @@ public sealed partial class SqliteHeroPassportStateStore
         return snapshots;
     }
 
-    private static async Task<long> HeroSkillXpAsync(
-        SqliteConnection connection, SqliteTransaction transaction, HeroId heroId,
-        string skillKey, CancellationToken cancellationToken)
-    {
-        await using var command = Command(connection, transaction,
-            "SELECT xp FROM hero_skills WHERE hero_id=$hero AND skill_key=$skill;",
-            ("$hero", heroId.ToString()), ("$skill", skillKey));
-        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is long xp ? xp : 0L;
-    }
-
     private static int UnicodeScalarLength(string value)
     {
         var count = 0;
         foreach (var _ in value.EnumerateRunes()) count++;
         return count;
     }
+
+    private sealed record PreparedSkillProgress(
+        string SkillKey,
+        long XpGained,
+        SkillProgressionResult Progression);
+
+    private sealed record PreparedSkillProgressSet(
+        IReadOnlyList<PreparedSkillProgress> Progress,
+        IReadOnlyList<UnlockSkillState> SkillsAfter,
+        IReadOnlyList<UnlockSkillLevelChange> LevelChanges);
 }

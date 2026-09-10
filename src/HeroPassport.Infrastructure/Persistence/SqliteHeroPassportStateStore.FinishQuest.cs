@@ -96,6 +96,12 @@ public sealed partial class SqliteHeroPassportStateStore
         var rankAfter = MinimalQuestFinishRules.RankKey(levelAfter);
         var timestamp = Timestamp(now);
         var reportId = QuestReportId.New();
+        var preparedSkills = await PrepareSkillProgressAsync(
+            connection, transaction, quest.HeroId, allocations, rules.SkillProgression, cancellationToken).ConfigureAwait(false);
+        var preparedUnlocks = await PrepareUnlockProgressAsync(
+            connection, transaction, quest.HeroId, quest.QuestType, command,
+            levelBefore, levelAfter, rankBefore, rankAfter, streak.Before, streak.After,
+            preparedSkills, rules.Unlock, now, cancellationToken).ConfigureAwait(false);
 
         await ExecuteAsync(
             connection,
@@ -120,7 +126,7 @@ public sealed partial class SqliteHeroPassportStateStore
                 $baseXp,$bonusXp,$penaltyXp,$rawXp,$outcomePermille,$xpGained,
                 $totalBefore,$totalAfter,$levelBefore,$levelAfter,
                 $rankBefore,$rankAfter,$trustBefore,$trustAfter,$strainBefore,$strainAfter,
-                $streakBefore,$streakAfter,NULL,NULL,$time);
+                $streakBefore,$streakAfter,$activeTitleBefore,$activeTitleAfter,$time);
             """,
             cancellationToken,
             ("$id", reportId.ToString()),
@@ -162,12 +168,16 @@ public sealed partial class SqliteHeroPassportStateStore
             ("$strainAfter", trustStrain.StrainAfter),
             ("$streakBefore", streak.Before),
             ("$streakAfter", streak.After),
+            ("$activeTitleBefore", preparedUnlocks.ActiveTitleBefore),
+            ("$activeTitleAfter", preparedUnlocks.ActiveTitleAfter),
             ("$time", timestamp)).ConfigureAwait(false);
 
         await InsertRewardComponentsAsync(connection, transaction, reportId, reward.Components, cancellationToken).ConfigureAwait(false);
         await InsertTrustStrainComponentsAsync(connection, transaction, reportId, trustStrain.Components, cancellationToken).ConfigureAwait(false);
-        var skillProgress = await ApplySkillAllocationsAsync(
-            connection, transaction, reportId, quest.HeroId, allocations, rules.SkillProgression, timestamp, cancellationToken).ConfigureAwait(false);
+        var skillProgress = await PersistSkillProgressAsync(
+            connection, transaction, reportId, quest.HeroId, preparedSkills, timestamp, cancellationToken).ConfigureAwait(false);
+        await PersistUnlockProgressAsync(
+            connection, transaction, reportId, command.QuestId, quest.HeroId, preparedUnlocks, timestamp, cancellationToken).ConfigureAwait(false);
 
         await ExecuteAsync(
             connection,
@@ -264,11 +274,15 @@ public sealed partial class SqliteHeroPassportStateStore
             streak.Before,
             streak.After,
             rules.Streak,
-            activeTitle: null,
+            preparedUnlocks.ActiveTitleAfter,
             replayed: false,
             alreadyFinalized: false) with
         {
             SkillProgress = skillProgress,
+            TraitsUnlocked = preparedUnlocks.Result.TraitsUnlocked,
+            TitlesUnlocked = preparedUnlocks.Result.TitlesUnlocked,
+            ActiveTitle = preparedUnlocks.ActiveTitleAfter,
+            Milestones = MilestoneSnapshots(preparedUnlocks.Result),
             TrustStrain = TrustStrainSnapshot(trustStrain),
             Streak = new StreakSnapshot(streak.Before, streak.After, streak.RuleVersion),
         };
@@ -446,6 +460,7 @@ public sealed partial class SqliteHeroPassportStateStore
         var rewardComponents = await RewardComponentsForReportAsync(connection, transaction, report.ReportId, cancellationToken).ConfigureAwait(false);
         var trustStrainComponents = await TrustStrainComponentsForReportAsync(connection, transaction, report.ReportId, cancellationToken).ConfigureAwait(false);
         var skillProgress = await SkillProgressForReportAsync(connection, transaction, report.ReportId, report.SkillProgressionVersion, cancellationToken).ConfigureAwait(false);
+        var unlock = await StoredUnlockResultAsync(connection, transaction, report.ReportId, cancellationToken).ConfigureAwait(false);
         return CreateResult(
             report.QuestId,
             report.Result,
@@ -479,6 +494,10 @@ public sealed partial class SqliteHeroPassportStateStore
             alreadyFinalized) with
         {
             SkillProgress = skillProgress,
+            TraitsUnlocked = unlock.TraitsUnlocked,
+            TitlesUnlocked = unlock.TitlesUnlocked,
+            ActiveTitle = report.ActiveTitleAfter,
+            Milestones = unlock.Milestones,
             TrustStrain = new TrustStrainSnapshot(
                 report.TrustBefore,
                 report.TrustAfter,
