@@ -549,6 +549,8 @@ displayText
 
 `nextLevelXpRequired` is omitted when the corresponding Hero/Skill level is capped. `activeTitle` is omitted when no Title is active.
 
+Both `hero.topSkills` and `project.topSkills` contain at most three positive-XP Skills and are ordered by `xp DESC, skillKey ASC` for deterministic ties. `hero.topSkills` uses the Hero-global `hero_skills` projection. `project.topSkills` is a derived read value for the explicit Hero in the invocation-bound Project, summing canonical `quest_report_skills.xp_gained`; its Skill level/cap/next requirement are derived from that Project-scoped XP under the current `skill-progression` rule version. No separate mutable Project-Skill projection is authoritative.
+
 No project internal ID/fingerprint/path is exposed.
 
 ## 22. Setup gate

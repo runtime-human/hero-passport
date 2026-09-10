@@ -117,7 +117,12 @@ public sealed class HeroAdministrationBehaviorTests
             Assert.Equal(85, card.Hero.TotalXp);
             Assert.Equal(1, card.Hero.Level);
             Assert.Equal("code_squire", card.Hero.RankKey);
-            Assert.Empty(card.Hero.TopSkills);
+            var heroSkill = Assert.Single(card.Hero.TopSkills);
+            Assert.Equal("coding", heroSkill.SkillKey);
+            Assert.Equal(85, heroSkill.Xp);
+            Assert.Equal(2, heroSkill.Level);
+            Assert.False(heroSkill.IsLevelCapped);
+            Assert.Equal(75, heroSkill.NextLevelXpRequired);
             Assert.Empty(card.Hero.Traits);
             Assert.Empty(card.Hero.Titles);
             Assert.Equal("Project", card.Project.DisplayName);
@@ -126,6 +131,8 @@ public sealed class HeroAdministrationBehaviorTests
             Assert.Equal(1, card.Project.QuestsSucceeded);
             Assert.Equal(85, card.Project.TotalXpEarned);
             Assert.Equal(1000, card.Project.SuccessRatePermille);
+            var projectSkill = Assert.Single(card.Project.TopSkills);
+            Assert.Equal(heroSkill, projectSkill);
         }
         finally
         {

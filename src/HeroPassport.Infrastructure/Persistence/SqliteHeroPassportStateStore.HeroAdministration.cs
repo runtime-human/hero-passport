@@ -196,6 +196,10 @@ public sealed partial class SqliteHeroPassportStateStore
         var levelXp = HeroProgressionRules.LevelXp(hero.TotalXp, level, rules.HeroProgression);
         var nextLevelXpRequired = HeroProgressionRules.NextLevelXpRequired(level, rules.HeroProgression);
         var unlock = await HeroUnlockCardAsync(connection, heroId, rules.Unlock, cancellationToken).ConfigureAwait(false);
+        var heroTopSkills = await HeroTopSkillsAsync(connection, heroId, rules.SkillProgression, cancellationToken).ConfigureAwait(false);
+        var projectTopSkills = projectId is null
+            ? Array.Empty<CardSkillSnapshot>()
+            : await ProjectTopSkillsAsync(connection, heroId, projectId, rules.SkillProgression, cancellationToken).ConfigureAwait(false);
         return new HeroCardResult(
             new HeroCardSnapshot(
                 hero.HeroId,
@@ -210,7 +214,7 @@ public sealed partial class SqliteHeroPassportStateStore
                 hero.Trust,
                 hero.Strain,
                 hero.SuccessStreak,
-                Array.Empty<CardSkillSnapshot>(),
+                heroTopSkills,
                 unlock.Traits,
                 unlock.Titles),
             new ProjectCardSnapshot(
@@ -220,7 +224,76 @@ public sealed partial class SqliteHeroPassportStateStore
                 questsSucceeded,
                 totalXpEarned,
                 successRatePermille,
-                Array.Empty<CardSkillSnapshot>()));
+                projectTopSkills));
+    }
+
+    private static async Task<IReadOnlyList<CardSkillSnapshot>> HeroTopSkillsAsync(
+        SqliteConnection connection,
+        HeroId heroId,
+        string skillProgressionVersion,
+        CancellationToken cancellationToken)
+    {
+        await using var command = Command(
+            connection,
+            null,
+            """
+            SELECT skill_key,xp
+            FROM hero_skills
+            WHERE hero_id=$hero AND xp>0
+            ORDER BY xp DESC,skill_key ASC
+            LIMIT 3;
+            """,
+            ("$hero", heroId.ToString()));
+        return await ReadCardSkillsAsync(command, skillProgressionVersion, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<IReadOnlyList<CardSkillSnapshot>> ProjectTopSkillsAsync(
+        SqliteConnection connection,
+        HeroId heroId,
+        string projectId,
+        string skillProgressionVersion,
+        CancellationToken cancellationToken)
+    {
+        await using var command = Command(
+            connection,
+            null,
+            """
+            SELECT report_skill.skill_key,SUM(report_skill.xp_gained) AS xp
+            FROM quest_sessions AS quest
+            INNER JOIN quest_reports AS report ON report.quest_id=quest.id
+            INNER JOIN quest_report_skills AS report_skill ON report_skill.quest_report_id=report.id
+            WHERE quest.hero_id=$hero AND quest.project_id=$project AND report_skill.xp_gained>0
+            GROUP BY report_skill.skill_key
+            HAVING SUM(report_skill.xp_gained)>0
+            ORDER BY xp DESC,report_skill.skill_key ASC
+            LIMIT 3;
+            """,
+            ("$hero", heroId.ToString()),
+            ("$project", projectId));
+        return await ReadCardSkillsAsync(command, skillProgressionVersion, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<IReadOnlyList<CardSkillSnapshot>> ReadCardSkillsAsync(
+        SqliteCommand command,
+        string skillProgressionVersion,
+        CancellationToken cancellationToken)
+    {
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var skills = new List<CardSkillSnapshot>(3);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var skillKey = reader.GetString(0);
+            var xp = reader.GetInt64(1);
+            var progression = SkillProgressionRules.Apply(xp, 0, skillProgressionVersion);
+            skills.Add(new CardSkillSnapshot(
+                skillKey,
+                xp,
+                progression.LevelAfter,
+                progression.IsLevelCapped,
+                progression.NextLevelXpRequired));
+        }
+
+        return skills.ToArray();
     }
 
     private static void RequireSetup(SettingsRow settings)
