@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
+using System.Text.RegularExpressions;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace HeroPassport.Web.Tests;
@@ -18,6 +20,30 @@ public sealed class WebProcessTests
             Assert.True(
                 IPAddress.TryParse(web.Address.Host, out var address) && IPAddress.IsLoopback(address),
                 $"Expected a loopback listener, got '{web.Address}'. Output: {web.JoinedOutput}");
+        }
+        finally
+        {
+            DeleteSandbox(sandbox.Root);
+        }
+    }
+
+    [Fact]
+    public async Task WebProcessServesProductStylesFromExecutableContentRoot()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var sandbox = CreateSandbox();
+        try
+        {
+            await using var web = await StartWebAsync(sandbox.Home, sandbox.ProjectRoot, token);
+            using var client = new HttpClient { BaseAddress = web.Address };
+
+            using var response = await client.GetAsync("/app.css", token);
+            var css = await response.Content.ReadAsStringAsync(token);
+
+            Assert.True(
+                response.IsSuccessStatusCode,
+                $"Product stylesheet GET failed with {(int)response.StatusCode}. Body: {css}. Web output: {web.JoinedOutput}");
+            Assert.Contains(".shell", css, StringComparison.Ordinal);
         }
         finally
         {
@@ -47,6 +73,35 @@ public sealed class WebProcessTests
             Assert.DoesNotContain(sandbox.Home, html, StringComparison.Ordinal);
             Assert.DoesNotContain("Weather", html, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Counter", html, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            DeleteSandbox(sandbox.Root);
+        }
+    }
+
+    [Fact]
+    public async Task DashboardGetDoesNotCreateProjectOrQuestBookkeeping()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var sandbox = CreateSandbox();
+        try
+        {
+            await using var web = await StartWebAsync(sandbox.Home, sandbox.ProjectRoot, token);
+            using var client = new HttpClient { BaseAddress = web.Address };
+
+            using var response = await client.GetAsync("/", token);
+            Assert.True(
+                response.IsSuccessStatusCode,
+                $"Dashboard GET failed with {(int)response.StatusCode}. Web output: {web.JoinedOutput}");
+
+            var databasePath = Path.Combine(sandbox.Home, "hero-passport.db");
+            await AssertRowCountAsync(databasePath, "projects", 0, token);
+            await AssertRowCountAsync(databasePath, "quest_sessions", 0, token);
+            await AssertRowCountAsync(databasePath, "mutation_receipts", 0, token);
+            await AssertRowCountAsync(databasePath, "hero_project_stats", 0, token);
+            await AssertRowCountAsync(databasePath, "quest_reports", 0, token);
+            await AssertRowCountAsync(databasePath, "xp_events", 0, token);
         }
         finally
         {
@@ -86,11 +141,51 @@ public sealed class WebProcessTests
             Assert.Contains("No open Quest", html, StringComparison.Ordinal);
             Assert.DoesNotContain(sandbox.ProjectRoot, html, StringComparison.Ordinal);
             Assert.DoesNotContain(sandbox.Home, html, StringComparison.Ordinal);
+            Assert.DoesNotContain("workspace_fingerprint", html, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("request_id", html, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("args_hash", html, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("remote_url", html, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("source/diff", html, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("raw-log", html, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("prompt", html, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotMatch(new Regex("(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])", RegexOptions.CultureInvariant), html);
         }
         finally
         {
             DeleteSandbox(sandbox.Root);
         }
+    }
+
+    private static async Task AssertRowCountAsync(
+        string databasePath,
+        string table,
+        long expected,
+        CancellationToken cancellationToken)
+    {
+        var allowedTables = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "projects",
+            "quest_sessions",
+            "mutation_receipts",
+            "hero_project_stats",
+            "quest_reports",
+            "xp_events",
+        };
+        Assert.Contains(table, allowedTables);
+
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Cache = SqliteCacheMode.Private,
+        }.ToString();
+
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT COUNT(*) FROM {table};";
+        var actual = Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
+        Assert.Equal(expected, actual);
     }
 
     private static async Task<WebProcessHandle> StartWebAsync(
