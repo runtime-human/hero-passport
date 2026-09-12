@@ -3,6 +3,7 @@
   <Project Path="src/HeroPassport.Application/HeroPassport.Application.csproj" />
   <Project Path="src/HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj" />
   <Project Path="src/HeroPassport.App/HeroPassport.App.csproj" />
+  <Project Path="src/HeroPassport.Web/HeroPassport.Web.csproj" />
   <Project Path="tests/HeroPassport.Domain.Tests/HeroPassport.Domain.Tests.csproj" />
   <Project Path="tests/HeroPassport.Application.Tests/HeroPassport.Application.Tests.csproj" />
   <Project Path="tests/HeroPassport.Infrastructure.Tests/HeroPassport.Infrastructure.Tests.csproj" />
