@@ -4,8 +4,6 @@ namespace HeroPassport.Web.Services;
 
 public sealed class HeroPassportDashboardService
 {
-    private const int MaxOpenQuestItems = 5;
-
     private readonly HeroPassportApplication _application;
     private readonly ProjectBindingContext _project;
 
@@ -33,7 +31,6 @@ public sealed class HeroPassportDashboardService
         }
 
         var openQuests = context.OpenQuests
-            .Take(MaxOpenQuestItems)
             .Select(static quest => new HeroPassportDashboardOpenQuestViewModel(
                 quest.Title,
                 quest.QuestType))

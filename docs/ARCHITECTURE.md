@@ -187,7 +187,7 @@ No agent leases/heartbeats/owners.
 Official C# SDK baseline:
 
 ```text
-ModelContextProtocol 2.1.0
+ModelContextProtocol 2.2.0
 preferred MCP 2026-07-28
 qualification path 2025-11-25
 ```
