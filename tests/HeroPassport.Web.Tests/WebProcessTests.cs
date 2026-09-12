@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
@@ -184,7 +185,7 @@ public sealed class WebProcessTests
         await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = $"SELECT COUNT(*) FROM {table};";
-        var actual = Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
+        var actual = Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
         Assert.Equal(expected, actual);
     }
 
