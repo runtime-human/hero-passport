@@ -1,0 +1,87 @@
+@page "/"
+@inject HeroPassportDashboardService Dashboard
+
+<PageTitle>Hero Passport</PageTitle>
+
+@if (_model is null)
+{
+    <main class="shell">
+        <p>Loading Hero Passport…</p>
+    </main>
+}
+else
+{
+    <main class="shell">
+        <header class="hero-header">
+            <p class="eyebrow">Hero Passport · @_model.Context.Project.DisplayName</p>
+            @if (!_model.Context.SetupCompleted)
+            {
+                <h1>Setup required</h1>
+                <p>Initialize Hero Passport before using progression and Quest history.</p>
+            }
+            else if (_model.Card is { } card)
+            {
+                <h1>@card.Hero.Name</h1>
+                <p class="hero-rank">Level @card.Hero.Level · <code>@card.Hero.RankKey</code></p>
+                <div class="stat-grid" aria-label="Hero progression summary">
+                    <article><span>Total XP</span><strong>@card.Hero.TotalXp</strong></article>
+                    <article><span>Trust</span><strong>@card.Hero.Trust</strong></article>
+                    <article><span>Strain</span><strong>@card.Hero.Strain</strong></article>
+                    <article><span>Success streak</span><strong>@card.Hero.SuccessStreak</strong></article>
+                </div>
+            }
+        </header>
+
+        @if (_model.Context.SetupCompleted && _model.Card is { } configuredCard)
+        {
+            <section class="panel">
+                <h2>Current project</h2>
+                <p><strong>@configuredCard.Project.DisplayName</strong></p>
+                <p>@configuredCard.Project.QuestsFinished completed Quests · @configuredCard.Project.TotalXpEarned XP earned</p>
+            </section>
+
+            <section class="panel">
+                <h2>Open Quest</h2>
+                @if (_model.Context.OpenQuests.Count == 0)
+                {
+                    <p>No open Quest</p>
+                }
+                else
+                {
+                    <ul>
+                        @foreach (var quest in _model.Context.OpenQuests)
+                        {
+                            <li><strong>@quest.Title</strong> · @quest.QuestType</li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            <section class="panel">
+                <h2>Top Skills</h2>
+                @if (configuredCard.Hero.TopSkills.Count == 0)
+                {
+                    <p>No Skill progression yet.</p>
+                }
+                else
+                {
+                    <ul class="skill-list">
+                        @foreach (var skill in configuredCard.Hero.TopSkills)
+                        {
+                            <li><strong>@skill.SkillKey</strong><span>Level @skill.Level · @skill.Xp XP</span></li>
+                        }
+                    </ul>
+                }
+            </section>
+        }
+    </main>
+}
+
+@code {
+    private HeroPassportDashboardViewModel? _model;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _model = await Dashboard.LoadAsync();
+    }
+}
