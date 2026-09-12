@@ -1,10 +1,10 @@
 # Hero Passport — Architecture
 
-**Status:** Accepted architecture v3.2.1  
-**Snapshot:** 2026-08-11  
-**Target:** 0.1 local stdio MCP + Agent Skill + CLI
+**Status:** Accepted v3.2.1 core + implemented 0.2-A Web adapter  
+**Snapshot:** 2026-09-13  
+**Target:** 0.1 local stdio MCP + Agent Skill + CLI, plus 0.2-A local read-only Web
 
-Normative design: `superpowers/specs/2026-08-11-hero-passport-v3.2.1-design.md`.
+Normative core design: `superpowers/specs/2026-08-11-hero-passport-v3.2.1-design.md`.
 
 ## 1. Runtime
 
@@ -38,17 +38,33 @@ HeroPassport.Infrastructure
 same-host SQLite
 ```
 
-Web remains a 0.2 adapter.
+0.2-A adds a sibling read-only presentation adapter over the same Core/store:
+
+```text
+Browser
+  -> HeroPassport.Web
+     - ASP.NET Core / Blazor static SSR
+     - code-defined loopback listener
+     - read-only dashboard composition
+  -> HeroPassport.Application read use cases
+  -> HeroPassport.Infrastructure
+  -> same-host SQLite
+```
+
+`HeroPassport.Web` does not own game rules, mutate Quest/Hero state in 0.2-A, or query persistence directly from Razor/components. Later Web management/security slices must continue to reuse Application authority rather than create a second game engine.
 
 ## 2. Dependency direction
 
 ```text
 Domain <- Application <- Infrastructure <- App
+                                   ^
+                                   |
+                                  Web
 ```
 
-Domain has no EF/MCP/CLI/localization/Git/filesystem/network. Application has no MCP SDK/presentation. Infrastructure implements persistence/platform ports. App owns protocol/CLI/presentation composition.
+Equivalently, both `HeroPassport.App` and `HeroPassport.Web` are outer adapters/composition roots. Domain has no EF/MCP/CLI/localization/Git/filesystem/network. Application has no MCP SDK/presentation. Infrastructure implements persistence/platform ports. App owns MCP/CLI/presentation composition; Web owns browser/static-SSR presentation composition only.
 
-No separate Contracts assembly in 0.1.
+No separate Contracts assembly in 0.1/0.2-A.
 
 ## 3. Domain authority
 
@@ -73,6 +89,8 @@ GetHeroCard
 ```
 
 CLI-only administration includes permanent logical Hero deletion, diagnostics, export/backup and migration-lock recovery.
+
+0.2-A Web consumes only existing read semantics (`GetRuntimeContext` / `GetHeroCard`) through a bounded Web presentation model. It adds no Web mutation use case.
 
 ## 5. Skill/Core boundary
 
@@ -169,7 +187,7 @@ No agent leases/heartbeats/owners.
 Official C# SDK baseline:
 
 ```text
-ModelContextProtocol 2.1.0
+ModelContextProtocol 2.2.0
 preferred MCP 2026-07-28
 qualification path 2025-11-25
 ```
@@ -267,6 +285,8 @@ No routine source/diff/raw-log/prompt/secret/environment/full-path/Git-remote in
 Build/test fields are bounded attestations. `observed` is an agent assertion of direct observation, not independent verification.
 
 Quest title/goal/summary remain potentially sensitive local metadata.
+
+0.2-A Web renders bounded presentation fields only. Full local paths, workspace fingerprints, mutation receipt internals and raw evidence remain outside the browser surface.
 
 ## 19. Level and presentation semantics
 

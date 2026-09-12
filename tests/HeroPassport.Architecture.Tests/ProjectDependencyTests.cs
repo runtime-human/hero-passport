@@ -17,6 +17,8 @@ public sealed class ProjectDependencyTests
             ["../HeroPassport.Application/HeroPassport.Application.csproj", "../HeroPassport.Domain/HeroPassport.Domain.csproj"]);
         AssertProjectReferences(root, "src/HeroPassport.App/HeroPassport.App.csproj",
             ["../HeroPassport.Application/HeroPassport.Application.csproj", "../HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj"]);
+        AssertProjectReferences(root, "src/HeroPassport.Web/HeroPassport.Web.csproj",
+            ["../HeroPassport.Application/HeroPassport.Application.csproj", "../HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj"]);
     }
 
     [Fact]
@@ -26,6 +28,63 @@ public sealed class ProjectDependencyTests
 
         AssertPackageReferences(root, "src/HeroPassport.Domain/HeroPassport.Domain.csproj", []);
         AssertPackageReferences(root, "src/HeroPassport.Application/HeroPassport.Application.csproj", []);
+    }
+
+    [Fact]
+    public void WebReadOnlyPresentationDoesNotOwnPersistenceOrAdditionalHttpSurface()
+    {
+        var root = FindRepositoryRoot();
+        AssertPackageReferences(root, "src/HeroPassport.Web/HeroPassport.Web.csproj", []);
+
+        var webRoot = Path.Combine(root, "src", "HeroPassport.Web");
+        var presentationRoots = new[]
+        {
+            Path.Combine(webRoot, "Components"),
+            Path.Combine(webRoot, "Services"),
+        };
+        var forbiddenPresentationTokens = new[]
+        {
+            "Microsoft.Data.Sqlite",
+            "Microsoft.EntityFrameworkCore",
+            "HeroPassport.Infrastructure.Persistence",
+            "DbContext",
+            "DbSet<",
+            "SqliteConnection",
+            "ExecuteSql",
+            "FromSql",
+        };
+
+        foreach (var presentationRoot in presentationRoots)
+        {
+            foreach (var file in Directory.EnumerateFiles(presentationRoot, "*", SearchOption.AllDirectories)
+                         .Where(static path => path.EndsWith(".cs", StringComparison.Ordinal) || path.EndsWith(".razor", StringComparison.Ordinal)))
+            {
+                var source = File.ReadAllText(file);
+                foreach (var token in forbiddenPresentationTokens)
+                {
+                    Assert.DoesNotContain(token, source, StringComparison.Ordinal);
+                }
+            }
+        }
+
+        var program = File.ReadAllText(Path.Combine(webRoot, "Program.cs"));
+        var forbiddenProgramTokens = new[]
+        {
+            "MapGet(",
+            "MapPost(",
+            "MapPut(",
+            "MapDelete(",
+            "MapPatch(",
+            "MapGroup(",
+            "AddInteractiveServerComponents",
+            "AddInteractiveWebAssemblyComponents",
+            "AddInteractiveServerRenderMode",
+            "AddInteractiveWebAssemblyRenderMode",
+        };
+        foreach (var token in forbiddenProgramTokens)
+        {
+            Assert.DoesNotContain(token, program, StringComparison.Ordinal);
+        }
     }
 
     private static void AssertProjectReferences(string root, string relativeProjectPath, string[] expected)
