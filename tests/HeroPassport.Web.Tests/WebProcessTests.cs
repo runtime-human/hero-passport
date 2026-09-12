@@ -40,10 +40,14 @@ public sealed class WebProcessTests
 
             using var response = await client.GetAsync("/app.css", token);
             var css = await response.Content.ReadAsStringAsync(token);
+            var headers = string.Join(
+                "; ",
+                response.Headers.Concat(response.Content.Headers)
+                    .Select(static header => $"{header.Key}={string.Join(",", header.Value)}"));
 
             Assert.True(
-                response.IsSuccessStatusCode,
-                $"Product stylesheet GET failed with {(int)response.StatusCode}. Body: {css}. Web output: {web.JoinedOutput}");
+                response.StatusCode == HttpStatusCode.OK && css.Length > 0,
+                $"Product stylesheet GET returned {(int)response.StatusCode} with {css.Length} body chars. Headers: {headers}. Web output: {web.JoinedOutput}");
             Assert.Contains(".shell", css, StringComparison.Ordinal);
         }
         finally
