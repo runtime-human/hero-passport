@@ -17,6 +17,8 @@ public sealed class ProjectDependencyTests
             ["../HeroPassport.Application/HeroPassport.Application.csproj", "../HeroPassport.Domain/HeroPassport.Domain.csproj"]);
         AssertProjectReferences(root, "src/HeroPassport.App/HeroPassport.App.csproj",
             ["../HeroPassport.Application/HeroPassport.Application.csproj", "../HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj"]);
+        AssertProjectReferences(root, "src/HeroPassport.Web/HeroPassport.Web.csproj",
+            ["../HeroPassport.Application/HeroPassport.Application.csproj", "../HeroPassport.Infrastructure/HeroPassport.Infrastructure.csproj"]);
     }
 
     [Fact]
