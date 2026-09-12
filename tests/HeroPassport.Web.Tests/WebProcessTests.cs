@@ -38,7 +38,9 @@ public sealed class WebProcessTests
             using var response = await client.GetAsync("/", token);
             var html = await response.Content.ReadAsStringAsync(token);
 
-            Assert.True(response.IsSuccessStatusCode, $"Dashboard GET failed with {(int)response.StatusCode}. Body: {html}");
+            Assert.True(
+                response.IsSuccessStatusCode,
+                $"Dashboard GET failed with {(int)response.StatusCode}. Body: {html}. Web output: {web.JoinedOutput}");
             Assert.Contains("Setup required", html, StringComparison.Ordinal);
             Assert.Contains(Path.GetFileName(sandbox.ProjectRoot), html, StringComparison.Ordinal);
             Assert.DoesNotContain(sandbox.ProjectRoot, html, StringComparison.Ordinal);
@@ -74,7 +76,9 @@ public sealed class WebProcessTests
             using var response = await client.GetAsync("/", token);
             var html = await response.Content.ReadAsStringAsync(token);
 
-            Assert.True(response.IsSuccessStatusCode, $"Dashboard GET failed with {(int)response.StatusCode}. Body: {html}");
+            Assert.True(
+                response.IsSuccessStatusCode,
+                $"Dashboard GET failed with {(int)response.StatusCode}. Body: {html}. Web output: {web.JoinedOutput}");
             Assert.Contains("Web Nova", html, StringComparison.Ordinal);
             Assert.Contains("Level 1", html, StringComparison.Ordinal);
             Assert.Contains("code_squire", html, StringComparison.Ordinal);
