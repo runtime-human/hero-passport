@@ -13,43 +13,43 @@ else
 {
     <main class="shell">
         <header class="hero-header">
-            <p class="eyebrow">Hero Passport · @_model.Context.Project.DisplayName</p>
-            @if (!_model.Context.SetupCompleted)
+            <p class="eyebrow">Hero Passport · @_model.ProjectDisplayName</p>
+            @if (!_model.SetupCompleted)
             {
                 <h1>Setup required</h1>
                 <p>Initialize Hero Passport before using progression and Quest history.</p>
             }
-            else if (_model.Card is { } card)
+            else if (_model.Hero is { } hero)
             {
-                <h1>@card.Hero.Name</h1>
-                <p class="hero-rank">Level @card.Hero.Level · <code>@card.Hero.RankKey</code></p>
+                <h1>@hero.Name</h1>
+                <p class="hero-rank">Level @hero.Level · <code>@hero.RankKey</code></p>
                 <div class="stat-grid" aria-label="Hero progression summary">
-                    <article><span>Total XP</span><strong>@card.Hero.TotalXp</strong></article>
-                    <article><span>Trust</span><strong>@card.Hero.Trust</strong></article>
-                    <article><span>Strain</span><strong>@card.Hero.Strain</strong></article>
-                    <article><span>Success streak</span><strong>@card.Hero.SuccessStreak</strong></article>
+                    <article><span>Total XP</span><strong>@hero.TotalXp</strong></article>
+                    <article><span>Trust</span><strong>@hero.Trust</strong></article>
+                    <article><span>Strain</span><strong>@hero.Strain</strong></article>
+                    <article><span>Success streak</span><strong>@hero.SuccessStreak</strong></article>
                 </div>
             }
         </header>
 
-        @if (_model.Context.SetupCompleted && _model.Card is { } configuredCard)
+        @if (_model.SetupCompleted && _model.Project is { } configuredProject && _model.Hero is { } configuredHero)
         {
             <section class="panel">
                 <h2>Current project</h2>
-                <p><strong>@configuredCard.Project.DisplayName</strong></p>
-                <p>@configuredCard.Project.QuestsFinished completed Quests · @configuredCard.Project.TotalXpEarned XP earned</p>
+                <p><strong>@configuredProject.DisplayName</strong></p>
+                <p>@configuredProject.QuestsFinished completed Quests · @configuredProject.TotalXpEarned XP earned</p>
             </section>
 
             <section class="panel">
                 <h2>Open Quest</h2>
-                @if (_model.Context.OpenQuests.Count == 0)
+                @if (_model.OpenQuests.Count == 0)
                 {
                     <p>No open Quest</p>
                 }
                 else
                 {
                     <ul>
-                        @foreach (var quest in _model.Context.OpenQuests)
+                        @foreach (var quest in _model.OpenQuests)
                         {
                             <li><strong>@quest.Title</strong> · @quest.QuestType</li>
                         }
@@ -59,14 +59,14 @@ else
 
             <section class="panel">
                 <h2>Top Skills</h2>
-                @if (configuredCard.Hero.TopSkills.Count == 0)
+                @if (configuredHero.TopSkills.Count == 0)
                 {
                     <p>No Skill progression yet.</p>
                 }
                 else
                 {
                     <ul class="skill-list">
-                        @foreach (var skill in configuredCard.Hero.TopSkills)
+                        @foreach (var skill in configuredHero.TopSkills)
                         {
                             <li><strong>@skill.SkillKey</strong><span>Level @skill.Level · @skill.Xp XP</span></li>
                         }
