@@ -82,6 +82,35 @@ public sealed class WebProcessTests
     }
 
     [Fact]
+    public async Task CurrentDirectoryFallbackResolvesProjectWhenExplicitRootIsOmitted()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var sandbox = CreateSandbox();
+        try
+        {
+            await using var web = await StartWebAsync(
+                sandbox.Home,
+                sandbox.ProjectRoot,
+                token,
+                useExplicitProjectRoot: false);
+            using var client = new HttpClient { BaseAddress = web.Address };
+
+            using var response = await client.GetAsync("/", token);
+            var html = await response.Content.ReadAsStringAsync(token);
+
+            Assert.True(
+                response.IsSuccessStatusCode,
+                $"Dashboard GET failed with {(int)response.StatusCode}. Body: {html}. Web output: {web.JoinedOutput}");
+            Assert.Contains(Path.GetFileName(sandbox.ProjectRoot), html, StringComparison.Ordinal);
+            Assert.DoesNotContain(sandbox.ProjectRoot, html, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DeleteSandbox(sandbox.Root);
+        }
+    }
+
+    [Fact]
     public async Task DashboardGetDoesNotCreateProjectOrQuestBookkeeping()
     {
         var token = TestContext.Current.CancellationToken;
@@ -192,7 +221,8 @@ public sealed class WebProcessTests
     private static async Task<WebProcessHandle> StartWebAsync(
         string home,
         string projectRoot,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool useExplicitProjectRoot = true)
     {
         var repoRoot = FindRepositoryRoot();
         var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
@@ -201,14 +231,18 @@ public sealed class WebProcessTests
 
         var startInfo = new ProcessStartInfo("dotnet")
         {
-            WorkingDirectory = repoRoot,
+            WorkingDirectory = useExplicitProjectRoot ? repoRoot : projectRoot,
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
         startInfo.ArgumentList.Add(webDll);
-        startInfo.ArgumentList.Add("--project-root");
-        startInfo.ArgumentList.Add(projectRoot);
+        if (useExplicitProjectRoot)
+        {
+            startInfo.ArgumentList.Add("--project-root");
+            startInfo.ArgumentList.Add(projectRoot);
+        }
+
         startInfo.Environment["HERO_PASSPORT_HOME"] = home;
         startInfo.Environment["ASPNETCORE_URLS"] = "http://0.0.0.0:0";
         startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Production";
