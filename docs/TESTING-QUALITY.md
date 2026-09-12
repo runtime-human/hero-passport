@@ -1,7 +1,7 @@
 # Hero Passport — Testing and Quality Strategy
 
-**Status:** Accepted v3.2.1  
-**Snapshot:** 2026-08-11
+**Status:** Accepted v3.2.1 core + 0.2-A Web qualification  
+**Snapshot:** 2026-09-13
 
 ## 1. Principle
 
@@ -13,6 +13,7 @@ use-case semantics -> Application test
 SQLite invariant -> real file-backed SQLite integration/concurrency/crash test
 MCP contract -> schema/snapshot/vector test
 Agent orchestration -> Agent Skill eval
+Web boundary -> real Kestrel process/HTTP + architecture tests
 installation -> packaged host E2E
 ```
 
@@ -25,6 +26,7 @@ tests/HeroPassport.Domain.Tests/
 tests/HeroPassport.Application.Tests/
 tests/HeroPassport.Infrastructure.Tests/
 tests/HeroPassport.App.Tests/
+tests/HeroPassport.Web.Tests/
 tests/HeroPassport.Architecture.Tests/
 tests/HeroPassport.Contract.Tests/
 tests/HeroPassport.AgentEvals/
@@ -348,7 +350,27 @@ trusted_schema OFF
 Git safe.directory not weakened
 ```
 
-## 20. Packaging/E2E risk-first checkpoint
+## 20. 0.2-A Web qualification
+
+`HeroPassport.Web.Tests` launches a real Kestrel child process against an isolated `HERO_PASSPORT_HOME` and temporary Project root. 0.2-A must prove:
+
+```text
+actual listener is IPv4 loopback
+ASPNETCORE_URLS=http://0.0.0.0:0 cannot widen the listener
+explicit --project-root resolves through project-identity/1
+omitted --project-root uses process cwd fallback
+fresh storage renders bounded setup-required state
+configured storage renders existing Application Hero/card truth
+GET / creates no Project/Quest/history/receipt bookkeeping rows
+HTML omits full local paths, workspace fingerprints and receipt/raw-evidence internals
+source-backed static asset manifest serves product CSS in Development
+```
+
+Architecture tests additionally guard that Web Components/Services do not own EF/SQLite access and that 0.2-A does not add minimal-API endpoints or interactive Blazor modes.
+
+The local build-output asset test intentionally uses `Development`, matching ASP.NET Core static-web-assets semantics. Published Production Web asset qualification is deferred to the 0.2 packaging/release slice; production loopback/read-only/privacy tests remain in `Production` environment.
+
+## 21. Packaging/E2E risk-first checkpoint
 
 Reference host: Codex.
 
@@ -368,7 +390,7 @@ retry/crash/race vectors
 
 Only after this checkpoint expand full reward/Skills/levels/Trust-Strain/Streak/Traits/Titles/localization/admin features.
 
-## 21. Release checklist
+## 22. Release checklist
 
 No 0.1 release unless:
 
@@ -384,3 +406,5 @@ privacy scans green
 packaged Codex E2E green
 cross-host compatibility recorded
 ```
+
+0.2 release adds Web-specific browser security, management, published-artifact and cross-platform Web qualification on top of these inherited Core gates; 0.2-A alone is not a 0.2 release claim.

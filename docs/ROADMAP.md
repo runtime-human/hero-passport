@@ -1,7 +1,7 @@
 # Hero Passport — Roadmap
 
-**Current design:** v3.2.1  
-**Snapshot:** 2026-08-11
+**Current design:** v3.2.1 core + 0.2-A Web foundation  
+**Snapshot:** 2026-09-13
 
 Roadmap is scope guidance, not permission to pre-build future abstractions.
 
@@ -71,17 +71,35 @@ No rule-economy changes without a new rule version.
 
 ## 0.2.0 — Local Web UI
 
-Local visual read/management surface over the same Application/store:
+Local visual read/management surface over the same Application/store.
+
+0.2-A foundation now provides:
 
 ```text
-Hero card
-project/Quest history
-Skill progression
-Rank/Traits/Titles
-settings/Hero management
+HeroPassport.Web as a sibling outer adapter
+ASP.NET Core / Blazor static SSR
+code-defined loopback-only dynamic listener
+explicit --project-root with tested cwd fallback
+fresh setup-required dashboard
+configured Hero card/project/open-Quest/top-Skills dashboard
+read-only Application-backed composition
+privacy/no-write regression coverage
 ```
 
-Web never becomes a second game engine or direct DbContext UI.
+Remaining 0.2 slices add, behind their own focused gates:
+
+```text
+browser security boundary before mutations
+bounded project/Quest history
+Skill progression
+Rank/Traits/Titles detail
+settings/Hero management
+RU + EN Web presentation/accessibility polish
+launch/package integration
+published browser/concurrency/release qualification
+```
+
+Web never becomes a second game engine or direct DbContext UI. 0.2-A does not add Web mutations, REST/minimal APIs, MCP HTTP, WebAssembly or Interactive Server.
 
 ## Future candidates — trigger-based only
 

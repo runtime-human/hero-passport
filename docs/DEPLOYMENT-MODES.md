@@ -1,7 +1,7 @@
 # Hero Passport — Deployment Modes
 
-**Status:** Accepted v3.2.1 boundary specification  
-**Snapshot:** 2026-08-11
+**Status:** Accepted v3.2.1 core + implemented 0.2-A Web boundary  
+**Snapshot:** 2026-09-13
 
 ## 1. 0.1 primary profile — local project-bound stdio
 
@@ -15,7 +15,7 @@ AI/MCP host
 
 Trust boundary: one local OS user, host allowed to execute the command, local filesystem permissions.
 
-No Hero Passport network listener, cloud account or OAuth flow.
+No 0.1 Hero Passport network listener, cloud account or OAuth flow.
 
 Project binding:
 
@@ -65,16 +65,30 @@ Connection-scoped pragmas must be applied on every actual product connection; po
 
 ## 5. 0.2 local Web profile
 
-Future local browser UI:
+0.2-A implements the first local browser slice:
 
 ```text
 Browser
-  -> HeroPassport.Web on loopback/local process
-  -> Application/read models
-  -> same local SQLite
+  -> HeroPassport.Web on code-defined loopback listener
+  -> Blazor static SSR / bounded Web presentation model
+  -> existing Application read semantics
+  -> same local SQLite authority
 ```
 
-This is presentation/management; MCP Core/game semantics remain shared.
+Current 0.2-A listener policy is programmatic IPv4 loopback with an OS-assigned port. Generic URL configuration such as `ASPNETCORE_URLS=http://0.0.0.0:0` does not widen the actual listener because the code-defined Kestrel endpoint takes precedence. LAN/public/wildcard binding is not a supported 0.2-A profile.
+
+Project binding matches the local adapter contract:
+
+```text
+explicit --project-root else process cwd
+-> project-identity/1
+```
+
+The 0.2-A surface is read-only. It renders setup-required or bounded Hero/project/card state through Application use cases. It does not expose Web mutations, REST/minimal APIs, MCP over HTTP, Interactive Server/WebAssembly, direct Razor-to-DbContext access, or a second game engine.
+
+Static assets use the ASP.NET Core static-web-assets manifest. Local source-backed asset qualification runs in Development; final published Web artifact/static-asset qualification belongs to the later 0.2 packaging/release slice.
+
+Loopback is only the first network exposure boundary. Browser-token/Host filtering and mutation-specific Web security are separate 0.2 security work and must land before the Web surface grows into management actions.
 
 ## 6. Future project-scoped Streamable HTTP
 
@@ -96,12 +110,13 @@ No sync requirement in 0.1/0.2. Current schema is sync-conscious, not sync-ready
 
 Future sync requires dedicated cross-device identity/conflict/delete/security design. Never point two machines at one shared writable SQLite WAL file.
 
-## 9. Unsupported 0.1 profiles
+## 9. Unsupported 0.1/0.2-A profiles
 
 ```text
 writable SQLite on network/NFS/cloud-shared filesystem
 multiple hosts writing one DB file
 public unauthenticated HTTP
+LAN/wildcard Web binding
 legacy SSE server
 team/shared local DB
 ```
