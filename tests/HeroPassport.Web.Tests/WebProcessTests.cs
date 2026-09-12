@@ -29,13 +29,17 @@ public sealed class WebProcessTests
     }
 
     [Fact]
-    public async Task WebProcessServesProductStylesFromExecutableContentRoot()
+    public async Task DevelopmentWebProcessServesProductStylesFromStaticAssetManifest()
     {
         var token = TestContext.Current.CancellationToken;
         var sandbox = CreateSandbox();
         try
         {
-            await using var web = await StartWebAsync(sandbox.Home, sandbox.ProjectRoot, token);
+            await using var web = await StartWebAsync(
+                sandbox.Home,
+                sandbox.ProjectRoot,
+                token,
+                environmentName: "Development");
             using var client = new HttpClient { BaseAddress = web.Address };
 
             using var response = await client.GetAsync("/app.css", token);
@@ -226,7 +230,8 @@ public sealed class WebProcessTests
         string home,
         string projectRoot,
         CancellationToken cancellationToken,
-        bool useExplicitProjectRoot = true)
+        bool useExplicitProjectRoot = true,
+        string environmentName = "Production")
     {
         var repoRoot = FindRepositoryRoot();
         var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
@@ -249,7 +254,7 @@ public sealed class WebProcessTests
 
         startInfo.Environment["HERO_PASSPORT_HOME"] = home;
         startInfo.Environment["ASPNETCORE_URLS"] = "http://0.0.0.0:0";
-        startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Production";
+        startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = environmentName;
 
         var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Hero Passport Web process did not start.");
         var output = new ConcurrentQueue<string>();
