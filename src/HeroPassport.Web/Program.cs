@@ -34,6 +34,7 @@ builder.Services.AddSingleton<HeroPassportDashboardService>();
 
 var app = builder.Build();
 app.UseStaticFiles();
+app.UseAntiforgery();
 app.MapRazorComponents<App>();
 
 await app.RunAsync();
