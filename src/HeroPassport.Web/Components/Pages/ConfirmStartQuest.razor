@@ -28,41 +28,46 @@
             <p><a href="/">Back to dashboard</a></p>
         </section>
     }
-    else if (_result.Status == ConfirmStartQuestWebStatus.Committed)
+    else if (_result.Status == ConfirmStartQuestWebStatus.Committed || _result.Confirmation is not null)
     {
         <section class="panel">
-            <p>Quest already started.</p>
-            <EditForm Model="ConfirmationInput" FormName="StartQuestConfirm" OnValidSubmit="ConfirmAsync" method="post">
-                <button type="submit">Continue</button>
-            </EditForm>
-        </section>
-    }
-    else if (_result.Confirmation is { } confirmation)
-    {
-        <section class="panel">
-            <dl class="confirmation-list">
-                <dt>Hero</dt>
-                <dd>@confirmation.HeroName</dd>
-                <dt>Project</dt>
-                <dd>@confirmation.ProjectDisplayName</dd>
-                <dt>Quest type</dt>
-                <dd>@confirmation.QuestType</dd>
-                <dt>Title</dt>
-                <dd>@confirmation.Title</dd>
-                <dt>Goal</dt>
-                <dd>@confirmation.Goal</dd>
-            </dl>
-
-            @if (!string.IsNullOrEmpty(_message))
+            @if (_result.Status == ConfirmStartQuestWebStatus.Committed)
             {
-                <p role="alert">@_message</p>
+                <p>Quest already started.</p>
+            }
+            else if (_result.Confirmation is { } confirmation)
+            {
+                <dl class="confirmation-list">
+                    <dt>Hero</dt>
+                    <dd>@confirmation.HeroName</dd>
+                    <dt>Project</dt>
+                    <dd>@confirmation.ProjectDisplayName</dd>
+                    <dt>Quest type</dt>
+                    <dd>@confirmation.QuestType</dd>
+                    <dt>Title</dt>
+                    <dd>@confirmation.Title</dd>
+                    <dt>Goal</dt>
+                    <dd>@confirmation.Goal</dd>
+                </dl>
+
+                @if (!string.IsNullOrEmpty(_message))
+                {
+                    <p role="alert">@_message</p>
+                }
             }
 
             <EditForm Model="ConfirmationInput" FormName="StartQuestConfirm" OnValidSubmit="ConfirmAsync" method="post">
-                <div class="actions">
-                    <button type="submit">Start Quest</button>
-                    <a href="/quests/start">Cancel</a>
-                </div>
+                @if (_result.Status == ConfirmStartQuestWebStatus.Committed)
+                {
+                    <button type="submit">Continue</button>
+                }
+                else
+                {
+                    <div class="actions">
+                        <button type="submit">Start Quest</button>
+                        <a href="/quests/start">Cancel</a>
+                    </div>
+                }
             </EditForm>
         </section>
     }
