@@ -30,6 +30,12 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
             return;
         }
 
+        if (!HasSameOriginBrowserProvenance(context.Request))
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
+
         var requestBodySize = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
         if (requestBodySize is null || requestBodySize.IsReadOnly)
         {
@@ -80,5 +86,50 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
             mediaType,
             UrlEncodedFormContentType,
             StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasSameOriginBrowserProvenance(HttpRequest request)
+    {
+        var hasFetchSite = request.Headers.TryGetValue("Sec-Fetch-Site", out var fetchSiteValues);
+        if (hasFetchSite
+            && (fetchSiteValues.Count != 1
+                || !string.Equals(fetchSiteValues[0], "same-origin", StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        var hasOrigin = request.Headers.TryGetValue("Origin", out var originValues);
+        if (hasOrigin && !IsCanonicalOrigin(request, originValues))
+        {
+            return false;
+        }
+
+        return hasFetchSite || hasOrigin;
+    }
+
+    private static bool IsCanonicalOrigin(
+        HttpRequest request,
+        Microsoft.Extensions.Primitives.StringValues originValues)
+    {
+        if (originValues.Count != 1
+            || !Uri.TryCreate(originValues[0], UriKind.Absolute, out var origin))
+        {
+            return false;
+        }
+
+        var expectedPort = request.Host.Port ?? request.Scheme switch
+        {
+            "http" => 80,
+            "https" => 443,
+            _ => -1,
+        };
+        return expectedPort >= 0
+            && string.Equals(origin.Scheme, request.Scheme, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(origin.Host, request.Host.Host, StringComparison.OrdinalIgnoreCase)
+            && origin.Port == expectedPort
+            && string.IsNullOrEmpty(origin.UserInfo)
+            && origin.AbsolutePath == "/"
+            && string.IsNullOrEmpty(origin.Query)
+            && string.IsNullOrEmpty(origin.Fragment);
     }
 }
