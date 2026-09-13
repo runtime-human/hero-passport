@@ -25,21 +25,11 @@ public sealed class LocalWebSecurityAcceptanceTests
             using var client = CreateClient(web.Address);
 
             var anti = await GetAntiforgeryTokenAsync(client, token);
-            using var wrong = await PostClaimAsync(
-                client,
-                web.Address,
-                anti,
-                AlternateBootstrap,
-                token);
+            using var wrong = await PostClaimAsync(client, web.Address, anti, AlternateBootstrap, token);
             Assert.Equal(HttpStatusCode.Forbidden, wrong.StatusCode);
 
             anti = await GetAntiforgeryTokenAsync(client, token);
-            using var correct = await PostClaimAsync(
-                client,
-                web.Address,
-                anti,
-                TestBootstrap,
-                token);
+            using var correct = await PostClaimAsync(client, web.Address, anti, TestBootstrap, token);
             Assert.Equal(HttpStatusCode.SeeOther, correct.StatusCode);
         }
         finally
@@ -59,21 +49,11 @@ public sealed class LocalWebSecurityAcceptanceTests
             using var client = CreateClient(web.Address);
 
             var anti = await GetAntiforgeryTokenAsync(client, token);
-            using var first = await PostClaimAsync(
-                client,
-                web.Address,
-                anti,
-                TestBootstrap,
-                token);
+            using var first = await PostClaimAsync(client, web.Address, anti, TestBootstrap, token);
             Assert.Equal(HttpStatusCode.SeeOther, first.StatusCode);
 
             anti = await GetAntiforgeryTokenAsync(client, token);
-            using var replay = await PostClaimAsync(
-                client,
-                web.Address,
-                anti,
-                TestBootstrap,
-                token);
+            using var replay = await PostClaimAsync(client, web.Address, anti, TestBootstrap, token);
             Assert.Equal(HttpStatusCode.Forbidden, replay.StatusCode);
         }
         finally
@@ -106,12 +86,7 @@ public sealed class LocalWebSecurityAcceptanceTests
             Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
 
             var anti = await GetAntiforgeryTokenAsync(client, token);
-            using var accepted = await PostClaimAsync(
-                client,
-                web.Address,
-                anti,
-                TestBootstrap,
-                token);
+            using var accepted = await PostClaimAsync(client, web.Address, anti, TestBootstrap, token);
             Assert.Equal(HttpStatusCode.SeeOther, accepted.StatusCode);
         }
         finally
@@ -142,12 +117,7 @@ public sealed class LocalWebSecurityAcceptanceTests
             Assert.Equal(HttpStatusCode.BadRequest, hostile.StatusCode);
 
             anti = await GetAntiforgeryTokenAsync(client, token);
-            using var accepted = await PostClaimAsync(
-                client,
-                web.Address,
-                anti,
-                TestBootstrap,
-                token);
+            using var accepted = await PostClaimAsync(client, web.Address, anti, TestBootstrap, token);
             Assert.Equal(HttpStatusCode.SeeOther, accepted.StatusCode);
         }
         finally
@@ -168,12 +138,7 @@ public sealed class LocalWebSecurityAcceptanceTests
             {
                 using var client = CreateClient(first.Address);
                 var anti = await GetAntiforgeryTokenAsync(client, token);
-                using var accepted = await PostClaimAsync(
-                    client,
-                    first.Address,
-                    anti,
-                    TestBootstrap,
-                    token);
+                using var accepted = await PostClaimAsync(client, first.Address, anti, TestBootstrap, token);
                 Assert.Equal(HttpStatusCode.SeeOther, accepted.StatusCode);
                 using var dashboard = await client.GetAsync("/", token);
                 Assert.Equal(HttpStatusCode.OK, dashboard.StatusCode);
@@ -209,12 +174,7 @@ public sealed class LocalWebSecurityAcceptanceTests
             await using var web = await StartTestingWebAsync(sandbox, token);
             using var client = CreateClient(web.Address);
             var anti = await GetAntiforgeryTokenAsync(client, token);
-            using var accepted = await PostClaimAsync(
-                client,
-                web.Address,
-                anti,
-                TestBootstrap,
-                token);
+            using var accepted = await PostClaimAsync(client, web.Address, anti, TestBootstrap, token);
             Assert.Equal(HttpStatusCode.SeeOther, accepted.StatusCode);
 
             var databasePath = Path.Combine(sandbox.Home, "hero-passport.db");
@@ -239,14 +199,17 @@ public sealed class LocalWebSecurityAcceptanceTests
         {
             var result = await RunWebToExitAsync(
                 sandbox,
-                token,
                 environment: "Production",
                 addNoOpenBrowser: true,
                 bootstrap: null,
-                session: null);
+                session: null,
+                token);
 
             Assert.NotEqual(0, result.ExitCode);
-            Assert.Contains("--no-open-browser is only available in the Testing environment", result.Output, StringComparison.Ordinal);
+            Assert.Contains(
+                "--no-open-browser is only available in the Testing environment",
+                result.Output,
+                StringComparison.Ordinal);
             Assert.DoesNotContain(TestBootstrap, result.Output, StringComparison.Ordinal);
             Assert.DoesNotContain(TestSession, result.Output, StringComparison.Ordinal);
         }
@@ -265,14 +228,17 @@ public sealed class LocalWebSecurityAcceptanceTests
         {
             var result = await RunWebToExitAsync(
                 sandbox,
-                token,
                 environment: "Production",
                 addNoOpenBrowser: false,
                 bootstrap: TestBootstrap,
-                session: TestSession);
+                session: TestSession,
+                token);
 
             Assert.NotEqual(0, result.ExitCode);
-            Assert.Contains("Web test secrets are only accepted in the Testing environment", result.Output, StringComparison.Ordinal);
+            Assert.Contains(
+                "Web test secrets are only accepted in the Testing environment",
+                result.Output,
+                StringComparison.Ordinal);
             Assert.DoesNotContain(TestBootstrap, result.Output, StringComparison.Ordinal);
             Assert.DoesNotContain(TestSession, result.Output, StringComparison.Ordinal);
         }
@@ -316,25 +282,18 @@ public sealed class LocalWebSecurityAcceptanceTests
         string? origin = null,
         string fetchSite = "same-origin")
     {
-        var content = new FormUrlEncodedContent(
+        using var content = new FormUrlEncodedContent(
         [
             new KeyValuePair<string, string>("__RequestVerificationToken", antiforgeryToken),
             new KeyValuePair<string, string>("capability", capability),
         ]);
-        var request = new HttpRequestMessage(HttpMethod.Post, "/__hero/bootstrap/claim")
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/__hero/bootstrap/claim")
         {
             Content = content,
         };
         request.Headers.TryAddWithoutValidation("Origin", origin ?? CanonicalOrigin(address));
         request.Headers.TryAddWithoutValidation("Sec-Fetch-Site", fetchSite);
-        try
-        {
-            return await client.SendAsync(request, token);
-        }
-        finally
-        {
-            request.Dispose();
-        }
+        return await client.SendAsync(request, token);
     }
 
     private static string CanonicalOrigin(Uri address) =>
@@ -377,11 +336,11 @@ public sealed class LocalWebSecurityAcceptanceTests
 
     private static async Task<ProcessResult> RunWebToExitAsync(
         Sandbox sandbox,
-        CancellationToken token,
         string environment,
         bool addNoOpenBrowser,
         string? bootstrap,
-        string? session)
+        string? session,
+        CancellationToken token)
     {
         var startInfo = CreateStartInfo(
             sandbox,
