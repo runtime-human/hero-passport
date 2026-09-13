@@ -1,7 +1,7 @@
 # Hero Passport — Security and Privacy
 
-**Status:** Accepted v3.2.1  
-**Snapshot:** 2026-08-11
+**Status:** Accepted v3.2.1 core + implemented 0.2-B/C local Web boundary  
+**Snapshot:** 2026-09-13
 
 ## 1. Security posture
 
@@ -18,6 +18,8 @@ Hero Passport is a local companion, not an agent permission gateway, anti-cheat 
 - migration crash recovery;
 - protocol stdout contamination;
 - Skill/Core version skew.
+
+0.2 local Web additionally treats the browser request boundary as untrusted despite loopback transport: hostile Host values, cross-site localhost requests, DNS-rebinding-style Host abuse, stale/replayed browser capabilities, oversized/form-abuse requests and tampered confirmation handles must fail closed.
 
 ## 2. Privacy minimum
 
@@ -126,6 +128,8 @@ Global active Hero is a preference/default only.
 
 Start mutation takes explicit `heroId`; another local host changing active Hero cannot silently retarget an already-formed Start request.
 
+0.2-C preserves this rule across its human confirmation step: prepared state captures the intended Hero and one `StartRequestId`; commit uses those prepared identities instead of re-reading the current active Hero for ownership.
+
 Existing Quest ownership is immutable.
 
 ## 11. MCP annotations
@@ -146,17 +150,21 @@ Never log full request bodies by default, especially goal/summary, environment v
 
 This keeps `readOnlyHint` truthful and reduces unnecessary WAL/lock churn.
 
+The 0.2-A/B dashboard keeps the same no-hidden-write property. 0.2-C preparation is also non-mutating; only the explicit confirmation step invokes the existing Start mutation authority.
+
 ## 14. Project privacy
 
 Persist salted workspace fingerprint/display name, not full path/remote.
 
 Routine MCP outputs omit internal ProjectId/fingerprint/path.
 
+Web confirmation renders only safe Hero/Project display values plus normalized Quest type/title/goal. It does not render full workspace paths, Project fingerprints, internal HeroId, mutation request identity or persistence internals.
+
 Git identity resolver is read-only, scrubs redirection env vars, does not weaken `safe.directory`.
 
 ## 15. SQLite storage
 
-No encryption-at-rest claim in 0.1. Hero Passport relies on user/OS/device/filesystem protection.
+No encryption-at-rest claim in 0.1/0.2. Hero Passport relies on user/OS/device/filesystem protection.
 
 If application-level DB encryption becomes required, select/threat-model it explicitly rather than implying SQLitePCLRaw provides encryption.
 
@@ -164,9 +172,48 @@ If application-level DB encryption becomes required, select/threat-model it expl
 
 0.1 local stdio mode has no Hero Passport cloud endpoint, own OAuth or telemetry upload.
 
-Future HTTP/sync requires separate auth/authz/encryption/deletion/conflict/privacy threat model.
+0.2 local Web binds only to code-defined IPv4 loopback with canonical browser authority `http://127.0.0.1:<dynamic-port>`. LAN/public/wildcard binding, `localhost`/IPv6 authority, reverse proxy/forwarded-host deployment and local HTTPS are unsupported in the current profile.
 
-## 17. Logs/diagnostics allowlist
+Future public HTTP/sync requires separate auth/authz/encryption/deletion/conflict/privacy threat model. The local process browser capability/session is not public authentication.
+
+## 17. 0.2 local Web browser and mutation boundary
+
+0.2-B establishes the browser authorization envelope:
+
+```text
+Kestrel = IPv4 loopback only
+Host allowlist = 127.0.0.1 only
+bootstrap capability = independent random 32 bytes, one-time
+session bearer = independent random 32 bytes, process-lifetime
+bootstrap transport = URL fragment, removed before same-origin claim POST
+bootstrap claim = antiforgery + local origin + exact capability
+session cookie = HttpOnly + SameSite=Strict + Path=/ + non-persistent
+all product routes without current session = 401 before product reads
+unsupported Host = 400
+process restart = prior browser session invalid
+```
+
+Bootstrap/session secrets are never persisted and must not appear in ordinary process logs, product HTML, redirect targets or SQLite. The Testing-only deterministic secret and `--no-open-browser` seams are rejected outside the exact Testing environment.
+
+0.2-C reuses that boundary without creating parallel authentication. Its confirmation handle is random process-local lookup state, not an auth credential. Pending confirmation state is capped at 8 entries, expires after 10 minutes and is never persisted. Malformed handles fail with 400; unknown/expired handles fail with 410; neither can mutate.
+
+Mutation request hardening:
+
+```text
+routes = POST /quests/start and POST /quests/start/confirm/*
+content type = application/x-www-form-urlencoded only
+body ceiling = 8192 bytes before antiforgery/form parsing
+form models = dedicated Web DTOs only
+static SSR form names = unique
+session + same-origin + antiforgery = still mandatory
+bootstrap claim keeps its separate 1024-byte boundary
+```
+
+Quest title/goal may be rendered in the authenticated prepare/confirmation UX, but are excluded from redirect/query URLs and ordinary diagnostics. Web does not bind Domain/Application records directly from form input and does not expose a general REST/minimal-API product surface. `POST /__hero/bootstrap/claim` remains the only Minimal API-style endpoint.
+
+This boundary does not claim isolation from a malicious same-user process able to inspect process memory or browser storage.
+
+## 18. Logs/diagnostics allowlist
 
 Safe diagnostic fields may include:
 
@@ -179,9 +226,9 @@ bounded timing values
 UUIDs where useful
 ```
 
-Default diagnostics exclude Quest text, paths/remotes, bound SQL values and raw exception material that exposes user content.
+Default diagnostics exclude Quest text, paths/remotes, bound SQL values, browser capability/session/antiforgery values and raw exception material that exposes user content.
 
-## 18. Security tests
+## 19. Security tests
 
 Release gates include:
 
@@ -200,4 +247,25 @@ privacy wording does not claim forensic erasure
 stdout protocol-only
 forbidden DTO/entity/log fields absent
 Skill/Core incompatibility fails safe
+```
+
+0.2 Web security qualification additionally proves:
+
+```text
+loopback-only listener cannot be widened by ASPNETCORE_URLS
+hostile Host fails before product processing
+wrong bootstrap does not consume the valid one; successful replay fails
+prior-process browser session fails after restart
+missing/cross-site antiforgery claims fail closed
+security secrets are absent from normal output/SQLite/product HTML
+Production rejects Testing-only secret/no-browser bypasses
+Start prepare creates no Quest
+multipart mutation form -> 415
+oversized mutation form -> 413
+missing-antiforgery Start POST -> 400/no mutation
+explicit confirm creates one Quest through Application
+repeat confirm is idempotent
+prepared Hero/request identity is stable across active-Hero preference changes
+malformed/unknown confirmation handles fail 400/410 without mutation
+confirmation HTML omits internal IDs/fingerprint/request identity/full path
 ```

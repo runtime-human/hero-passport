@@ -1,6 +1,6 @@
 # Hero Passport — Testing and Quality Strategy
 
-**Status:** Accepted v3.2.1 core + 0.2-A/B Web qualification  
+**Status:** Accepted v3.2.1 core + 0.2-A/B/C Web qualification  
 **Snapshot:** 2026-09-13
 
 ## 1. Principle
@@ -105,6 +105,7 @@ same startRequestId from different Project -> HP135
 Start replay after active Hero changed -> original Quest/Hero
 Start replay after locale changed -> original Quest locale
 fresh request + same Hero+Project open -> HP133
+PrepareStartQuest normalizes with the same validation authority and performs no store access
 ```
 
 ## 7. One-open/linked-worktree tests
@@ -362,9 +363,13 @@ wrong bootstrap guess does not consume legitimate capability
 successful capability replay fails
 prior-process session cookie fails after restart
 Testing-only deterministic secret/no-browser seams fail outside Testing
+Start/confirm POSTs reject multipart and oversized bodies before product processing
+missing-antiforgery Start POST fails without Quest mutation
+confirmation page omits internal HeroId/fingerprint/requestId/session/bootstrap material
+Quest title/goal do not enter redirect URLs or ordinary process diagnostics
 ```
 
-## 20. 0.2-A/B Web qualification
+## 20. 0.2-A/B/C Web qualification
 
 `HeroPassport.Web.Tests` launches real Kestrel child processes against isolated `HERO_PASSPORT_HOME` and temporary Project roots.
 
@@ -404,7 +409,24 @@ Production rejects --no-open-browser
 Production rejects deterministic test-secret environment variables
 ```
 
-Architecture tests continue to prove Web Components/Services do not own EF/SQLite access. They also permit exactly one Minimal API-style POST location, `Security/BootstrapEndpoint.cs`, with exact route `/__hero/bootstrap/claim`, while rejecting general `MapGet/MapPut/MapDelete/MapPatch/MapGroup`, Identity/OAuth/authentication provider wiring, permissive CORS, forwarded-header deployment and interactive Blazor modes.
+0.2-C adds unit, architecture and real-process evidence for the first Web mutation vertical:
+
+```text
+PrepareStartQuest shares Application validation/normalization and performs no store access
+pending confirmations are bounded to 8 entries with a 10-minute TTL
+claim/commit is concurrency-safe and duplicate successful confirm does not call Application twice
+unauthenticated GET /quests/start -> 401
+valid prepare renders/redirects only to an opaque confirmation handle and DB still has zero Quest rows
+confirmation displays normalized safe Hero/Project/type/title/goal without internal IDs/fingerprint/requestId
+explicit confirm creates exactly one open Quest through StartQuestAsync
+re-post of committed confirmation remains idempotent
+prepared ownership/request identity survives active-Hero preference changes
+multipart -> 415 and oversized -> 413 before antiforgery/form parsing
+malformed confirmation handle -> 400; unknown/expired handle -> 410; neither mutates
+GET / after commit reflects the opened Quest
+```
+
+Architecture tests prove Web Components/Services do not own EF/SQLite access. They permit exactly one Minimal API-style POST location, `Security/BootstrapEndpoint.cs`, with exact route `/__hero/bootstrap/claim`, while rejecting general `MapGet/MapPut/MapDelete/MapPatch/MapGroup`, Identity/OAuth/authentication provider wiring, permissive CORS, forwarded-header deployment and interactive Blazor modes. The Start and confirmation pages are also guarded to retain their dedicated unique static-SSR form names.
 
 The security process tests intentionally use exact `ASPNETCORE_ENVIRONMENT=Testing` with deterministic secrets and `--no-open-browser`; both seams are rejected outside Testing. `UseStaticWebAssets()` is enabled only for that exact Testing profile so local build-output CSS can be qualified without enabling source-backed static assets in Production. Published Production Web artifact/static-asset and broader launch/package qualification remain separate later 0.2 release work.
 
@@ -445,4 +467,4 @@ packaged Codex E2E green
 cross-host compatibility recorded
 ```
 
-0.2 release adds Web-specific browser security, management, published-artifact and cross-platform Web qualification on top of these inherited Core gates. 0.2-A/B are foundations, not by themselves a full 0.2 release claim.
+0.2 release adds Web-specific browser security, bounded mutation confirmation, management, published-artifact and cross-platform Web qualification on top of these inherited Core gates. 0.2-A/B/C are incremental slices, not by themselves a full 0.2 release claim.
