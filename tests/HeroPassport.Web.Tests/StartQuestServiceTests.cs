@@ -13,6 +13,7 @@ public sealed class StartQuestServiceTests
     [Fact]
     public async Task PrepareNormalizesAndStoresIntentWithoutMutation()
     {
+        var cancellationToken = TestContext.Current.CancellationToken;
         var hero = new HeroIdentitySnapshot(HeroId.New(), "Ada");
         var state = new FakeStateStore(Context(hero));
         var application = new HeroPassportApplication(state, TimeProvider.System);
@@ -25,7 +26,8 @@ public sealed class StartQuestServiceTests
                 QuestType = "coding",
                 Title = "  Build   parser  ",
                 Goal = "  Ship   bounded   parser  ",
-            });
+            },
+            cancellationToken);
 
         Assert.Equal(PrepareStartQuestWebStatus.Prepared, result.Status);
         Assert.NotNull(result.Handle);
@@ -43,6 +45,7 @@ public sealed class StartQuestServiceTests
     [Fact]
     public async Task PrepareRefusesCurrentHeroWithOpenQuestWithoutMutation()
     {
+        var cancellationToken = TestContext.Current.CancellationToken;
         var hero = new HeroIdentitySnapshot(HeroId.New(), "Ada");
         var open = new OpenQuestContext(
             QuestId.New(), hero.HeroId, hero.Name, "coding", "Existing", "Goal",
@@ -53,7 +56,7 @@ public sealed class StartQuestServiceTests
             Project,
             new PendingStartQuestStore(TimeProvider.System));
 
-        var result = await service.PrepareAsync(ValidForm());
+        var result = await service.PrepareAsync(ValidForm(), cancellationToken);
 
         Assert.Equal(PrepareStartQuestWebStatus.Conflict, result.Status);
         Assert.Null(result.Handle);
@@ -63,6 +66,7 @@ public sealed class StartQuestServiceTests
     [Fact]
     public async Task CommitUsesPreparedHeroAndRequestIdAfterActiveHeroChanges()
     {
+        var cancellationToken = TestContext.Current.CancellationToken;
         var heroA = new HeroIdentitySnapshot(HeroId.New(), "Ada");
         var heroB = new HeroIdentitySnapshot(HeroId.New(), "Grace");
         var state = new FakeStateStore(Context(heroA));
@@ -72,13 +76,13 @@ public sealed class StartQuestServiceTests
             Project,
             pending);
 
-        var prepared = await service.PrepareAsync(ValidForm());
+        var prepared = await service.PrepareAsync(ValidForm(), cancellationToken);
         Assert.Equal(PrepareStartQuestWebStatus.Prepared, prepared.Status);
         Assert.NotNull(prepared.Handle);
         var captured = pending.Lookup(prepared.Handle).Entry!.Prepared;
         state.RuntimeContext = Context(heroB);
 
-        var committed = await service.CommitAsync(prepared.Handle);
+        var committed = await service.CommitAsync(prepared.Handle, cancellationToken);
 
         Assert.Equal(CommitStartQuestWebStatus.Success, committed.Status);
         Assert.Equal(1, state.StartCalls);
@@ -90,6 +94,7 @@ public sealed class StartQuestServiceTests
     [Fact]
     public async Task DuplicateSuccessfulConfirmDoesNotCallApplicationTwice()
     {
+        var cancellationToken = TestContext.Current.CancellationToken;
         var hero = new HeroIdentitySnapshot(HeroId.New(), "Ada");
         var state = new FakeStateStore(Context(hero));
         var pending = new PendingStartQuestStore(TimeProvider.System);
@@ -97,10 +102,10 @@ public sealed class StartQuestServiceTests
             new HeroPassportApplication(state, TimeProvider.System),
             Project,
             pending);
-        var prepared = await service.PrepareAsync(ValidForm());
+        var prepared = await service.PrepareAsync(ValidForm(), cancellationToken);
 
-        var first = await service.CommitAsync(prepared.Handle!);
-        var duplicate = await service.CommitAsync(prepared.Handle!);
+        var first = await service.CommitAsync(prepared.Handle!, cancellationToken);
+        var duplicate = await service.CommitAsync(prepared.Handle!, cancellationToken);
 
         Assert.Equal(CommitStartQuestWebStatus.Success, first.Status);
         Assert.Equal(CommitStartQuestWebStatus.Success, duplicate.Status);
@@ -110,6 +115,7 @@ public sealed class StartQuestServiceTests
     [Fact]
     public async Task OpenQuestConflictIsBoundedAndRetainsPreparedRequestForRetry()
     {
+        var cancellationToken = TestContext.Current.CancellationToken;
         var hero = new HeroIdentitySnapshot(HeroId.New(), "Ada");
         var state = new FakeStateStore(Context(hero)) { StartErrorCode = "HP133" };
         var pending = new PendingStartQuestStore(TimeProvider.System);
@@ -117,12 +123,12 @@ public sealed class StartQuestServiceTests
             new HeroPassportApplication(state, TimeProvider.System),
             Project,
             pending);
-        var prepared = await service.PrepareAsync(ValidForm());
+        var prepared = await service.PrepareAsync(ValidForm(), cancellationToken);
         var requestId = pending.Lookup(prepared.Handle!).Entry!.Prepared.StartRequestId;
 
-        var conflict = await service.CommitAsync(prepared.Handle!);
+        var conflict = await service.CommitAsync(prepared.Handle!, cancellationToken);
         state.StartErrorCode = null;
-        var retried = await service.CommitAsync(prepared.Handle!);
+        var retried = await service.CommitAsync(prepared.Handle!, cancellationToken);
 
         Assert.Equal(CommitStartQuestWebStatus.Conflict, conflict.Status);
         Assert.Equal(CommitStartQuestWebStatus.Success, retried.Status);
