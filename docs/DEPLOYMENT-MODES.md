@@ -1,6 +1,6 @@
 # Hero Passport — Deployment Modes
 
-**Status:** Accepted v3.2.1 core + implemented 0.2-A Web boundary  
+**Status:** Accepted v3.2.1 core + implemented 0.2-A/B Web boundary  
 **Snapshot:** 2026-09-13
 
 ## 1. 0.1 primary profile — local project-bound stdio
@@ -65,7 +65,7 @@ Connection-scoped pragmas must be applied on every actual product connection; po
 
 ## 5. 0.2 local Web profile
 
-0.2-A implements the first local browser slice:
+0.2-A introduced the first local browser slice:
 
 ```text
 Browser
@@ -75,20 +75,55 @@ Browser
   -> same local SQLite authority
 ```
 
-Current 0.2-A listener policy is programmatic IPv4 loopback with an OS-assigned port. Generic URL configuration such as `ASPNETCORE_URLS=http://0.0.0.0:0` does not widen the actual listener because the code-defined Kestrel endpoint takes precedence. LAN/public/wildcard binding is not a supported 0.2-A profile.
+The listener remains programmatic IPv4 loopback with an OS-assigned port. Generic URL configuration such as `ASPNETCORE_URLS=http://0.0.0.0:0` cannot widen the actual listener because the code-defined Kestrel endpoint is authoritative. LAN/public/wildcard binding is unsupported.
 
-Project binding matches the local adapter contract:
+0.2-B adds a browser authorization envelope before any Web management/mutation surface:
+
+```text
+process start
+  -> independent random bootstrap capability + session bearer
+  -> Kestrel binds http://127.0.0.1:<dynamic-port>
+  -> system browser opens /__hero/bootstrap#<capability>
+  -> fragment removed from history and submitted in same-origin form POST
+  -> antiforgery + origin + one-time capability validation
+  -> HttpOnly SameSite=Strict process-session cookie
+  -> authenticated static-SSR dashboard
+```
+
+The supported browser authority is exactly `127.0.0.1`. Host Filtering is code-owned with `AllowedHosts = ["127.0.0.1"]`; `localhost`, arbitrary DNS names, wildcard hosts and forwarded-host/reverse-proxy semantics are not part of 0.2-B.
+
+The bootstrap capability and browser session bearer are independent 32-byte cryptographically random process-local values. They are not derived from Project identity, PID, port, machine/user identity or database state; they are not persisted. Bootstrap consumption is one-time and atomic. A wrong guess does not consume the legitimate capability; replay after success fails.
+
+The launch URI places the bootstrap capability in the URL fragment, not query/path/request target. `GET /__hero/bootstrap` is state-free and public only to establish the local session. `POST /__hero/bootstrap/claim` is the single internal security endpoint and validates antiforgery plus local origin before issuing the cookie. All other product routes and product static assets require the current process session and return `401` before dashboard/Application reads when it is absent or stale.
+
+Session cookie policy:
+
+```text
+Name=.HeroPassport.LocalSession
+HttpOnly=true
+SameSite=Strict
+Path=/
+Expires absent
+Max-Age absent
+Secure=false for current HTTP-loopback profile
+```
+
+`Secure=false` reflects the actual plain-HTTP local profile; 0.2-B makes no local-HTTPS claim. A future HTTPS slice would need its own certificate/lifecycle qualification.
+
+Every Web process restart generates new bootstrap/session secrets, so a browser cookie from a prior process fails closed even if a port is reused. No Web session state is written to SQLite.
+
+Project binding remains:
 
 ```text
 explicit --project-root else process cwd
 -> project-identity/1
 ```
 
-The 0.2-A surface is read-only. It renders setup-required or bounded Hero/project/card state through Application use cases. It does not expose Web mutations, REST/minimal APIs, MCP over HTTP, Interactive Server/WebAssembly, direct Razor-to-DbContext access, or a second game engine.
+0.2-B remains read-only. It renders setup-required or bounded Hero/project/card state through Application use cases and adds no Start/Finish/Hero/settings mutation, general REST/minimal API product surface, MCP over HTTP, Interactive Server/WebAssembly, direct Razor-to-DbContext access or second game engine.
 
-Static assets use the ASP.NET Core static-web-assets manifest. Local source-backed asset qualification runs in Development; final published Web artifact/static-asset qualification belongs to the later 0.2 packaging/release slice.
+The production process opens the system browser only after the actual loopback endpoint is known. If browser launch fails synchronously, startup fails closed instead of exposing or printing the capability. `--no-open-browser` plus deterministic Web secrets are Testing-only seams and are rejected outside `ASPNETCORE_ENVIRONMENT=Testing`.
 
-Loopback is only the first network exposure boundary. Browser-token/Host filtering and mutation-specific Web security are separate 0.2 security work and must land before the Web surface grows into management actions.
+Static assets use the ASP.NET Core static-web-assets manifest. Source-backed assets are explicitly enabled only for the `Testing` process qualification profile; Production does not opt into source-backed static Web assets. Final published Web artifact/static-asset qualification remains part of the later packaging/release slice.
 
 ## 6. Future project-scoped Streamable HTTP
 
@@ -102,6 +137,8 @@ Use current official MCP ASP.NET Core adapter/security requirements rather than 
 
 A different architecture requiring HTTPS, current MCP authorization, authenticated principal, Hero/Project authorization, tenant isolation, remote durable store, abuse controls, secrets, backups and explicit retention/deletion/security logging.
 
+The 0.2-B local process capability/session is not a public authentication system and must not be reused as one.
+
 Local fingerprints, questId and mutation request IDs are not authentication credentials.
 
 ## 8. Optional future sync
@@ -110,13 +147,16 @@ No sync requirement in 0.1/0.2. Current schema is sync-conscious, not sync-ready
 
 Future sync requires dedicated cross-device identity/conflict/delete/security design. Never point two machines at one shared writable SQLite WAL file.
 
-## 9. Unsupported 0.1/0.2-A profiles
+## 9. Unsupported 0.1/0.2-A/B profiles
 
 ```text
 writable SQLite on network/NFS/cloud-shared filesystem
 multiple hosts writing one DB file
 public unauthenticated HTTP
 LAN/wildcard Web binding
+localhost/IPv6 authority in the current Web profile
+reverse proxy / forwarded-host deployment
+persistent Web browser sessions across process restarts
 legacy SSE server
 team/shared local DB
 ```
