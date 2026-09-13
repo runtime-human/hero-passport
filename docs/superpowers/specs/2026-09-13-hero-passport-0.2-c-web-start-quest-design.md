@@ -40,9 +40,9 @@ The starting repository already has:
 
 ## 3. Alternatives considered
 
-### A. Recommended: process-local prepared confirmation store
+### A. Selected: process-local prepared confirmation store
 
-The first POST validates and normalizes input, captures the active Hero and current Project presentation, generates the durable Start request ID, and stores a short-lived prepared command in Web process memory under an opaque random handle. A confirmation GET renders that prepared state. The confirm POST carries only the opaque handle and antiforgery fields; the actual Quest data is loaded from process memory and committed through Application.
+The first POST validates and normalizes input, captures the active Hero and current Project presentation, generates the durable Start request ID, and stores a short-lived prepared command in Web process memory under an opaque random handle. A confirmation GET renders that prepared state. The confirm POST carries only the opaque handle and antiforgery/form metadata; the actual Quest data is loaded from process memory and committed through Application.
 
 Advantages:
 
@@ -53,15 +53,13 @@ Advantages:
 - no new cryptographic payload format or Data Protection dependency is required;
 - stale state naturally dies with the Web process.
 
-This is the selected design.
-
 ### B. Re-post all fields on the confirmation POST
 
 This would be simpler mechanically, but the second POST becomes a fresh untrusted copy of the user's input. The confirmation screen could show one value while a modified form submits another unless all values are compared/revalidated. It also repeats sensitive Quest metadata in hidden fields. Rejected.
 
 ### C. Signed/encrypted confirmation payload
 
-A Data Protection/HMAC payload could make the confirmation state stateless, but 0.2-C is a local single-process flow. Introducing a second cryptographic state protocol adds complexity without solving a demonstrated product need. Rejected for this slice.
+A Data Protection/HMAC payload could make confirmation state stateless, but 0.2-C is a local single-process flow. Introducing a second cryptographic state protocol adds complexity without solving a demonstrated product need. Rejected for this slice.
 
 ## 4. Application validation seam
 
@@ -107,15 +105,15 @@ title
 goal
 ```
 
-The form has a unique `FormName` and is bound with `[SupplyParameterFromForm]`. Domain/Application models are never directly form-bound.
+The prepare form name is exactly `StartQuestPrepare`. It is bound with `[SupplyParameterFromForm]`. Domain/Application models are never directly form-bound.
 
-The page loads runtime context through Application. Start is available only when setup is complete and an active non-archived Hero is present. If the active Hero already has an open Quest in the current Project, the page shows a bounded product conflict rather than offering a misleading successful path.
+The page loads runtime context through Application. Start is available only when setup is complete and an active Hero is present. If that active Hero already has an open Quest in the current Project, the page shows a bounded product conflict rather than offering a misleading successful path.
 
 The UI may use HTML `maxlength`, select options and required markers for ergonomics, but these are not authoritative validation. Application validation remains authoritative.
 
 ### 5.2 Start Quest Web service
 
-Add a Web-owned service responsible for orchestration only, for example:
+Add a Web-owned service responsible for orchestration only:
 
 ```text
 HeroPassportStartQuestService
@@ -146,32 +144,44 @@ safe Hero display name
 safe Project display name
 created/expires timestamps
 state: pending | committing | committed
+safe committed Quest presentation when committed
 ```
 
-The handle is generated from at least 128 bits of cryptographic randomness and encoded as bounded base64url text. It is an opaque lookup handle, not an authentication substitute.
+The handle is generated from 128 bits of cryptographic randomness and encoded as unpadded base64url text. It is an opaque lookup handle, not an authentication substitute.
 
 The store is bounded:
 
-- maximum 8 live pending entries per Web process;
-- 10-minute lifetime per entry;
+- maximum 8 live entries total per Web process;
+- 10-minute lifetime from preparation; commit does not extend that lifetime;
 - expired entries are removed before lookup/insert;
-- when capacity remains full after expiry cleanup, the oldest pending entry is evicted;
-- eviction only invalidates the old confirmation page; it never mutates game state.
+- if capacity is full, evict the oldest `pending` or `committed` entry;
+- never evict an entry currently in `committing` state;
+- if all 8 live entries are `committing`, a new prepare attempt fails safely with `429 Too Many Requests` and no game mutation.
 
-The store is concurrency-safe. Exactly one confirm operation can transition an entry from `pending` to `committing`. Concurrent confirm submissions for the same handle cannot both invoke a fresh Start mutation. After a successful Application result, the entry becomes `committed` long enough to return/replay the same safe success result during the current request/retry window, then can be removed. If Application returns a retryable transport/process failure before a durable result is known, the service must not manufacture a second request ID; it retains the same prepared Start request ID for retry.
+Eviction only invalidates an old confirmation page; it never mutates game state.
 
-Because the existing Application Start contract is already idempotent, even a duplicated commit attempt using the same prepared request ID cannot award/create a second Quest.
+The store is concurrency-safe. Exactly one confirm operation can transition an entry from `pending` to `committing`.
+
+State behavior is exact:
+
+- `pending -> committing` atomically before calling Application;
+- success/replay from Application -> `committed`, retaining the same safe result until the original 10-minute expiry;
+- duplicate confirmation of a `committed` entry returns the same safe success redirect/result without calling Application again;
+- unexpected failure where durable mutation outcome is unknown -> return the same entry to `pending` with the same `StartRequestId` so retry remains idempotent;
+- terminal known product conflict such as `HP133`/`HP135` removes the pending entry and returns a safe conflict response; it never creates a replacement request ID automatically.
+
+Because the existing Application Start contract is idempotent, even an unexpected failure after a durable commit is safe: retry uses the same `StartRequestId`, and Application/store replay semantics return the original Start instead of creating a second Quest.
 
 ## 6. Confirmation flow
 
 ### Prepare
 
-`POST /quests/start` is the static-SSR form submission.
+`POST /quests/start` is the static-SSR `StartQuestPrepare` form submission.
 
 Flow:
 
 1. existing 0.2-B session middleware authenticates the browser session;
-2. request-bound middleware rejects unsupported/oversized form requests before expensive parsing;
+2. mutation request-bound middleware rejects unsupported/oversized form requests before expensive parsing;
 3. ASP.NET Core antiforgery/origin checks run;
 4. Razor static-SSR form mapping binds the dedicated DTO;
 5. Web service loads current runtime context;
@@ -197,11 +207,13 @@ It loads the process-local prepared entry and renders exactly:
 
 It does not render `HeroId`, Project fingerprint, internal ProjectId, request hash, bootstrap/session secrets or storage details.
 
-The confirm form contains only the opaque handle plus normal framework antiforgery/form metadata.
+The confirm form is named exactly `StartQuestConfirm` and contains only the opaque handle plus normal framework antiforgery/form metadata.
+
+Malformed handle syntax returns a safe `400 Bad Request`. A syntactically valid but unknown, expired or evicted handle returns a safe `410 Gone`. Neither response reflects the handle or Quest metadata.
 
 ### Commit
 
-`POST /quests/start/confirm/{handle}` (or same confirmation route with a unique confirm `FormName`) requires session + origin + antiforgery.
+`POST /quests/start/confirm/{handle}` is the static-SSR `StartQuestConfirm` submission and requires session + origin + antiforgery.
 
 Flow:
 
@@ -209,25 +221,25 @@ Flow:
 2. atomically claim the prepared entry for commit;
 3. use the stored `HeroId`, stored normalized Quest values and stored `StartRequestId`;
 4. call `HeroPassportApplication.StartQuestAsync(...)` with the Web process's existing `ProjectBindingContext`;
-5. on success, mark the prepared entry committed and redirect to `/`;
+5. on success or Application replay, mark the prepared entry `committed` and redirect to `/`;
 6. dashboard reads current state normally and displays the newly opened Quest.
 
 The active-Hero preference is not re-read to replace the prepared `HeroId`. A preference switch in another surface therefore cannot silently retarget the Quest.
 
-If the prepared Hero was archived/deleted or a competing open Quest now exists, Application/store rules remain authoritative and the Web presents a safe conflict without inventing fallback ownership.
+If the prepared Hero was archived/deleted or a competing open Quest now exists, Application/store rules remain authoritative and Web presents a safe conflict without inventing fallback ownership.
 
 ## 7. Request bounds and form hardening
 
 All Start/confirm mutation POSTs accept only `application/x-www-form-urlencoded`.
 
-Before antiforgery/form parsing, a focused Web request-bound middleware applies to the Start/confirm POST paths:
+Before antiforgery/form parsing, a focused Web mutation request-bound middleware applies to the Start/confirm POST paths:
 
-- maximum request body: 8 KiB;
-- reject unsupported content type with `415`;
-- reject known oversized content length with `413`;
+- maximum request body: 8192 bytes;
+- unsupported content type -> `415 Unsupported Media Type`;
+- known `Content-Length > 8192` -> `413 Payload Too Large`;
 - set `IHttpMaxRequestBodySizeFeature.MaxRequestBodySize = 8192` before the body is read.
 
-The existing bootstrap claim keeps its stricter 1 KiB boundary.
+The existing bootstrap claim keeps its stricter 1024-byte boundary.
 
 `AddRazorComponents` form mapping is tightened for the entire small static-SSR Web adapter:
 
@@ -238,9 +250,18 @@ MaxFormMappingErrorCount = 16
 MaxFormMappingKeySize = 128
 ```
 
-The dedicated mutation request middleware additionally installs bounded form parsing compatible with these small forms, including a small value-count/key/value limit. Exact runtime constants must fit the antiforgery/FormName overhead plus the product maximums (`title` <= 120 scalar chars, `goal` <= 500 scalar chars) while remaining comfortably below framework defaults. Multipart parsing is not enabled for this flow.
+The mutation request boundary installs these exact form-reader limits before parsing:
 
-The implementation must verify these limits with real-process tests instead of assuming middleware ordering.
+```text
+ValueCountLimit = 16
+KeyLengthLimit = 128
+ValueLengthLimit = 2048
+BufferBody = false
+```
+
+Multipart is rejected before form parsing, so multipart limits are not part of the supported Start flow.
+
+These limits intentionally remain above the product maximums (`title` <= 120 Unicode scalar values and `goal` <= 500 Unicode scalar values) plus form-name/antiforgery overhead while staying far below ASP.NET Core defaults. Real-process tests must prove that valid maximum-sized product input still succeeds and oversized/entry-flood/multipart requests fail before mutation.
 
 ## 8. Security model
 
@@ -263,7 +284,7 @@ All form-bound data is treated as untrusted. The server-side prepared entry, not
 
 Quest title/goal are intentionally rendered on authenticated Start/confirmation pages because the user must review them. Outside that intended content, they must not appear in normal process logs, exception responses, redirects, query strings, request-target diagnostics under application control or telemetry.
 
-The confirmation redirect contains only the opaque handle.
+The confirmation redirect contains only the opaque handle. The handle may appear in the local request path but is explicitly non-authenticating and contains no Quest/user data.
 
 Safe error presentation uses bounded product messages keyed from known Application error codes. Raw exception text, SQL, full paths, Project fingerprint, internal IDs, request hashes and browser secrets are not rendered.
 
@@ -273,15 +294,18 @@ Expected cases:
 
 - setup incomplete / no active Hero: Start unavailable, no mutation;
 - invalid Quest type/title/goal: safe validation message, no prepared entry or mutation;
-- stale/evicted/malformed confirmation handle: fail closed with safe stale-confirmation page;
+- malformed confirmation handle: `400`, no mutation;
+- unknown/expired/evicted confirmation handle: `410`, no mutation;
+- prepared-store saturation with all 8 entries actively committing: `429`, no mutation;
 - missing/invalid session: existing `401` boundary;
 - hostile Host: existing `400` boundary;
 - cross-origin/missing antiforgery: framework/security boundary rejects before mutation;
 - oversized POST: `413`;
 - unsupported form content type: `415`;
-- open Quest conflict (`HP133`): safe conflict UI, no duplicate state;
-- idempotency mismatch (`HP135`): fail closed and surface a generic retry/conflict message, never silently regenerate/rebind the prepared request;
-- referenced Hero no longer valid: safe conflict, no retargeting.
+- open Quest conflict (`HP133`): safe `409 Conflict` product response, no duplicate state;
+- idempotency mismatch (`HP135`): safe `409 Conflict`, never silently regenerate/rebind the prepared request;
+- referenced Hero no longer valid: safe conflict, no retargeting;
+- unexpected server failure: generic safe error; prepared entry returns to `pending` with the same request ID when retry is possible.
 
 No fallback mutation path bypasses confirmation.
 
@@ -305,13 +329,13 @@ src/HeroPassport.Web/wwwroot/app.css
 Expected tests:
 
 ```text
-tests/HeroPassport.Application.Tests/StartQuestBehaviorTests.cs (or focused preparation tests)
-tests/HeroPassport.Web.Tests/*StartQuest*Tests.cs
+tests/HeroPassport.Application.Tests/StartQuestPreparationTests.cs
+tests/HeroPassport.Web.Tests/StartQuestWebAcceptanceTests.cs
 existing LocalWebSecurity/WebProcess regression suites
-architecture tests if the new route/form pattern needs a guard
+architecture tests for Web persistence/API/interactivity boundaries
 ```
 
-Documentation changes should be narrow and evidence-backed after behavior is green.
+Documentation changes after behavior is green remain narrow and evidence-backed.
 
 ## 12. TDD and acceptance
 
@@ -325,17 +349,19 @@ Required evidence:
 4. prepare uses Application normalization, not duplicated Web rules;
 5. confirmation displays the exact stored normalized Hero/Project/type/title/goal;
 6. invalid input produces no prepared mutation/game write;
-7. multipart/oversized/malformed form abuse fails boundedly before mutation;
-8. missing antiforgery/cross-site POST fails before mutation;
-9. explicit confirm creates exactly one Quest;
-10. active-Hero preference changes after prepare do not retarget the stored HeroId;
-11. same prepared request ID retains existing Start replay/idempotency semantics;
-12. competing open Quest preserves `HP133` semantics;
-13. stale/evicted/tampered confirmation handles fail closed;
-14. title/goal are absent from ordinary diagnostics/error bodies/redirect targets outside intended authenticated page content;
-15. dashboard reflects the new open Quest after success;
-16. CLI/MCP/Application behavior remains unchanged;
-17. full CI and packaged qualification remain green on exact PR head.
+7. maximum valid product input fits within the chosen request/form limits;
+8. multipart/oversized/excess-entry/malformed form abuse fails boundedly before mutation;
+9. missing antiforgery/cross-site POST fails before mutation;
+10. explicit confirm creates exactly one Quest;
+11. active-Hero preference changes after prepare do not retarget the stored HeroId;
+12. duplicate confirmation returns the same successful outcome and does not create/call a second fresh mutation;
+13. same prepared request ID retains existing Start replay/idempotency semantics after an unknown-outcome retry;
+14. competing open Quest preserves `HP133` semantics;
+15. malformed/stale/evicted/tampered confirmation handles fail closed with the specified status behavior;
+16. title/goal are absent from ordinary diagnostics/error bodies/redirect targets outside intended authenticated page content;
+17. dashboard reflects the new open Quest after success;
+18. CLI/MCP/Application behavior remains unchanged;
+19. full CI and packaged qualification remain green on exact PR head.
 
 ## 13. Non-goals
 
@@ -367,8 +393,8 @@ Implementation must be checked against current official ASP.NET Core 10/.NET 10 
 - `IHttpMaxRequestBodySizeFeature`: https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.features.ihttpmaxrequestbodysizefeature.maxrequestbodysize?view=aspnetcore-10.0
 - `FormOptions`: https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.http.features.formoptions?view=aspnetcore-10.0
 
-Current official guidance confirms that static SSR forms require form names, dedicated form DTOs are the correct overposting defense for `[SupplyParameterFromForm]`, cross-origin SSR form posts are rejected by the ASP.NET Core CSRF pipeline, form-mapping defaults are much broader than this product needs, and request body limits must be set before body reading.
+Current official guidance confirms that static SSR forms require unique form names, dedicated form DTOs are the correct overposting defense for `[SupplyParameterFromForm]`, cross-origin SSR form posts are rejected by the ASP.NET Core CSRF pipeline, form-mapping defaults are much broader than this product needs, and request body limits must be set before body reading.
 
 ## 15. Exit condition
 
-0.2-C is complete only when the Start Quest confirmation pattern is proven on the exact PR head with RED→GREEN evidence, repository review feedback is resolved, required CI is green, and the focused PR is merged without expanding scope into the later 0.2 slices.
+0.2-C is complete only when the Start Quest confirmation pattern is proven on the exact PR head with RED→GREEN evidence, repository review feedback is resolved, required CI is green, and the focused PR is merged without expanding scope into later 0.2 slices.
