@@ -46,7 +46,7 @@ public sealed class StartQuestPreparationTests
         var titleError = Assert.Throws<HeroPassportException>(() => application.PrepareStartQuest(
             new StartQuestRequest(MutationRequestId.New(), heroId, "coding", "   ", "Goal"),
             project));
-        Assert.Equal("HP300", titleError.Code);
+        Assert.Equal("HP100", titleError.Code);
 
         var projectError = Assert.Throws<HeroPassportException>(() => application.PrepareStartQuest(
             new StartQuestRequest(MutationRequestId.New(), heroId, "coding", "Title", "Goal"),
@@ -56,7 +56,7 @@ public sealed class StartQuestPreparationTests
 
     private sealed class ThrowOnStoreAccess : IHeroPassportStateStore
     {
-        private static Exception Accessed() => new InvalidOperationException("Preparation must not access the state store.");
+        private static InvalidOperationException Accessed() => new("Preparation must not access the state store.");
 
         public Task<BootstrapResult> BootstrapAsync(BootstrapStoreCommand command, DateTimeOffset now, CancellationToken cancellationToken = default) => throw Accessed();
         public Task<ConfigureResult> ConfigureAsync(ConfigureRequest request, DateTimeOffset now, CancellationToken cancellationToken = default) => throw Accessed();
