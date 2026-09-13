@@ -10,6 +10,8 @@ public sealed class StartQuestForm
     public string? Goal { get; set; }
 }
 
+public sealed class ConfirmStartQuestForm;
+
 public sealed record StartQuestPageViewModel(
     bool Available,
     string ProjectDisplayName,
