@@ -74,6 +74,15 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
         CancellationToken cancellationToken = default) =>
         store.GetCardAsync(heroId, ValidateProject(project), cancellationToken);
 
+    public PreparedStartQuest PrepareStartQuest(
+        StartQuestRequest request,
+        ProjectBindingContext project)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        _ = ValidateProject(project);
+        return PrepareStartQuestCore(request);
+    }
+
     public Task<StartQuestResult> StartQuestAsync(
         StartQuestRequest request,
         ProjectBindingContext project,
@@ -81,18 +90,16 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
     {
         ArgumentNullException.ThrowIfNull(request);
         var validatedProject = ValidateProject(project);
-        var questType = RequireQuestType(request.QuestType);
-        var title = NormalizeRequestText(request.Title, 1, 120, "title");
-        var goal = NormalizeRequestText(request.Goal, 1, 500, "goal");
+        var prepared = PrepareStartQuestCore(request);
 
         return store.StartQuestAsync(
             new StartQuestStoreCommand(
-                request.StartRequestId,
+                prepared.StartRequestId,
                 HeroPassportVersions.MutationArgsVersion,
-                request.HeroId,
-                questType,
-                title,
-                goal,
+                prepared.HeroId,
+                prepared.QuestType,
+                prepared.Title,
+                prepared.Goal,
                 validatedProject),
             timeProvider.GetUtcNow(),
             cancellationToken);
@@ -138,6 +145,14 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
         var questLocale = await store.GetQuestLocaleAsync(request.QuestId, cancellationToken).ConfigureAwait(false);
         return finish with { QuestLocale = questLocale };
     }
+
+    private static PreparedStartQuest PrepareStartQuestCore(StartQuestRequest request) =>
+        new(
+            request.StartRequestId,
+            request.HeroId,
+            RequireQuestType(request.QuestType),
+            NormalizeRequestText(request.Title, 1, 120, "title"),
+            NormalizeRequestText(request.Goal, 1, 500, "goal"));
 
     private static ProjectBindingContext ValidateProject(ProjectBindingContext project)
     {
