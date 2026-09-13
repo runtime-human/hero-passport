@@ -17,7 +17,7 @@ The slice adds:
 - strict Host filtering;
 - explicit antiforgery validation for the bootstrap security transition;
 - fail-closed authorization for the existing read-only dashboard;
-- a bounded browser-launch seam for production and headless tests.
+- a bounded browser-launch seam for production and deterministic headless tests.
 
 It does **not** add Start/Finish Quest, Hero/settings mutations, public authentication, OAuth, accounts, local HTTPS, reverse-proxy support, a general REST API, Interactive Server, WebAssembly, cloud/sync, or new game rules.
 
@@ -360,7 +360,7 @@ No permissive CORS policy is added. No endpoint uses `DisableAntiforgery` or `[I
 
 Future mutation endpoints must separately require the established local session **and** appropriate antiforgery validation; this spec does not implement those mutations.
 
-## 13. Browser launch and headless mode
+## 13. Browser launch and headless-test mode
 
 The Web application must know the actual dynamic port before constructing the launch URI.
 
@@ -378,27 +378,28 @@ This is a hosting/composition change only; Application/Infrastructure lifecycle 
 
 ### Production default
 
-Default behavior opens the system browser once after successful server start.
+Production opens the system browser once after successful server start.
 
-Failure to launch the browser is non-fatal to the Web server and produces a bounded secret-free diagnostic. It must not print the raw capability as a fallback.
+If browser launch fails, the process performs a bounded graceful shutdown and exits non-zero with a secret-free diagnostic. It must not leave an unreachable Web server running, and it must not print the raw capability as a fallback.
 
-### Headless/tests
+### Headless tests
 
-`--no-open-browser` suppresses browser launch.
+`--no-open-browser` is a test-only process option. It is accepted only when `ASPNETCORE_ENVIRONMENT=Testing` and deterministic test secrets are also supplied.
 
-For child-process tests, deterministic bootstrap/session secret injection is permitted only under an explicit test environment gate. Proposed rule:
+For child-process tests, deterministic bootstrap/session secret injection is permitted only under that explicit test environment gate:
 
 ```text
 ASPNETCORE_ENVIRONMENT=Testing
 + HERO_PASSPORT_WEB_TEST_BOOTSTRAP=<test value>
 + HERO_PASSPORT_WEB_TEST_SESSION=<test value>
++ --no-open-browser
 ```
 
-If either test-secret variable is present outside `Testing`, startup fails closed rather than accepting predictable production secrets.
+If `--no-open-browser` or either test-secret variable is present outside `Testing`, startup fails closed rather than accepting a production bypass or predictable production secrets.
 
 Tests must not scrape ordinary stdout/stderr for secrets.
 
-No production command-line option prints or exports the generated capability.
+No production command-line option prints, exports, or disables the generated capability/session boundary.
 
 ## 14. Logging and privacy
 
@@ -442,8 +443,8 @@ The boundary fails closed.
 | missing/invalid antiforgery on claim | `400` |
 | wrong bootstrap capability | `403`, capability remains usable by legitimate browser |
 | replay after successful claim | `403` |
-| browser launch failure | server continues; secret is not logged |
-| test secret override outside `Testing` | startup failure |
+| production browser launch failure | graceful shutdown + non-zero exit; secret is not logged |
+| test security override outside `Testing` | startup failure |
 
 No failure path silently disables security to improve UX.
 
@@ -494,7 +495,8 @@ Prove:
 11. forged Host values yield `400`;
 12. cross-site/missing antiforgery claim is rejected;
 13. secrets are absent from captured stdout/stderr, response bodies, redirects, rendered HTML, and SQLite;
-14. bootstrap/static/product route authorization order prevents dashboard service reads before authorization where observable without invasive instrumentation.
+14. `--no-open-browser` and test-secret overrides fail startup outside `Testing`;
+15. bootstrap/static/product route authorization order prevents dashboard service reads before authorization where observable without invasive instrumentation.
 
 ### Architecture tests
 
@@ -557,6 +559,8 @@ bootstrap POST antiforgery validated
 no permissive CORS
 no secret logging/persistence/reflection
 restart invalidates old session
+production browser-launch failure fails closed
+no test bypass outside Testing
 no Web product mutations
 no Identity/OAuth/general REST surface
 full repository CI remains green
