@@ -11,8 +11,8 @@ internal sealed class BootstrapResponseHeadersMiddleware(RequestDelegate next)
             {
                 var response = (HttpResponse)state;
                 response.Headers.CacheControl = "no-store";
-                response.Headers.ReferrerPolicy = "no-referrer";
-                response.Headers.XContentTypeOptions = "nosniff";
+                response.Headers["Referrer-Policy"] = "no-referrer";
+                response.Headers["X-Content-Type-Options"] = "nosniff";
                 return Task.CompletedTask;
             }, context.Response);
         }
