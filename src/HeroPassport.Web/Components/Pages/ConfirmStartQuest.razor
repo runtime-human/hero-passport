@@ -1,0 +1,130 @@
+@page "/quests/start/confirm/{Handle}"
+@inject HeroPassportStartQuestService StartQuest
+@inject NavigationManager Navigation
+
+<PageTitle>Confirm Quest · Hero Passport</PageTitle>
+
+<main class="shell">
+    <header class="hero-header">
+        <p class="eyebrow">Hero Passport · Confirm Quest</p>
+        <h1>Confirm Start Quest</h1>
+    </header>
+
+    @if (_result is null)
+    {
+        <p>Loading confirmation…</p>
+    }
+    else if (_result.Status is ConfirmStartQuestWebStatus.Invalid or ConfirmStartQuestWebStatus.Gone)
+    {
+        <section class="panel">
+            <p role="alert">This confirmation is no longer available.</p>
+            <p><a href="/quests/start">Prepare a new Quest</a></p>
+        </section>
+    }
+    else if (_result.Status == ConfirmStartQuestWebStatus.Busy)
+    {
+        <section class="panel">
+            <p role="status">This confirmation is already being processed.</p>
+            <p><a href="/">Back to dashboard</a></p>
+        </section>
+    }
+    else if (_result.Status == ConfirmStartQuestWebStatus.Committed || _result.Confirmation is not null)
+    {
+        <section class="panel">
+            @if (_result.Status == ConfirmStartQuestWebStatus.Committed)
+            {
+                <p>Quest already started.</p>
+            }
+            else if (_result.Confirmation is { } confirmation)
+            {
+                <dl class="confirmation-list">
+                    <dt>Hero</dt>
+                    <dd>@confirmation.HeroName</dd>
+                    <dt>Project</dt>
+                    <dd>@confirmation.ProjectDisplayName</dd>
+                    <dt>Quest type</dt>
+                    <dd>@confirmation.QuestType</dd>
+                    <dt>Title</dt>
+                    <dd>@confirmation.Title</dd>
+                    <dt>Goal</dt>
+                    <dd>@confirmation.Goal</dd>
+                </dl>
+
+                @if (!string.IsNullOrEmpty(_message))
+                {
+                    <p role="alert">@_message</p>
+                }
+            }
+
+            <EditForm Model="ConfirmationInput" FormName="StartQuestConfirm" OnValidSubmit="ConfirmAsync" method="post">
+                @if (_result.Status == ConfirmStartQuestWebStatus.Committed)
+                {
+                    <button type="submit">Continue</button>
+                }
+                else
+                {
+                    <div class="actions">
+                        <button type="submit">Start Quest</button>
+                        <a href="/quests/start">Cancel</a>
+                    </div>
+                }
+            </EditForm>
+        </section>
+    }
+</main>
+
+@code {
+    [Parameter]
+    public string Handle { get; set; } = string.Empty;
+
+    [CascadingParameter]
+    private Microsoft.AspNetCore.Http.HttpContext? HttpContext { get; set; }
+
+    [SupplyParameterFromForm(FormName = "StartQuestConfirm")]
+    private ConfirmStartQuestForm? ConfirmationInput { get; set; }
+
+    private ConfirmStartQuestWebResult? _result;
+    private string? _message;
+
+    protected override void OnParametersSet()
+    {
+        ConfirmationInput ??= new ConfirmStartQuestForm();
+        _result = StartQuest.LoadConfirmation(Handle);
+
+        if (HttpContext is null)
+        {
+            return;
+        }
+
+        HttpContext.Response.StatusCode = _result.Status switch
+        {
+            ConfirmStartQuestWebStatus.Invalid => Microsoft.AspNetCore.Http.StatusCodes.Status400BadRequest,
+            ConfirmStartQuestWebStatus.Gone => Microsoft.AspNetCore.Http.StatusCodes.Status410Gone,
+            _ => Microsoft.AspNetCore.Http.StatusCodes.Status200OK,
+        };
+    }
+
+    private async Task ConfirmAsync()
+    {
+        var result = await StartQuest.CommitAsync(Handle);
+        switch (result.Status)
+        {
+            case CommitStartQuestWebStatus.Success:
+                Navigation.NavigateTo("/");
+                return;
+            case CommitStartQuestWebStatus.Invalid:
+            case CommitStartQuestWebStatus.Gone:
+                _result = new ConfirmStartQuestWebResult(ConfirmStartQuestWebStatus.Gone);
+                _message = "This confirmation is no longer available.";
+                return;
+            case CommitStartQuestWebStatus.Busy:
+                _result = new ConfirmStartQuestWebResult(ConfirmStartQuestWebStatus.Busy);
+                _message = "This confirmation is already being processed.";
+                return;
+            default:
+                _message = result.Message ?? "The Quest could not be started because the current state changed.";
+                _result = StartQuest.LoadConfirmation(Handle);
+                return;
+        }
+    }
+}

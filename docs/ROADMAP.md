@@ -1,6 +1,6 @@
 # Hero Passport — Roadmap
 
-**Current design:** v3.2.1 core + 0.2-A/B local Web foundation/security  
+**Current design:** v3.2.1 core + 0.2-A/B/C local Web foundation/security/Start mutation  
 **Snapshot:** 2026-09-13
 
 Roadmap is scope guidance, not permission to pre-build future abstractions.
@@ -86,7 +86,7 @@ read-only Application-backed composition
 privacy/no-write regression coverage
 ```
 
-0.2-B adds the browser security boundary that later Web mutations must reuse:
+0.2-B adds the browser security boundary that later Web mutations reuse:
 
 ```text
 canonical browser origin http://127.0.0.1:<dynamic-port>
@@ -102,12 +102,29 @@ Testing-only deterministic secrets / --no-open-browser seam
 production browser launch is fail-closed
 ```
 
-0.2-B remains read-only. It does not add Start/Finish Quest, Hero/settings mutations, Identity/OAuth/accounts, public/LAN hosting, local HTTPS, reverse-proxy support, WebAssembly/Interactive Server, Streamable HTTP MCP or a general REST product surface.
+0.2-A/B remain read-only.
+
+0.2-C implements the first bounded Web mutation pattern on top of that boundary:
+
+```text
+authenticated static-SSR Start Quest form
+questType/title/goal dedicated form DTO only
+Application-backed validation/normalization before mutation
+bounded process-local confirmation state (8 entries / 10-minute TTL)
+opaque >=128-bit confirmation handle
+explicit human confirm POST before mutation
+same prepared HeroId + StartRequestId retained through commit/retry
+existing HeroPassportApplication.StartQuestAsync remains mutation authority
+8 KiB urlencoded-only mutation request boundary before antiforgery/form parsing
+real-process security/idempotency/privacy qualification
+```
+
+0.2-C adds Start Quest only. It does not add Finish Quest, result/summary/skills editing, Quest history, Hero/settings management, Identity/OAuth/accounts, public/LAN/local-HTTPS/reverse-proxy hosting, WebAssembly/Interactive Server, Streamable HTTP MCP or a general REST product surface.
 
 Remaining 0.2 slices add, behind their own focused gates:
 
 ```text
-Web mutation + explicit confirmation semantics built on 0.2-B
+Finish Quest Web flow with bounded result/attestation input
 bounded project/Quest history
 Skill progression
 Rank/Traits/Titles detail
@@ -117,7 +134,7 @@ launch/package integration beyond the minimal browser launcher
 published browser/concurrency/release qualification
 ```
 
-Web never becomes a second game engine or direct DbContext UI. Future Web mutation slices must depend on the 0.2-B local browser authorization/CSRF boundary instead of reimplementing or weakening it.
+Web never becomes a second game engine or direct DbContext UI. Future Web mutation slices must depend on the 0.2-B local browser authorization/CSRF boundary and the proven 0.2-C confirmation pattern instead of reimplementing or weakening either.
 
 ## Future candidates — trigger-based only
 

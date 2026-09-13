@@ -32,7 +32,13 @@ if (noOpenBrowser && !builder.Environment.IsEnvironment("Testing"))
         "--no-open-browser is only available in the Testing environment.");
 }
 
-builder.Services.AddRazorComponents();
+builder.Services.AddRazorComponents(options =>
+{
+    options.MaxFormMappingCollectionSize = 16;
+    options.MaxFormMappingRecursionDepth = 4;
+    options.MaxFormMappingErrorCount = 16;
+    options.MaxFormMappingKeySize = 128;
+});
 builder.Services.PostConfigure<HostFilteringOptions>(options =>
 {
     options.AllowedHosts = ["127.0.0.1"];
@@ -43,6 +49,7 @@ builder.Services.PostConfigure<HostFilteringOptions>(options =>
 var sessionAuthority = LocalWebSessionAuthority.Create(builder.Environment);
 builder.Services.AddSingleton(sessionAuthority);
 builder.Services.AddSingleton<ISystemBrowserLauncher, SystemBrowserLauncher>();
+builder.Services.AddSingleton(TimeProvider.System);
 
 var databasePath = HeroPassportRuntimePaths.ResolveDatabasePath();
 await HeroPassportDatabase.InitializeAsync(databasePath);
@@ -62,11 +69,14 @@ var application = new HeroPassportApplication(
 builder.Services.AddSingleton(application);
 builder.Services.AddSingleton(project);
 builder.Services.AddSingleton<HeroPassportDashboardService>();
+builder.Services.AddSingleton<PendingStartQuestStore>();
+builder.Services.AddSingleton<HeroPassportStartQuestService>();
 
 var app = builder.Build();
 app.UseHostFiltering();
 app.UseMiddleware<BootstrapResponseHeadersMiddleware>();
 app.UseMiddleware<LocalWebSessionMiddleware>();
+app.UseMiddleware<MutationRequestBoundaryMiddleware>();
 app.UseAntiforgery();
 app.MapBootstrapClaim();
 app.MapStaticAssets();

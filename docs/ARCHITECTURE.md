@@ -1,11 +1,12 @@
 # Hero Passport — Architecture
 
-**Status:** Accepted v3.2.1 core + implemented 0.2-A/B Web adapter/security boundary  
+**Status:** Accepted v3.2.1 core + implemented 0.2-A/B/C Web adapter/security/Start mutation  
 **Snapshot:** 2026-09-13  
-**Target:** 0.1 local stdio MCP + Agent Skill + CLI, plus secured local read-only 0.2 Web
+**Target:** 0.1 local stdio MCP + Agent Skill + CLI, plus secured local 0.2 Web with a read dashboard and explicitly confirmed Start Quest mutation
 
 Normative core design: `superpowers/specs/2026-08-11-hero-passport-v3.2.1-design.md`.
 0.2-B security design: `superpowers/specs/2026-09-13-hero-passport-0.2-b-web-security-design.md`.
+0.2-C Start mutation design: `superpowers/specs/2026-09-13-hero-passport-0.2-c-web-start-quest-design.md`.
 
 ## 1. Runtime
 
@@ -39,7 +40,7 @@ HeroPassport.Infrastructure
 same-host SQLite
 ```
 
-0.2-A/B adds a sibling secured read-only presentation adapter over the same Core/store:
+0.2-A/B/C adds a sibling secured browser adapter over the same Application/store authority:
 
 ```text
 Browser
@@ -50,13 +51,15 @@ Browser
   -> HeroPassport.Web
      - ASP.NET Core / Blazor static SSR
      - code-defined IPv4 loopback listener
-     - read-only dashboard composition
-  -> HeroPassport.Application read use cases
+     - read dashboard composition
+     - confirmed Start Quest form orchestration
+     - bounded process-local pending confirmation state
+  -> HeroPassport.Application read use cases + StartQuest mutation authority
   -> HeroPassport.Infrastructure
   -> same-host SQLite
 ```
 
-`HeroPassport.Web` does not own game rules, mutate Quest/Hero state in 0.2-A/B, or query persistence directly from Razor/components. Browser authorization state is process memory owned by the Web adapter and is never persisted to SQLite. Later Web management slices must reuse both Application authority and the 0.2-B browser security boundary rather than creating a second game engine or parallel auth path.
+0.2-A/B are read-only browser foundations. 0.2-C adds exactly one browser mutation path: Start Quest after explicit confirmation, still through `HeroPassport.Application`. `HeroPassport.Web` does not own game rules, Finish/Hero/settings mutation semantics, or persistence access from Razor/components. Browser authorization state and pending confirmation state are process memory owned by the Web adapter and are never persisted to SQLite. Later Web management slices must reuse both Application authority and the 0.2-B browser security boundary rather than creating a second game engine or parallel auth path.
 
 ## 2. Dependency direction
 
@@ -67,9 +70,9 @@ Domain <- Application <- Infrastructure <- App
                                   Web
 ```
 
-Equivalently, both `HeroPassport.App` and `HeroPassport.Web` are outer adapters/composition roots. Domain has no EF/MCP/CLI/localization/Git/filesystem/network. Application has no MCP SDK/presentation. Infrastructure implements persistence/platform ports. App owns MCP/CLI/presentation composition; Web owns browser/static-SSR presentation and local browser security composition only.
+Equivalently, both `HeroPassport.App` and `HeroPassport.Web` are outer adapters/composition roots. Domain has no EF/MCP/CLI/localization/Git/filesystem/network. Application has no MCP SDK/presentation. Infrastructure implements persistence/platform ports. App owns MCP/CLI/presentation composition; Web owns browser/static-SSR presentation, local browser security composition and bounded confirmation orchestration only.
 
-No separate Contracts assembly in 0.1/0.2-A/B.
+No separate Contracts assembly in 0.1/0.2-A/B/C.
 
 ## 3. Domain authority
 
@@ -95,7 +98,7 @@ GetHeroCard
 
 CLI-only administration includes permanent logical Hero deletion, diagnostics, export/backup and migration-lock recovery.
 
-0.2-A/B Web consumes only existing read semantics (`GetRuntimeContext` / `GetHeroCard`) through a bounded Web presentation model. The 0.2-B bootstrap/session/Host/CSRF machinery authorizes browser access but adds no Application or game mutation use case.
+0.2-A/B Web consumes existing read semantics (`GetRuntimeContext` / `GetHeroCard`) through bounded Web presentation models. The 0.2-B bootstrap/session/Host/CSRF machinery authorizes browser access but adds no game mutation use case. 0.2-C adds a pure `PrepareStartQuest(...)` validation/normalization seam for preview and then commits only through the existing `StartQuestAsync(...)` mutation authority after explicit confirmation. Web never duplicates Start rules or directly calls persistence.
 
 ## 5. Skill/Core boundary
 
@@ -122,7 +125,7 @@ finishRequestId
 
 MCP request ID is transport-only.
 
-The Web bootstrap capability and browser session token are transport-security bearers, not Domain/Application identities and not persisted state handles.
+The Web bootstrap capability and browser session token are transport-security bearers, not Domain/Application identities and not persisted state handles. The 0.2-C confirmation handle is an opaque process-local lookup capability for prepared UX state, not authentication and not a durable game identity.
 
 ## 7. Runtime context and multi-Hero recovery
 
@@ -166,6 +169,19 @@ COMMIT
 ```
 
 No read of `activeHeroId` decides Start ownership.
+
+For 0.2-C Web, the browser flow is deliberately split before this mutation authority:
+
+```text
+authenticated static-SSR Start form
+-> validate/normalize through PrepareStartQuest (no store mutation)
+-> capture prepared Hero + Project presentation + one StartRequestId
+-> store bounded process-local pending state behind opaque handle
+-> authenticated same-origin antiforgery-protected confirmation POST
+-> StartQuestAsync with the exact prepared HeroId/StartRequestId/normalized fields
+```
+
+The pending store is capped at 8 entries with a 10-minute TTL. A confirmation handle is generated from 16 cryptographically random bytes. Quest title/goal are never placed in the confirmation URL. Active-Hero preference changes after preparation do not retarget ownership.
 
 ## 10. Finish mutation
 
@@ -257,7 +273,7 @@ WAL/runtime version are database initialization/qualification concerns. `synchro
 
 All invariant read-modify-write operations acquire writer intent before invariant reads.
 
-Web browser-session state is not part of persistence. Restart creates new random bootstrap/session secrets and invalidates any prior browser cookie independently of SQLite lifecycle.
+Web browser-session state and 0.2-C pending confirmation state are not part of persistence. Restart creates new random bootstrap/session secrets, invalidates any prior browser cookie, and discards uncommitted confirmations independently of SQLite lifecycle.
 
 ## 14. Data authority
 
@@ -297,7 +313,7 @@ Quest title/goal/summary remain potentially sensitive local metadata.
 
 The Web presentation renders bounded fields only. Full local paths, workspace fingerprints, mutation receipt internals and raw evidence remain outside the browser surface.
 
-0.2-B additionally treats the browser request boundary as untrusted even on loopback:
+0.2-B treats the browser request boundary as untrusted even on loopback:
 
 ```text
 Kestrel bind = IPv4 loopback only
@@ -310,7 +326,9 @@ unsupported Host = 400
 restart = prior cookie invalid
 ```
 
-The bootstrap capability/session/antiforgery material is deny-listed from normal logs, product HTML, error bodies, redirects and SQLite. The internal bootstrap POST is the only HTTP security endpoint added by 0.2-B and is not a product REST façade.
+0.2-C keeps that boundary authoritative for mutations. Start/confirm POSTs accept only `application/x-www-form-urlencoded`, have an 8192-byte body ceiling before antiforgery/form parsing, use dedicated static-SSR form DTOs and unique form names, and still require the current process session plus same-origin/antiforgery validation. Malformed confirmation handles return 400; unknown/expired handles return 410 and never mutate. The confirmation handle itself is not authorization.
+
+The bootstrap capability/session/antiforgery material is deny-listed from normal logs, product HTML, error bodies, redirects and SQLite. Quest title/goal may appear only where intentionally rendered to the authenticated user; they are excluded from redirect targets and ordinary diagnostics. The internal bootstrap POST remains the only Minimal API-style HTTP endpoint and is not a product REST façade.
 
 This local process capability does not claim protection against a malicious same-user process that can inspect process memory/browser storage, nor does it constitute public authentication. Public/LAN/reverse-proxy/HTTPS deployments require a different security design.
 

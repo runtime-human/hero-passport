@@ -9,6 +9,13 @@ public sealed record StartQuestRequest(
     string Title,
     string Goal);
 
+public sealed record PreparedStartQuest(
+    MutationRequestId StartRequestId,
+    HeroId HeroId,
+    string QuestType,
+    string Title,
+    string Goal);
+
 public sealed record StartedQuestSnapshot(
     QuestId QuestId,
     HeroId HeroId,
