@@ -1,6 +1,6 @@
 # Hero Passport — Testing and Quality Strategy
 
-**Status:** Accepted v3.2.1 core + 0.2-A Web qualification  
+**Status:** Accepted v3.2.1 core + 0.2-A/B Web qualification  
 **Snapshot:** 2026-09-13
 
 ## 1. Principle
@@ -350,25 +350,63 @@ trusted_schema OFF
 Git safe.directory not weakened
 ```
 
-## 20. 0.2-A Web qualification
-
-`HeroPassport.Web.Tests` launches a real Kestrel child process against an isolated `HERO_PASSPORT_HOME` and temporary Project root. 0.2-A must prove:
+For the local Web boundary also prove:
 
 ```text
-actual listener is IPv4 loopback
+bootstrap/session secrets absent from normal stdout/stderr
+bootstrap/session secrets absent from rendered product HTML and redirect targets
+bootstrap/session secrets absent from SQLite bytes
+hostile Host fails before product processing
+cross-site/missing-antiforgery bootstrap claims fail closed
+wrong bootstrap guess does not consume legitimate capability
+successful capability replay fails
+prior-process session cookie fails after restart
+Testing-only deterministic secret/no-browser seams fail outside Testing
+```
+
+## 20. 0.2-A/B Web qualification
+
+`HeroPassport.Web.Tests` launches real Kestrel child processes against isolated `HERO_PASSPORT_HOME` and temporary Project roots.
+
+Inherited 0.2-A read-path evidence remains required after 0.2-B authorization:
+
+```text
+actual listener is exactly IPv4 loopback / 127.0.0.1
 ASPNETCORE_URLS=http://0.0.0.0:0 cannot widen the listener
 explicit --project-root resolves through project-identity/1
 omitted --project-root uses process cwd fallback
-fresh storage renders bounded setup-required state
-configured storage renders existing Application Hero/card truth
+fresh storage renders bounded setup-required state after bootstrap
+configured storage renders existing Application Hero/card truth after bootstrap
 GET / creates no Project/Quest/history/receipt bookkeeping rows
 HTML omits full local paths, workspace fingerprints and receipt/raw-evidence internals
-source-backed static asset manifest serves product CSS in Development
+Testing source-backed static asset manifest serves product CSS after bootstrap
 ```
 
-Architecture tests additionally guard that Web Components/Services do not own EF/SQLite access and that 0.2-A does not add minimal-API endpoints or interactive Blazor modes.
+0.2-B additionally qualifies the browser security transition at pure and real-process layers:
 
-The local build-output asset test intentionally uses `Development`, matching ASP.NET Core static-web-assets semantics. Published Production Web asset qualification is deferred to the 0.2 packaging/release slice; production loopback/read-only/privacy tests remain in `Production` environment.
+```text
+process authority uses exact 32-byte bootstrap/session values
+correct bootstrap consumes exactly once
+wrong bootstrap does not consume legitimate capability
+concurrent correct bootstrap has exactly one winner
+malformed/wrong session fails closed
+direct GET / without current session -> 401 and no product state
+GET /__hero/bootstrap is state-free and contains no capability/session secret
+unsupported Host -> 400
+valid antiforgery + same-origin + capability claim -> 303 / + session cookie
+cookie is HttpOnly + SameSite=Strict + Path=/ and has no Expires/Max-Age
+missing antiforgery -> 400 without consuming capability
+cross-site Origin/Fetch Metadata -> 400 without consuming capability
+successful capability replay -> 403
+session cookie from process A -> 401 against process B
+security secrets are absent from SQLite and normal process output
+Production rejects --no-open-browser
+Production rejects deterministic test-secret environment variables
+```
+
+Architecture tests continue to prove Web Components/Services do not own EF/SQLite access. They also permit exactly one Minimal API-style POST location, `Security/BootstrapEndpoint.cs`, with exact route `/__hero/bootstrap/claim`, while rejecting general `MapGet/MapPut/MapDelete/MapPatch/MapGroup`, Identity/OAuth/authentication provider wiring, permissive CORS, forwarded-header deployment and interactive Blazor modes.
+
+The security process tests intentionally use exact `ASPNETCORE_ENVIRONMENT=Testing` with deterministic secrets and `--no-open-browser`; both seams are rejected outside Testing. `UseStaticWebAssets()` is enabled only for that exact Testing profile so local build-output CSS can be qualified without enabling source-backed static assets in Production. Published Production Web artifact/static-asset and broader launch/package qualification remain separate later 0.2 release work.
 
 ## 21. Packaging/E2E risk-first checkpoint
 
@@ -407,4 +445,4 @@ packaged Codex E2E green
 cross-host compatibility recorded
 ```
 
-0.2 release adds Web-specific browser security, management, published-artifact and cross-platform Web qualification on top of these inherited Core gates; 0.2-A alone is not a 0.2 release claim.
+0.2 release adds Web-specific browser security, management, published-artifact and cross-platform Web qualification on top of these inherited Core gates. 0.2-A/B are foundations, not by themselves a full 0.2 release claim.

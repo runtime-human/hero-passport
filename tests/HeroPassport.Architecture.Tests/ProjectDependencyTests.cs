@@ -87,6 +87,68 @@ public sealed class ProjectDependencyTests
         }
     }
 
+    [Fact]
+    public void WebSecuritySurfaceAllowsOnlyBoundedBootstrapPost()
+    {
+        var root = FindRepositoryRoot();
+        var webRoot = Path.Combine(root, "src", "HeroPassport.Web");
+        var sourceFiles = Directory.EnumerateFiles(webRoot, "*.cs", SearchOption.AllDirectories).ToArray();
+
+        var postFiles = sourceFiles
+            .Where(path => File.ReadAllText(path).Contains("MapPost(", StringComparison.Ordinal))
+            .Select(path => Path.GetRelativePath(webRoot, path).Replace('\\', '/'))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(["Security/BootstrapEndpoint.cs"], postFiles);
+
+        var bootstrapEndpoint = File.ReadAllText(Path.Combine(webRoot, "Security", "BootstrapEndpoint.cs"));
+        Assert.Contains("MapPost(\"/__hero/bootstrap/claim\"", bootstrapEndpoint, StringComparison.Ordinal);
+        Assert.Equal(1, CountOccurrences(bootstrapEndpoint, "MapPost("));
+
+        var forbiddenWebTokens = new[]
+        {
+            "AddIdentity",
+            "AddDefaultIdentity",
+            "AddAuthentication(",
+            "AddOpenIdConnect",
+            "AddJwtBearer",
+            "AddCors",
+            "AllowAnyOrigin",
+            "UseForwardedHeaders",
+            "MapGet(",
+            "MapPut(",
+            "MapDelete(",
+            "MapPatch(",
+            "MapGroup(",
+            "AddInteractiveServerComponents",
+            "AddInteractiveWebAssemblyComponents",
+            "AddInteractiveServerRenderMode",
+            "AddInteractiveWebAssemblyRenderMode",
+        };
+
+        foreach (var file in sourceFiles)
+        {
+            var source = File.ReadAllText(file);
+            foreach (var token in forbiddenWebTokens)
+            {
+                Assert.DoesNotContain(token, source, StringComparison.Ordinal);
+            }
+        }
+    }
+
+    private static int CountOccurrences(string source, string value)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = source.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += value.Length;
+        }
+
+        return count;
+    }
+
     private static void AssertProjectReferences(string root, string relativeProjectPath, string[] expected)
     {
         var actual = LoadIncludes(root, relativeProjectPath, "ProjectReference");

@@ -10,6 +10,9 @@ namespace HeroPassport.Web.Tests;
 
 public sealed class WebProcessTests
 {
+    private const string TestBootstrap = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
+    private const string TestSession = "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8";
+
     [Fact]
     public async Task WebProcessIgnoresExternalUrlOverrideAndBindsLoopbackOnly()
     {
@@ -21,6 +24,7 @@ public sealed class WebProcessTests
             Assert.True(
                 IPAddress.TryParse(web.Address.Host, out var address) && IPAddress.IsLoopback(address),
                 $"Expected a loopback listener, got '{web.Address}'. Output: {web.JoinedOutput}");
+            Assert.Equal(IPAddress.Loopback.ToString(), web.Address.Host);
         }
         finally
         {
@@ -29,18 +33,15 @@ public sealed class WebProcessTests
     }
 
     [Fact]
-    public async Task DevelopmentWebProcessServesProductStylesFromStaticAssetManifest()
+    public async Task TestingWebProcessServesProductStylesFromStaticAssetManifestAfterBootstrap()
     {
         var token = TestContext.Current.CancellationToken;
         var sandbox = CreateSandbox();
         try
         {
-            await using var web = await StartWebAsync(
-                sandbox.Home,
-                sandbox.ProjectRoot,
-                token,
-                environmentName: "Development");
-            using var client = new HttpClient { BaseAddress = web.Address };
+            await using var web = await StartWebAsync(sandbox.Home, sandbox.ProjectRoot, token);
+            using var client = CreateClient(web.Address);
+            await BootstrapAsync(client, web, token);
 
             using var response = await client.GetAsync("/app.css", token);
             var css = await response.Content.ReadAsStringAsync(token);
@@ -61,14 +62,15 @@ public sealed class WebProcessTests
     }
 
     [Fact]
-    public async Task FreshStorageRendersBoundedSetupRequiredDashboard()
+    public async Task FreshStorageRendersBoundedSetupRequiredDashboardAfterBootstrap()
     {
         var token = TestContext.Current.CancellationToken;
         var sandbox = CreateSandbox();
         try
         {
             await using var web = await StartWebAsync(sandbox.Home, sandbox.ProjectRoot, token);
-            using var client = new HttpClient { BaseAddress = web.Address };
+            using var client = CreateClient(web.Address);
+            await BootstrapAsync(client, web, token);
 
             using var response = await client.GetAsync("/", token);
             var html = await response.Content.ReadAsStringAsync(token);
@@ -101,7 +103,8 @@ public sealed class WebProcessTests
                 sandbox.ProjectRoot,
                 token,
                 useExplicitProjectRoot: false);
-            using var client = new HttpClient { BaseAddress = web.Address };
+            using var client = CreateClient(web.Address);
+            await BootstrapAsync(client, web, token);
 
             using var response = await client.GetAsync("/", token);
             var html = await response.Content.ReadAsStringAsync(token);
@@ -126,7 +129,8 @@ public sealed class WebProcessTests
         try
         {
             await using var web = await StartWebAsync(sandbox.Home, sandbox.ProjectRoot, token);
-            using var client = new HttpClient { BaseAddress = web.Address };
+            using var client = CreateClient(web.Address);
+            await BootstrapAsync(client, web, token);
 
             using var response = await client.GetAsync("/", token);
             Assert.True(
@@ -148,7 +152,7 @@ public sealed class WebProcessTests
     }
 
     [Fact]
-    public async Task ConfiguredStorageRendersExistingApplicationHeroCardTruth()
+    public async Task ConfiguredStorageRendersExistingApplicationHeroCardTruthAfterBootstrap()
     {
         var token = TestContext.Current.CancellationToken;
         var sandbox = CreateSandbox();
@@ -164,7 +168,8 @@ public sealed class WebProcessTests
             Assert.Equal(0, init.ExitCode);
 
             await using var web = await StartWebAsync(sandbox.Home, sandbox.ProjectRoot, token);
-            using var client = new HttpClient { BaseAddress = web.Address };
+            using var client = CreateClient(web.Address);
+            await BootstrapAsync(client, web, token);
 
             using var response = await client.GetAsync("/", token);
             var html = await response.Content.ReadAsStringAsync(token);
@@ -192,6 +197,60 @@ public sealed class WebProcessTests
         {
             DeleteSandbox(sandbox.Root);
         }
+    }
+
+    private static HttpClient CreateClient(Uri baseAddress)
+    {
+        var handler = new HttpClientHandler
+        {
+            AllowAutoRedirect = false,
+            CookieContainer = new CookieContainer(),
+        };
+        return new HttpClient(handler, disposeHandler: true) { BaseAddress = baseAddress };
+    }
+
+    private static async Task BootstrapAsync(
+        HttpClient client,
+        WebProcessHandle web,
+        CancellationToken token)
+    {
+        using var shellResponse = await client.GetAsync("/__hero/bootstrap", token);
+        var html = await shellResponse.Content.ReadAsStringAsync(token);
+        Assert.True(
+            shellResponse.StatusCode == HttpStatusCode.OK,
+            $"Bootstrap shell returned {(int)shellResponse.StatusCode}. Body: {html}. Web output: {web.JoinedOutput}");
+        Assert.DoesNotContain(TestBootstrap, html, StringComparison.Ordinal);
+        Assert.DoesNotContain(TestSession, html, StringComparison.Ordinal);
+
+        var tokenMatch = Regex.Match(
+            html,
+            "name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"",
+            RegexOptions.CultureInvariant);
+        Assert.True(tokenMatch.Success, $"Bootstrap shell did not render an antiforgery token. Body: {html}");
+
+        using var content = new FormUrlEncodedContent(
+        [
+            new KeyValuePair<string, string>("__RequestVerificationToken", tokenMatch.Groups[1].Value),
+            new KeyValuePair<string, string>("capability", TestBootstrap),
+        ]);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/__hero/bootstrap/claim")
+        {
+            Content = content,
+        };
+        request.Headers.TryAddWithoutValidation("Origin", $"http://127.0.0.1:{web.Address.Port}");
+        request.Headers.TryAddWithoutValidation("Sec-Fetch-Site", "same-origin");
+
+        using var claimResponse = await client.SendAsync(request, token);
+        Assert.Equal(HttpStatusCode.SeeOther, claimResponse.StatusCode);
+        Assert.Equal("/", claimResponse.Headers.Location?.OriginalString);
+        var setCookie = string.Join("; ", claimResponse.Headers.GetValues("Set-Cookie"));
+        Assert.Contains(".HeroPassport.LocalSession=", setCookie, StringComparison.Ordinal);
+        Assert.Contains("httponly", setCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("samesite=strict", setCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("path=/", setCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("expires=", setCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("max-age=", setCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(TestBootstrap, claimResponse.Headers.Location?.OriginalString ?? string.Empty, StringComparison.Ordinal);
     }
 
     private static async Task AssertRowCountAsync(
@@ -230,8 +289,7 @@ public sealed class WebProcessTests
         string home,
         string projectRoot,
         CancellationToken cancellationToken,
-        bool useExplicitProjectRoot = true,
-        string environmentName = "Production")
+        bool useExplicitProjectRoot = true)
     {
         var repoRoot = FindRepositoryRoot();
         var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
@@ -251,10 +309,13 @@ public sealed class WebProcessTests
             startInfo.ArgumentList.Add("--project-root");
             startInfo.ArgumentList.Add(projectRoot);
         }
+        startInfo.ArgumentList.Add("--no-open-browser");
 
         startInfo.Environment["HERO_PASSPORT_HOME"] = home;
         startInfo.Environment["ASPNETCORE_URLS"] = "http://0.0.0.0:0";
-        startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = environmentName;
+        startInfo.Environment["ASPNETCORE_ENVIRONMENT"] = "Testing";
+        startInfo.Environment["HERO_PASSPORT_WEB_TEST_BOOTSTRAP"] = TestBootstrap;
+        startInfo.Environment["HERO_PASSPORT_WEB_TEST_SESSION"] = TestSession;
 
         var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Hero Passport Web process did not start.");
         var output = new ConcurrentQueue<string>();

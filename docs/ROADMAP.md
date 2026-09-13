@@ -1,6 +1,6 @@
 # Hero Passport — Roadmap
 
-**Current design:** v3.2.1 core + 0.2-A Web foundation  
+**Current design:** v3.2.1 core + 0.2-A/B local Web foundation/security  
 **Snapshot:** 2026-09-13
 
 Roadmap is scope guidance, not permission to pre-build future abstractions.
@@ -73,7 +73,7 @@ No rule-economy changes without a new rule version.
 
 Local visual read/management surface over the same Application/store.
 
-0.2-A foundation now provides:
+0.2-A foundation provides:
 
 ```text
 HeroPassport.Web as a sibling outer adapter
@@ -86,20 +86,38 @@ read-only Application-backed composition
 privacy/no-write regression coverage
 ```
 
+0.2-B adds the browser security boundary that later Web mutations must reuse:
+
+```text
+canonical browser origin http://127.0.0.1:<dynamic-port>
+code-owned Host Filtering for 127.0.0.1 only
+one-time process-local 256-bit bootstrap capability
+capability transport through URL fragment, not request target
+antiforgery/origin-protected internal bootstrap claim
+process-local 256-bit bearer session cookie
+HttpOnly + SameSite=Strict + non-persistent cookie policy
+fail-closed 401 before product-route/dashboard reads
+restart invalidates prior browser sessions
+Testing-only deterministic secrets / --no-open-browser seam
+production browser launch is fail-closed
+```
+
+0.2-B remains read-only. It does not add Start/Finish Quest, Hero/settings mutations, Identity/OAuth/accounts, public/LAN hosting, local HTTPS, reverse-proxy support, WebAssembly/Interactive Server, Streamable HTTP MCP or a general REST product surface.
+
 Remaining 0.2 slices add, behind their own focused gates:
 
 ```text
-browser security boundary before mutations
+Web mutation + explicit confirmation semantics built on 0.2-B
 bounded project/Quest history
 Skill progression
 Rank/Traits/Titles detail
 settings/Hero management
 RU + EN Web presentation/accessibility polish
-launch/package integration
+launch/package integration beyond the minimal browser launcher
 published browser/concurrency/release qualification
 ```
 
-Web never becomes a second game engine or direct DbContext UI. 0.2-A does not add Web mutations, REST/minimal APIs, MCP HTTP, WebAssembly or Interactive Server.
+Web never becomes a second game engine or direct DbContext UI. Future Web mutation slices must depend on the 0.2-B local browser authorization/CSRF boundary instead of reimplementing or weakening it.
 
 ## Future candidates — trigger-based only
 

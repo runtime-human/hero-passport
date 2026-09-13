@@ -1,0 +1,27 @@
+@page "/__hero/bootstrap"
+
+<PageTitle>Hero Passport</PageTitle>
+
+<main aria-labelledby="bootstrap-title">
+    <h1 id="bootstrap-title">Opening Hero Passport</h1>
+    <p>This local browser session is being verified.</p>
+
+    <form id="hero-bootstrap-form" method="post" action="/__hero/bootstrap/claim">
+        <AntiforgeryToken />
+        <input id="hero-bootstrap-capability" name="capability" type="hidden" />
+        <noscript>JavaScript is required to open this local Hero Passport session.</noscript>
+    </form>
+</main>
+
+<script>
+(() => {
+    const fragment = window.location.hash.startsWith('#')
+        ? window.location.hash.slice(1)
+        : '';
+    history.replaceState(null, '', window.location.pathname);
+    if (!fragment) return;
+
+    document.getElementById('hero-bootstrap-capability').value = fragment;
+    document.getElementById('hero-bootstrap-form').submit();
+})();
+</script>
