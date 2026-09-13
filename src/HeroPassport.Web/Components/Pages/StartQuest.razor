@@ -1,0 +1,99 @@
+@page "/quests/start"
+@inject HeroPassportStartQuestService StartQuest
+@inject NavigationManager Navigation
+
+<PageTitle>Start Quest · Hero Passport</PageTitle>
+
+<main class="shell">
+    <header class="hero-header">
+        <p class="eyebrow">Hero Passport · Start Quest</p>
+        <h1>Start Quest</h1>
+    </header>
+
+    @if (_page is null)
+    {
+        <p>Loading Quest context…</p>
+    }
+    else if (!_page.Available)
+    {
+        <section class="panel">
+            <p>@_page.Message</p>
+            <p><a href="/">Back to dashboard</a></p>
+        </section>
+    }
+    else
+    {
+        <section class="panel">
+            <p>Hero: <strong>@_page.HeroName</strong></p>
+            <p>Project: <strong>@_page.ProjectDisplayName</strong></p>
+
+            @if (!string.IsNullOrEmpty(_message))
+            {
+                <p role="alert">@_message</p>
+            }
+
+            <EditForm Model="Input" FormName="StartQuestPrepare" OnValidSubmit="PrepareAsync" method="post">
+                <label>
+                    Quest type
+                    <InputSelect @bind-Value="Input!.QuestType">
+                        <option value="">Select Quest type</option>
+                        <option value="planning">Planning</option>
+                        <option value="research">Research</option>
+                        <option value="coding">Coding</option>
+                        <option value="review">Review</option>
+                        <option value="debugging">Debugging</option>
+                        <option value="documentation">Documentation</option>
+                        <option value="maintenance">Maintenance</option>
+                    </InputSelect>
+                </label>
+
+                <label>
+                    Title
+                    <InputText @bind-Value="Input!.Title" maxlength="120" />
+                </label>
+
+                <label>
+                    Goal
+                    <InputTextArea @bind-Value="Input!.Goal" maxlength="500" />
+                </label>
+
+                <div class="actions">
+                    <button type="submit">Review Quest</button>
+                    <a href="/">Cancel</a>
+                </div>
+            </EditForm>
+        </section>
+    }
+</main>
+
+@code {
+    [SupplyParameterFromForm(FormName = "StartQuestPrepare")]
+    private StartQuestForm? Input { get; set; }
+
+    private StartQuestPageViewModel? _page;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new StartQuestForm();
+        _page = await StartQuest.LoadAsync();
+    }
+
+    private async Task PrepareAsync()
+    {
+        var result = await StartQuest.PrepareAsync(Input!);
+        if (result.Status == PrepareStartQuestWebStatus.Prepared && result.Handle is not null)
+        {
+            Navigation.NavigateTo($"/quests/start/confirm/{result.Handle}");
+            return;
+        }
+
+        _message = result.Message ?? result.Status switch
+        {
+            PrepareStartQuestWebStatus.Capacity => "Too many pending confirmations. Try again.",
+            PrepareStartQuestWebStatus.Conflict => "This Quest can no longer be prepared.",
+            PrepareStartQuestWebStatus.Unavailable => "Start Quest is unavailable.",
+            _ => "Quest type, title, or goal is invalid.",
+        };
+    }
+}
