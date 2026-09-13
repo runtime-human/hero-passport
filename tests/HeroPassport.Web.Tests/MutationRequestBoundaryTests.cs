@@ -42,6 +42,31 @@ public sealed class MutationRequestBoundaryTests
     }
 
     [Fact]
+    public async Task CrossSiteAndMissingBrowserProvenanceAreRejectedBeforeNextDelegate()
+    {
+        var calls = 0;
+        var middleware = new MutationRequestBoundaryMiddleware(_ =>
+        {
+            calls++;
+            return Task.CompletedTask;
+        });
+
+        var crossSite = Context("POST", "/quests/start", "application/x-www-form-urlencoded", 64);
+        crossSite.Request.Headers["Sec-Fetch-Site"] = "cross-site";
+        crossSite.Request.Headers["Origin"] = "https://attacker.example";
+        await middleware.InvokeAsync(crossSite);
+
+        var missing = Context("POST", "/quests/start/confirm/abc", "application/x-www-form-urlencoded", 64);
+        missing.Request.Headers.Remove("Sec-Fetch-Site");
+        missing.Request.Headers.Remove("Origin");
+        await middleware.InvokeAsync(missing);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, crossSite.Response.StatusCode);
+        Assert.Equal(StatusCodes.Status400BadRequest, missing.Response.StatusCode);
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
     public async Task SmallUrlEncodedConfirmPostReachesNextWithBoundedBodyFeature()
     {
         var nextCalled = false;
@@ -110,9 +135,13 @@ public sealed class MutationRequestBoundaryTests
         var context = new DefaultHttpContext();
         context.Request.Method = method;
         context.Request.Path = path;
+        context.Request.Scheme = "http";
+        context.Request.Host = new HostString("127.0.0.1", 54321);
         context.Request.ContentType = contentType;
         context.Request.ContentLength = contentLength;
         context.Request.Body = new MemoryStream();
+        context.Request.Headers["Sec-Fetch-Site"] = "same-origin";
+        context.Request.Headers["Origin"] = "http://127.0.0.1:54321";
         context.Features.Set<IHttpMaxRequestBodySizeFeature>(new MutableMaxRequestBodySizeFeature());
         return context;
     }
