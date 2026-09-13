@@ -64,7 +64,7 @@ public sealed record CommitStartQuestWebResult(
     CommitStartQuestWebStatus Status,
     string? Message = null);
 
-public sealed class HeroPassportStartQuestService(
+internal sealed class HeroPassportStartQuestService(
     HeroPassportApplication application,
     ProjectBindingContext project,
     PendingStartQuestStore pending)
