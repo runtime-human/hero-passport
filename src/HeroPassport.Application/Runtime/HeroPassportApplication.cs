@@ -74,7 +74,7 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
         CancellationToken cancellationToken = default) =>
         store.GetCardAsync(heroId, ValidateProject(project), cancellationToken);
 
-    public PreparedStartQuest PrepareStartQuest(
+    public static PreparedStartQuest PrepareStartQuest(
         StartQuestRequest request,
         ProjectBindingContext project)
     {
