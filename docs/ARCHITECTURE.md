@@ -1,10 +1,11 @@
 # Hero Passport — Architecture
 
-**Status:** Accepted v3.2.1 core + implemented 0.2-A Web adapter  
+**Status:** Accepted v3.2.1 core + implemented 0.2-A/B Web adapter/security boundary  
 **Snapshot:** 2026-09-13  
-**Target:** 0.1 local stdio MCP + Agent Skill + CLI, plus 0.2-A local read-only Web
+**Target:** 0.1 local stdio MCP + Agent Skill + CLI, plus secured local read-only 0.2 Web
 
 Normative core design: `superpowers/specs/2026-08-11-hero-passport-v3.2.1-design.md`.
+0.2-B security design: `superpowers/specs/2026-09-13-hero-passport-0.2-b-web-security-design.md`.
 
 ## 1. Runtime
 
@@ -38,20 +39,24 @@ HeroPassport.Infrastructure
 same-host SQLite
 ```
 
-0.2-A adds a sibling read-only presentation adapter over the same Core/store:
+0.2-A/B adds a sibling secured read-only presentation adapter over the same Core/store:
 
 ```text
 Browser
+  -> http://127.0.0.1:<dynamic-port>
+  -> code-owned Host filter
+  -> one-time fragment bootstrap + antiforgery/origin validation
+  -> process-local bearer session cookie
   -> HeroPassport.Web
      - ASP.NET Core / Blazor static SSR
-     - code-defined loopback listener
+     - code-defined IPv4 loopback listener
      - read-only dashboard composition
   -> HeroPassport.Application read use cases
   -> HeroPassport.Infrastructure
   -> same-host SQLite
 ```
 
-`HeroPassport.Web` does not own game rules, mutate Quest/Hero state in 0.2-A, or query persistence directly from Razor/components. Later Web management/security slices must continue to reuse Application authority rather than create a second game engine.
+`HeroPassport.Web` does not own game rules, mutate Quest/Hero state in 0.2-A/B, or query persistence directly from Razor/components. Browser authorization state is process memory owned by the Web adapter and is never persisted to SQLite. Later Web management slices must reuse both Application authority and the 0.2-B browser security boundary rather than creating a second game engine or parallel auth path.
 
 ## 2. Dependency direction
 
@@ -62,9 +67,9 @@ Domain <- Application <- Infrastructure <- App
                                   Web
 ```
 
-Equivalently, both `HeroPassport.App` and `HeroPassport.Web` are outer adapters/composition roots. Domain has no EF/MCP/CLI/localization/Git/filesystem/network. Application has no MCP SDK/presentation. Infrastructure implements persistence/platform ports. App owns MCP/CLI/presentation composition; Web owns browser/static-SSR presentation composition only.
+Equivalently, both `HeroPassport.App` and `HeroPassport.Web` are outer adapters/composition roots. Domain has no EF/MCP/CLI/localization/Git/filesystem/network. Application has no MCP SDK/presentation. Infrastructure implements persistence/platform ports. App owns MCP/CLI/presentation composition; Web owns browser/static-SSR presentation and local browser security composition only.
 
-No separate Contracts assembly in 0.1/0.2-A.
+No separate Contracts assembly in 0.1/0.2-A/B.
 
 ## 3. Domain authority
 
@@ -90,7 +95,7 @@ GetHeroCard
 
 CLI-only administration includes permanent logical Hero deletion, diagnostics, export/backup and migration-lock recovery.
 
-0.2-A Web consumes only existing read semantics (`GetRuntimeContext` / `GetHeroCard`) through a bounded Web presentation model. It adds no Web mutation use case.
+0.2-A/B Web consumes only existing read semantics (`GetRuntimeContext` / `GetHeroCard`) through a bounded Web presentation model. The 0.2-B bootstrap/session/Host/CSRF machinery authorizes browser access but adds no Application or game mutation use case.
 
 ## 5. Skill/Core boundary
 
@@ -116,6 +121,8 @@ finishRequestId
 ```
 
 MCP request ID is transport-only.
+
+The Web bootstrap capability and browser session token are transport-security bearers, not Domain/Application identities and not persisted state handles.
 
 ## 7. Runtime context and multi-Hero recovery
 
@@ -250,6 +257,8 @@ WAL/runtime version are database initialization/qualification concerns. `synchro
 
 All invariant read-modify-write operations acquire writer intent before invariant reads.
 
+Web browser-session state is not part of persistence. Restart creates new random bootstrap/session secrets and invalidates any prior browser cookie independently of SQLite lifecycle.
+
 ## 14. Data authority
 
 Canonical history survives ordinary upgrades: Quest/final report, XP event, reward/Trust-Strain/Skill deltas, unlock rows, semantic milestones and rule versions.
@@ -278,7 +287,7 @@ Doctor detects suspicious abandoned EF `__EFMigrationsLock`; normal startup neve
 
 Explicit repair requires stopped competing Hero Passport processes and a fresh safety check.
 
-## 18. Privacy
+## 18. Privacy and local Web security
 
 No routine source/diff/raw-log/prompt/secret/environment/full-path/Git-remote ingestion.
 
@@ -286,7 +295,24 @@ Build/test fields are bounded attestations. `observed` is an agent assertion of 
 
 Quest title/goal/summary remain potentially sensitive local metadata.
 
-0.2-A Web renders bounded presentation fields only. Full local paths, workspace fingerprints, mutation receipt internals and raw evidence remain outside the browser surface.
+The Web presentation renders bounded fields only. Full local paths, workspace fingerprints, mutation receipt internals and raw evidence remain outside the browser surface.
+
+0.2-B additionally treats the browser request boundary as untrusted even on loopback:
+
+```text
+Kestrel bind = IPv4 loopback only
+canonical Host = 127.0.0.1 only
+bootstrap capability = independent random 32 bytes, one-time
+session bearer = independent random 32 bytes, process-lifetime
+bootstrap transport = URL fragment -> same-origin antiforgery POST
+product route without session = 401 before dashboard/Application read
+unsupported Host = 400
+restart = prior cookie invalid
+```
+
+The bootstrap capability/session/antiforgery material is deny-listed from normal logs, product HTML, error bodies, redirects and SQLite. The internal bootstrap POST is the only HTTP security endpoint added by 0.2-B and is not a product REST façade.
+
+This local process capability does not claim protection against a malicious same-user process that can inspect process memory/browser storage, nor does it constitute public authentication. Public/LAN/reverse-proxy/HTTPS deployments require a different security design.
 
 ## 19. Level and presentation semantics
 
