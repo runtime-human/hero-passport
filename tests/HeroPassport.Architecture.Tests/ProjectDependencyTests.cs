@@ -31,7 +31,7 @@ public sealed class ProjectDependencyTests
     }
 
     [Fact]
-    public void WebReadOnlyPresentationDoesNotOwnPersistenceOrAdditionalHttpSurface()
+    public void WebPresentationDoesNotOwnPersistenceOrAdditionalHttpSurface()
     {
         var root = FindRepositoryRoot();
         AssertPackageReferences(root, "src/HeroPassport.Web/HeroPassport.Web.csproj", []);
@@ -85,6 +85,23 @@ public sealed class ProjectDependencyTests
         {
             Assert.DoesNotContain(token, program, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public void WebStartQuestFormsRemainDedicatedStaticSsrContracts()
+    {
+        var root = FindRepositoryRoot();
+        var pagesRoot = Path.Combine(root, "src", "HeroPassport.Web", "Components", "Pages");
+        var start = File.ReadAllText(Path.Combine(pagesRoot, "StartQuest.razor"));
+        var confirm = File.ReadAllText(Path.Combine(pagesRoot, "ConfirmStartQuest.razor"));
+
+        Assert.Equal(1, CountOccurrences(start, "FormName=\"StartQuestPrepare\""));
+        Assert.Equal(1, CountOccurrences(start, "[SupplyParameterFromForm(FormName = \"StartQuestPrepare\")]"));
+        Assert.DoesNotContain("StartQuestConfirm", start, StringComparison.Ordinal);
+
+        Assert.Equal(1, CountOccurrences(confirm, "FormName=\"StartQuestConfirm\""));
+        Assert.Equal(1, CountOccurrences(confirm, "[SupplyParameterFromForm(FormName = \"StartQuestConfirm\")]"));
+        Assert.DoesNotContain("StartQuestPrepare", confirm, StringComparison.Ordinal);
     }
 
     [Fact]
