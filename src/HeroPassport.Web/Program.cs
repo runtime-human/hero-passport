@@ -49,6 +49,7 @@ builder.Services.PostConfigure<HostFilteringOptions>(options =>
 var sessionAuthority = LocalWebSessionAuthority.Create(builder.Environment);
 builder.Services.AddSingleton(sessionAuthority);
 builder.Services.AddSingleton<ISystemBrowserLauncher, SystemBrowserLauncher>();
+builder.Services.AddSingleton(TimeProvider.System);
 
 var databasePath = HeroPassportRuntimePaths.ResolveDatabasePath();
 await HeroPassportDatabase.InitializeAsync(databasePath);
@@ -68,6 +69,8 @@ var application = new HeroPassportApplication(
 builder.Services.AddSingleton(application);
 builder.Services.AddSingleton(project);
 builder.Services.AddSingleton<HeroPassportDashboardService>();
+builder.Services.AddSingleton<PendingStartQuestStore>();
+builder.Services.AddSingleton<HeroPassportStartQuestService>();
 
 var app = builder.Build();
 app.UseHostFiltering();
