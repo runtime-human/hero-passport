@@ -72,6 +72,9 @@
     [Parameter]
     public string Handle { get; set; } = string.Empty;
 
+    [CascadingParameter]
+    private Microsoft.AspNetCore.Http.HttpContext? HttpContext { get; set; }
+
     [SupplyParameterFromForm(FormName = "StartQuestConfirm")]
     private ConfirmStartQuestForm? ConfirmationInput { get; set; }
 
@@ -82,6 +85,18 @@
     {
         ConfirmationInput ??= new ConfirmStartQuestForm();
         _result = StartQuest.LoadConfirmation(Handle);
+
+        if (HttpContext is null)
+        {
+            return;
+        }
+
+        HttpContext.Response.StatusCode = _result.Status switch
+        {
+            ConfirmStartQuestWebStatus.Invalid => Microsoft.AspNetCore.Http.StatusCodes.Status400BadRequest,
+            ConfirmStartQuestWebStatus.Gone => Microsoft.AspNetCore.Http.StatusCodes.Status410Gone,
+            _ => Microsoft.AspNetCore.Http.StatusCodes.Status200OK,
+        };
     }
 
     private async Task ConfirmAsync()
