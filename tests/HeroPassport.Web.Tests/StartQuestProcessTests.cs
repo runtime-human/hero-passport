@@ -55,10 +55,9 @@ public sealed class StartQuestProcessTests
             Assert.True(
                 prepareResponse.StatusCode is HttpStatusCode.Found or HttpStatusCode.SeeOther,
                 $"Prepare returned {(int)prepareResponse.StatusCode}: {await prepareResponse.Content.ReadAsStringAsync(token)}");
-            var location = prepareResponse.Headers.Location?.OriginalString;
-            Assert.Matches("^/quests/start/confirm/[A-Za-z0-9_-]{22}$", location ?? string.Empty);
-            Assert.DoesNotContain("Process", location ?? string.Empty, StringComparison.Ordinal);
-            Assert.DoesNotContain("confirm", location?.Split('/').LastOrDefault() ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+            var location = RedirectPath(prepareResponse, web.Address);
+            Assert.Matches("^/quests/start/confirm/[A-Za-z0-9_-]{22}$", location);
+            Assert.DoesNotContain("Process", location, StringComparison.Ordinal);
 
             var databasePath = Path.Combine(sandbox.Home, "hero-passport.db");
             await AssertRowCountAsync(databasePath, "quest_sessions", 0, token);
@@ -76,11 +75,11 @@ public sealed class StartQuestProcessTests
             Assert.DoesNotContain("request_id", confirmHtml, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("workspace_fingerprint", confirmHtml, StringComparison.OrdinalIgnoreCase);
 
-            using var confirmResponse = await PostConfirmAsync(client, web.Address, location!, confirmHtml, token);
+            using var confirmResponse = await PostConfirmAsync(client, web.Address, location, confirmHtml, token);
             Assert.True(
                 confirmResponse.StatusCode is HttpStatusCode.Found or HttpStatusCode.SeeOther,
                 $"Confirm returned {(int)confirmResponse.StatusCode}: {await confirmResponse.Content.ReadAsStringAsync(token)}");
-            Assert.Equal("/", confirmResponse.Headers.Location?.OriginalString);
+            Assert.Equal("/", RedirectPath(confirmResponse, web.Address));
 
             await AssertRowCountAsync(databasePath, "quest_sessions", 1, token);
             await AssertRowCountAsync(databasePath, "mutation_receipts", 2, token); // bootstrap + start
@@ -91,10 +90,11 @@ public sealed class StartQuestProcessTests
             Assert.Equal(HttpStatusCode.OK, committedGet.StatusCode);
             Assert.Contains("Quest already started", committedHtml, StringComparison.Ordinal);
 
-            using var duplicateResponse = await PostConfirmAsync(client, web.Address, location!, committedHtml, token);
+            using var duplicateResponse = await PostConfirmAsync(client, web.Address, location, committedHtml, token);
             Assert.True(
                 duplicateResponse.StatusCode is HttpStatusCode.Found or HttpStatusCode.SeeOther,
                 $"Duplicate confirm returned {(int)duplicateResponse.StatusCode}.");
+            Assert.Equal("/", RedirectPath(duplicateResponse, web.Address));
             await AssertRowCountAsync(databasePath, "quest_sessions", 1, token);
             await AssertRowCountAsync(databasePath, "mutation_receipts", 2, token);
 
@@ -197,6 +197,19 @@ public sealed class StartQuestProcessTests
         {
             DeleteSandbox(sandbox.Root);
         }
+    }
+
+    private static string RedirectPath(HttpResponseMessage response, Uri baseAddress)
+    {
+        var location = response.Headers.Location;
+        Assert.NotNull(location);
+        var resolved = location.IsAbsoluteUri ? location : new Uri(baseAddress, location);
+        Assert.Equal(Uri.UriSchemeHttp, resolved.Scheme);
+        Assert.Equal(IPAddress.Loopback.ToString(), resolved.Host);
+        Assert.Equal(baseAddress.Port, resolved.Port);
+        Assert.True(string.IsNullOrEmpty(resolved.Query));
+        Assert.True(string.IsNullOrEmpty(resolved.Fragment));
+        return resolved.AbsolutePath;
     }
 
     private static HttpRequestMessage SameOriginPost(
