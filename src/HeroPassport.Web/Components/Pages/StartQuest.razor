@@ -1,5 +1,5 @@
 @page "/quests/start"
-@inject HeroPassportStartQuestService StartQuest
+@inject HeroPassportStartQuestService StartQuestFlow
 @inject NavigationManager Navigation
 
 <PageTitle>Start Quest · Hero Passport</PageTitle>
@@ -76,12 +76,12 @@
     protected override async Task OnInitializedAsync()
     {
         Input ??= new StartQuestForm();
-        _page = await StartQuest.LoadAsync();
+        _page = await StartQuestFlow.LoadAsync();
     }
 
     private async Task PrepareAsync()
     {
-        var result = await StartQuest.PrepareAsync(Input!);
+        var result = await StartQuestFlow.PrepareAsync(Input!);
         if (result.Status == PrepareStartQuestWebStatus.Prepared && result.Handle is not null)
         {
             Navigation.NavigateTo($"/quests/start/confirm/{result.Handle}");
