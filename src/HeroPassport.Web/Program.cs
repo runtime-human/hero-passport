@@ -32,7 +32,13 @@ if (noOpenBrowser && !builder.Environment.IsEnvironment("Testing"))
         "--no-open-browser is only available in the Testing environment.");
 }
 
-builder.Services.AddRazorComponents();
+builder.Services.AddRazorComponents(options =>
+{
+    options.MaxFormMappingCollectionSize = 16;
+    options.MaxFormMappingRecursionDepth = 4;
+    options.MaxFormMappingErrorCount = 16;
+    options.MaxFormMappingKeySize = 128;
+});
 builder.Services.PostConfigure<HostFilteringOptions>(options =>
 {
     options.AllowedHosts = ["127.0.0.1"];
@@ -67,6 +73,7 @@ var app = builder.Build();
 app.UseHostFiltering();
 app.UseMiddleware<BootstrapResponseHeadersMiddleware>();
 app.UseMiddleware<LocalWebSessionMiddleware>();
+app.UseMiddleware<MutationRequestBoundaryMiddleware>();
 app.UseAntiforgery();
 app.MapBootstrapClaim();
 app.MapStaticAssets();
