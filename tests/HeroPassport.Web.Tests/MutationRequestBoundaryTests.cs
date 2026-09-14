@@ -63,6 +63,58 @@ public sealed class MutationRequestBoundaryTests
     }
 
     [Fact]
+    public async Task MaximumEncodedUnicodeFinishValuePassesBoundedFormParser()
+    {
+        var summary = string.Concat(Enumerable.Repeat("🚀", 2000));
+        using var content = new FormUrlEncodedContent([new("summary", summary)]);
+        var body = await content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken);
+        Assert.InRange(body.Length, 24_000, 32_768);
+
+        string? parsed = null;
+        var middleware = new MutationRequestBoundaryMiddleware(async context =>
+        {
+            var form = await context.Request.ReadFormAsync(TestContext.Current.CancellationToken);
+            parsed = form["summary"];
+        });
+        var context = Context(
+            "POST",
+            $"/quests/finish/{Guid.CreateVersion7():D}",
+            content.Headers.ContentType!.ToString(),
+            body.Length);
+        context.Request.Body = new MemoryStream(body);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(summary, parsed);
+    }
+
+    [Fact]
+    public async Task FinishFormFloodIsRejectedByConfiguredParser()
+    {
+        var values = Enumerable.Range(0, 17)
+            .Select(index => new KeyValuePair<string, string>($"k{index}", "v"))
+            .ToArray();
+        using var content = new FormUrlEncodedContent(values);
+        var body = await content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken);
+        var nextCalled = false;
+        var middleware = new MutationRequestBoundaryMiddleware(async context =>
+        {
+            nextCalled = true;
+            _ = await context.Request.ReadFormAsync(TestContext.Current.CancellationToken);
+        });
+        var context = Context(
+            "POST",
+            $"/quests/finish/{Guid.CreateVersion7():D}",
+            content.Headers.ContentType!.ToString(),
+            body.Length);
+        context.Request.Body = new MemoryStream(body);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => middleware.InvokeAsync(context));
+
+        Assert.True(nextCalled);
+    }
+
+    [Fact]
     public async Task OversizedFinishPostIsRejectedBeforeNextDelegate()
     {
         var nextCalled = false;
