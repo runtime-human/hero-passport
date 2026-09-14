@@ -21,13 +21,13 @@
             <p><a href="/">Back to dashboard</a></p>
         </section>
     }
-    else if (_load.Page is { } page)
+    else if (_load.Page is { } questPage)
     {
         <section class="panel">
-            <p>Hero: <strong>@page.HeroName</strong></p>
-            <p>Project: <strong>@page.ProjectDisplayName</strong></p>
-            <p>Quest: <strong>@page.QuestTitle</strong> · @page.QuestType</p>
-            <p>@page.QuestGoal</p>
+            <p>Hero: <strong>@questPage.HeroName</strong></p>
+            <p>Project: <strong>@questPage.ProjectDisplayName</strong></p>
+            <p>Quest: <strong>@questPage.QuestTitle</strong> · @questPage.QuestType</p>
+            <p>@questPage.QuestGoal</p>
 
             @if (!string.IsNullOrEmpty(_message))
             {
