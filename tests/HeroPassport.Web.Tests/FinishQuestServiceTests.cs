@@ -129,7 +129,7 @@ public sealed class FinishQuestServiceTests
             QuestId.New().ToString(), ValidForm(), TestContext.Current.CancellationToken);
         var invalid = await service.PrepareAsync(
             quest.QuestId.ToString(),
-            ValidForm() withInvalidTestsAttestation: false,
+            InvalidAttestationForm(),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(PrepareFinishQuestWebStatus.NotFound, stale.Status);
@@ -176,7 +176,7 @@ public sealed class FinishQuestServiceTests
         SkillsUsed = ["coding", "testing_awareness"],
     };
 
-    private static FinishQuestForm ValidForm() withInvalidTestsAttestation => new()
+    private static FinishQuestForm InvalidAttestationForm() => new()
     {
         Result = "success",
         Summary = "Done",
