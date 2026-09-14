@@ -1,7 +1,7 @@
 # Hero Passport — Deployment Modes
 
-**Status:** Accepted v3.2.1 core + implemented 0.2-A/B/C Web boundary  
-**Snapshot:** 2026-09-13
+**Status:** Accepted v3.2.1 core + implemented 0.2-A/B/C/D Web boundary  
+**Snapshot:** 2026-09-14
 
 ## 1. 0.1 primary profile — local project-bound stdio
 
@@ -90,7 +90,7 @@ process start
   -> authenticated static-SSR dashboard
 ```
 
-The supported browser authority is exactly `127.0.0.1`. Host Filtering is code-owned with `AllowedHosts = ["127.0.0.1"]`; `localhost`, arbitrary DNS names, wildcard hosts and forwarded-host/reverse-proxy semantics are not part of 0.2-B/C.
+The supported browser authority is exactly `127.0.0.1`. Host Filtering is code-owned with `AllowedHosts = ["127.0.0.1"]`; `localhost`, arbitrary DNS names, wildcard hosts and forwarded-host/reverse-proxy semantics are not part of 0.2-B/C/D.
 
 The bootstrap capability and browser session bearer are independent 32-byte cryptographically random process-local values. They are not derived from Project identity, PID, port, machine/user identity or database state; they are not persisted. Bootstrap consumption is one-time and atomic. A wrong guess does not consume the legitimate capability; replay after success fails.
 
@@ -108,7 +108,7 @@ Max-Age absent
 Secure=false for current HTTP-loopback profile
 ```
 
-`Secure=false` reflects the actual plain-HTTP local profile; 0.2-B/C makes no local-HTTPS claim. A future HTTPS slice would need its own certificate/lifecycle qualification.
+`Secure=false` reflects the actual plain-HTTP local profile; 0.2-B/C/D makes no local-HTTPS claim. A future HTTPS slice would need its own certificate/lifecycle qualification.
 
 Every Web process restart generates new bootstrap/session secrets, so a browser cookie from a prior process fails closed even if a port is reused. No Web session state is written to SQLite.
 
@@ -119,7 +119,9 @@ explicit --project-root else process cwd
 -> project-identity/1
 ```
 
-0.2-A/B remain read-only. 0.2-C adds the first bounded product mutation: explicitly confirmed Start Quest for the current prepared Hero + Project.
+0.2-A/B remain read-only. 0.2-C adds explicitly confirmed Start Quest. 0.2-D adds explicitly confirmed Finish Quest for one current-Project open Quest.
+
+### 0.2-C Start Quest
 
 ```text
 authenticated GET /quests/start
@@ -133,15 +135,51 @@ authenticated GET /quests/start
   -> exactly the prepared HeroId + StartRequestId + normalized fields
 ```
 
-The confirmation step is a human UX safety gate, not authentication. Active-Hero preference changes after preparation cannot silently retarget ownership. Pending confirmations are never persisted and disappear on process restart. Quest title/goal are not placed in redirect/query URLs.
+### 0.2-D Finish Quest
 
-Start and confirm POSTs are limited before antiforgery/form parsing: only `application/x-www-form-urlencoded` is accepted and the request body ceiling is 8192 bytes. Bootstrap keeps its separate stricter 1024-byte boundary. Static SSR uses dedicated form models and unique form names; no Interactive Server/WebAssembly is introduced.
+```text
+authenticated GET /quests/finish/{questId}
+  -> questId parsed as canonical lowercase UUIDv7
+  -> selector resolves only against current-Project open Quest context
+  -> dedicated static-SSR DTO: result/summary/bounded attestations/1..3 Skills
+  -> one FinishRequestId generated
+  -> Application PrepareFinishQuest validation/normalization
+  -> no report/XP/finalization mutation
+  -> dedicated process-local pending confirmation (max 8, 10-minute TTL)
+  -> opaque 16-byte-random base64url handle in route
+  -> authenticated same-origin antiforgery-protected confirm POST
+  -> existing Application FinishQuestAsync authority
+  -> exact prepared QuestId + FinishRequestId + normalized payload
+```
 
-0.2-C does not add Finish Quest, Hero/settings management, history, Identity/OAuth/accounts, public/LAN hosting, local HTTPS, reverse-proxy support, Streamable HTTP MCP or a general REST/minimal-API product surface. `Security/BootstrapEndpoint.cs` remains the only Minimal API-style POST endpoint.
+Both confirmation steps are human UX safety gates, not authentication. Active-Hero preference changes after preparation cannot retarget persisted Quest ownership. Pending confirmations are never persisted and disappear on process restart. Quest title/goal/summary and attestations are not placed in redirect/query URLs.
+
+Start and Finish mutation POSTs are limited before form/Application processing and accept only `application/x-www-form-urlencoded`:
+
+```text
+Start:
+  body ceiling = 8192 bytes
+  encoded individual value ceiling = 2048 bytes
+
+Finish:
+  body ceiling = 32768 bytes
+  encoded individual value ceiling = 24 KiB
+
+Both:
+  form entry count = 16
+  form key ceiling = 128 bytes
+  dedicated static-SSR form models and unique form names
+```
+
+The larger Finish value limit is transport-only. The semantic summary contract remains SafeTextV1 `1..2000` Unicode scalars. A four-byte supplementary scalar can become twelve ASCII bytes after URL percent-encoding, so a maximum-valid summary can approach 24 KiB in the raw form value. The independent 32 KiB whole-request limit still bounds the route. Bootstrap keeps its separate stricter 1024-byte boundary.
+
+Finish idempotency/conflict behavior is inherited rather than reimplemented: success, same-request replay and equivalent `AlreadyFinalized` converge; `HP135`/`HP136` remain bounded terminal conflicts; an unknown response outcome releases the same pending entry so retry preserves its `FinishRequestId`.
+
+0.2-C/D do not add Hero/settings management, history, Identity/OAuth/accounts, public/LAN hosting, local HTTPS, reverse-proxy support, Streamable HTTP MCP or a general REST/minimal-API product surface. `Security/BootstrapEndpoint.cs` remains the only Minimal API-style POST endpoint.
 
 The production process opens the system browser only after the actual loopback endpoint is known. If browser launch fails synchronously, startup fails closed instead of exposing or printing the capability. `--no-open-browser` plus deterministic Web secrets are Testing-only seams and are rejected outside `ASPNETCORE_ENVIRONMENT=Testing`.
 
-Static assets use the ASP.NET Core static-web-assets manifest. Source-backed assets are explicitly enabled only for the `Testing` process qualification profile; Production does not opt into source-backed static Web assets. Final published Web artifact/static-asset qualification remains part of the later packaging/release slice.
+Static assets use the ASP.NET Core static-web-assets manifest. Source-backed assets are explicitly enabled only for the `Testing` process qualification profile; Production does not opt into source-backed static Web assets. Final published Web artifact/static-asset and broader launch/package qualification remains part of the later 0.2 release work.
 
 ## 6. Future project-scoped Streamable HTTP
 
@@ -155,7 +193,7 @@ Use current official MCP ASP.NET Core adapter/security requirements rather than 
 
 A different architecture requiring HTTPS, current MCP authorization, authenticated principal, Hero/Project authorization, tenant isolation, remote durable store, abuse controls, secrets, backups and explicit retention/deletion/security logging.
 
-The 0.2-B/C local process capability/session is not a public authentication system and must not be reused as one.
+The 0.2-B/C/D local process capability/session is not a public authentication system and must not be reused as one.
 
 Local fingerprints, questId, confirmation handles and mutation request IDs are not authentication credentials.
 
@@ -165,7 +203,7 @@ No sync requirement in 0.1/0.2. Current schema is sync-conscious, not sync-ready
 
 Future sync requires dedicated cross-device identity/conflict/delete/security design. Never point two machines at one shared writable SQLite WAL file.
 
-## 9. Unsupported 0.1/0.2-A/B/C profiles
+## 9. Unsupported 0.1/0.2-A/B/C/D profiles
 
 ```text
 writable SQLite on network/NFS/cloud-shared filesystem
