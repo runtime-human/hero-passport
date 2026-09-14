@@ -105,7 +105,7 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
         }
 
         var remainder = path[prefix.Length..];
-        if (remainder.EndsWith('/', StringComparison.Ordinal))
+        if (remainder.Length > 0 && remainder[^1] == '/')
         {
             remainder = remainder[..^1];
         }
