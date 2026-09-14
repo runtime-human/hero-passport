@@ -1,6 +1,6 @@
 # Hero Passport 0.2-D — Web Finish Quest + bounded attestations + explicit confirmation
 
-**Status:** design approved in chat; written spec pending review  
+**Status:** implemented; exact-head qualification in progress  
 **Issue:** #42  
 **Baseline:** `main@9829facd653dc6fbcbd872a144eafdcb413c00b8`  
 **Branch:** `feat/0.2-d-web-finish-quest`
@@ -119,7 +119,7 @@ SkillsUsed:
 
 ## 5. Application preparation seam
 
-Today Finish validation, normalization and args-hash preparation occur inside `HeroPassportApplication.FinishQuestAsync(...)` immediately before store mutation. The confirmation page must display the exact normalized semantic payload before any mutation, so Web must not copy those rules.
+Finish validation, normalization and args-hash preparation formerly occurred only inside `HeroPassportApplication.FinishQuestAsync(...)` immediately before store mutation. The confirmation page must display the exact normalized semantic payload before any mutation, so Web must not copy those rules.
 
 Add the pure Application seam:
 
@@ -140,11 +140,11 @@ validated FinishQuestMetrics
 validated SkillsUsed
 ```
 
-`FinishQuestAsync(...)` is refactored to call the same private preparation core before args hashing and store mutation. There is one validation/normalization implementation.
+`FinishQuestAsync(...)` calls the same private preparation core before args hashing and store mutation. There is one validation/normalization implementation.
 
 Preparation performs no store reads/writes, no Quest finalization, no reward/progression calculation and no mutation-receipt creation.
 
-Preparation must defensively copy the Skill collection. Neither `PreparedFinishQuest` nor the pending store may retain a mutable list owned by the form DTO/request caller.
+Preparation defensively copies the Skill collection. Neither `PreparedFinishQuest` nor the pending store may retain a mutable list owned by the form DTO/request caller.
 
 The args hash remains an internal Application/store concern and is never exposed in the Web prepared value.
 
@@ -152,7 +152,7 @@ The args hash remains an internal Application/store concern and is never exposed
 
 Finish targets an explicit route `questId`. The identifier is a resource selector, not authorization.
 
-`QuestId.Parse` already requires lowercase canonical UUIDv7. Web route behavior is exact:
+`QuestId.Parse` requires lowercase canonical UUIDv7. Web route behavior is exact:
 
 - malformed/non-canonical/non-v7 `questId` -> `400 Bad Request`;
 - canonical UUIDv7 not present among the current Project's open Quests -> `404 Not Found`;
@@ -396,12 +396,14 @@ MaxRequestBodySize = 32768
 BufferBodyLengthLimit = 32768
 KeyLengthLimit = 128
 ValueCountLimit = 16
-ValueLengthLimit = 4096
+ValueLengthLimit = 24576  # 24 KiB encoded individual value
 ```
 
-Rationale: a valid 2000-scalar summary may contain supplementary Unicode code points. In UTF-8 form-urlencoding, a 4-byte scalar can occupy 12 ASCII bytes after percent encoding, so summary data alone can approach 24 KiB. In decoded UTF-16, 2000 supplementary scalars occupy 4000 code units. A global 8 KiB/2048-char limit would therefore silently reject valid Application payloads.
+The `ValueLengthLimit` is intentionally a raw form-transport ceiling, not the semantic text length. `application/x-www-form-urlencoded` percent-encodes the UTF-8 representation before ASP.NET Core's URL-encoded form parser yields the decoded string. A valid 2000-scalar summary made from supplementary Unicode code points uses four UTF-8 bytes per scalar and twelve ASCII bytes per scalar after percent encoding (`%XX` per byte), so that one encoded value can approach 24,000 bytes. The Application contract remains SafeTextV1 `1..2000` Unicode scalars and does not widen.
 
-The 32 KiB Finish ceiling remains small and bounded while supporting the current semantic maximum plus form-name/antiforgery/other-field overhead. It applies only to the exact Finish mutation POST paths. Start remains 8 KiB. Bootstrap remains its separate 1024-byte boundary.
+The original draft value `4096` was therefore incompatible with the draft's own maximum-Unicode acceptance requirement. Real-process RED evidence reproduced the failure at 4096 and again at 8192; 24 KiB is the narrow bounded value ceiling that admits the semantic maximum. The independent 32 KiB whole-request ceiling still bounds all form fields and antiforgery/form metadata together.
+
+The 32 KiB Finish ceiling applies only to the exact Finish mutation POST paths. Start remains 8 KiB with its 2 KiB encoded-value ceiling. Bootstrap remains its separate 1024-byte boundary.
 
 Known `Content-Length` above the route ceiling returns `413`. The Kestrel feature is set before body reads.
 
@@ -414,7 +416,7 @@ MaxFormMappingErrorCount = 16
 MaxFormMappingKeySize = 128
 ```
 
-Acceptance must prove the actual maximum valid Finish form, including antiforgery/form-name metadata and three Skills, stays inside the 16-value mapping budget. If it doesn't, implementation must document the observed count and raise only the narrowest collection/value-count limit; it must not relax body, key, recursion or unrelated-route limits.
+The raw form parser also retains `ValueCountLimit = 16`. Qualification includes an actual `ReadFormAsync` check proving the maximum encoded Unicode value succeeds and a 17-entry form fails the parser budget before Application work.
 
 ## 15. ASP.NET Core 10 requirements
 
@@ -425,6 +427,7 @@ Current official ASP.NET Core 10 guidance is normative for framework behavior:
 - `AddRazorComponents(...)` is the supported form-mapping configuration point;
 - per-request body limits must be configured before request-body reading begins;
 - `UseAntiforgery()` remains enabled and token validation remains part of the POST boundary;
+- missing or invalid antiforgery tokens are both an invalid antiforgery verdict and fail before mutation;
 - all client input remains untrusted until server-side Application validation.
 
 Official references:
@@ -462,7 +465,7 @@ Exact bounded behavior:
 - missing/invalid session -> existing `401`;
 - hostile Host -> existing `400`;
 - cross-site/missing provenance -> `400` before form processing;
-- missing/invalid antiforgery -> framework rejection before mutation;
+- missing/invalid antiforgery -> framework `400` before mutation;
 - oversized POST -> `413` using the route-specific ceiling;
 - unsupported content type -> `415`;
 - `HP135` -> `409`, remove pending entry;
@@ -485,14 +488,14 @@ No separate reward/final-report/progression result page is added. Detailed histo
 
 ## 19. Expected files
 
-Likely Application files:
+Application files:
 
 ```text
 src/HeroPassport.Application/Runtime/HeroPassportApplication.cs
 src/HeroPassport.Application/Runtime/FinishQuestModels.cs
 ```
 
-Likely Web files:
+Web files:
 
 ```text
 src/HeroPassport.Web/Program.cs
@@ -502,25 +505,26 @@ src/HeroPassport.Web/Components/Pages/ConfirmFinishQuest.razor
 src/HeroPassport.Web/Services/HeroPassportFinishQuestService.cs
 src/HeroPassport.Web/Services/PendingFinishQuestStore.cs
 src/HeroPassport.Web/Security/MutationRequestBoundaryMiddleware.cs
-src/HeroPassport.Web/wwwroot/app.css
 ```
 
-Expected tests:
+Tests:
 
 ```text
 tests/HeroPassport.Application.Tests/FinishQuestPreparationTests.cs
 tests/HeroPassport.Web.Tests/PendingFinishQuestStoreTests.cs
 tests/HeroPassport.Web.Tests/FinishQuestServiceTests.cs
-tests/HeroPassport.Web.Tests/FinishQuestWebAcceptanceTests.cs
+tests/HeroPassport.Web.Tests/FinishQuestProcessTests.cs
+tests/HeroPassport.Web.Tests/FinishQuestStaticSsrTests.cs
+tests/HeroPassport.Web.Tests/MutationRequestBoundaryTests.cs
 existing WebProcess/LocalWebSecurity/Start regression suites
 tests/HeroPassport.Architecture.Tests/ProjectDependencyTests.cs
 ```
 
-Canonical docs change only after behavior is green.
+Canonical docs are updated after behavior and transport contracts are established; final acceptance still requires exact-head qualification.
 
 ## 20. TDD and acceptance evidence
 
-Implementation starts with RED tests before production behavior.
+Implementation uses RED tests before production behavior and exact failure evidence before boundary corrections.
 
 Required exact-head evidence:
 
@@ -529,9 +533,9 @@ Required exact-head evidence:
 3. prepare POST performs no durable Finish mutation;
 4. Application prepare/commit share one validation/normalization core and prepared Skills are defensively copied;
 5. confirmation shows the exact normalized safe payload that will commit;
-6. invalid result/summary/metrics/Skills don't create a pending durable mutation;
+6. invalid result/summary/metrics/Skills don't create a durable Finish mutation;
 7. canonical maximum-valid 2000-scalar Unicode summary with maximum supported attestations/three Skills successfully passes the bounded Finish transport;
-8. a request above 32 KiB, multipart input and excess form entries fail boundedly before mutation;
+8. a request above 32 KiB, multipart input and excess form entries fail boundedly before mutation/Application work;
 9. missing/invalid antiforgery and cross-site POST fail before mutation;
 10. malformed QuestId -> 400 and valid unavailable QuestId -> 404 without mutation;
 11. explicit confirm finalizes exactly one Quest and commits report/XP/projections once;
