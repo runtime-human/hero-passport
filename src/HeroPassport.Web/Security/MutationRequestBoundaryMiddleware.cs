@@ -5,11 +5,11 @@ namespace HeroPassport.Web.Security;
 internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
 {
     private const long StartMaxRequestBodyBytes = 8192;
-    private const int StartMaxFormValueChars = 2048;
+    private const int StartMaxFormValueBytes = 2048;
     private const long FinishMaxRequestBodyBytes = 32768;
-    private const int FinishMaxFormValueChars = 4096;
+    private const int FinishMaxFormValueBytes = 8192;
     private const int MaxFormEntries = 16;
-    private const int MaxFormKeyChars = 128;
+    private const int MaxFormKeyBytes = 128;
     private const string UrlEncodedFormContentType = "application/x-www-form-urlencoded";
 
     public async Task InvokeAsync(HttpContext context)
@@ -54,9 +54,9 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
                 new FormOptions
                 {
                     BufferBodyLengthLimit = limits.Value.MaxRequestBodyBytes,
-                    KeyLengthLimit = MaxFormKeyChars,
+                    KeyLengthLimit = MaxFormKeyBytes,
                     ValueCountLimit = MaxFormEntries,
-                    ValueLengthLimit = limits.Value.MaxFormValueChars,
+                    ValueLengthLimit = limits.Value.MaxFormValueBytes,
                 }));
 
         await next(context);
@@ -73,13 +73,13 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
         if (string.Equals(path, "/quests/start", StringComparison.Ordinal)
             || HasSingleSegmentAfter(path, "/quests/start/confirm/"))
         {
-            return new(StartMaxRequestBodyBytes, StartMaxFormValueChars);
+            return new(StartMaxRequestBodyBytes, StartMaxFormValueBytes);
         }
 
         if (HasSingleSegmentAfter(path, "/quests/finish/confirm/")
             || HasSingleSegmentAfter(path, "/quests/finish/"))
         {
-            return new(FinishMaxRequestBodyBytes, FinishMaxFormValueChars);
+            return new(FinishMaxRequestBodyBytes, FinishMaxFormValueBytes);
         }
 
         return null;
@@ -159,5 +159,5 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
             && string.IsNullOrEmpty(origin.Fragment);
     }
 
-    private readonly record struct MutationLimits(long MaxRequestBodyBytes, int MaxFormValueChars);
+    private readonly record struct MutationLimits(long MaxRequestBodyBytes, int MaxFormValueBytes);
 }
