@@ -1,7 +1,7 @@
 # Hero Passport — Security and Privacy
 
-**Status:** Accepted v3.2.1 core + implemented 0.2-B/C local Web boundary  
-**Snapshot:** 2026-09-13
+**Status:** Accepted v3.2.1 core + implemented 0.2-B/C/D local Web boundary  
+**Snapshot:** 2026-09-14
 
 ## 1. Security posture
 
@@ -122,6 +122,8 @@ Receipts persist only minimal IDs/hash/version/context/status and may outlive a 
 
 Request IDs are not auth secrets.
 
+For Web confirmations, the request ID is generated once when the semantic mutation is prepared and remains server-side. An unknown-outcome retry reuses that exact request ID; Web never mints a replacement merely because a response failed after a possible commit.
+
 ## 10. Active Hero and ownership safety
 
 Global active Hero is a preference/default only.
@@ -130,7 +132,7 @@ Start mutation takes explicit `heroId`; another local host changing active Hero 
 
 0.2-C preserves this rule across its human confirmation step: prepared state captures the intended Hero and one `StartRequestId`; commit uses those prepared identities instead of re-reading the current active Hero for ownership.
 
-Existing Quest ownership is immutable.
+Existing Quest ownership is immutable. 0.2-D Finish selects one explicit current-Project open `questId`; an active-Hero preference change cannot redirect progression away from that persisted Quest owner.
 
 ## 11. MCP annotations
 
@@ -150,7 +152,7 @@ Never log full request bodies by default, especially goal/summary, environment v
 
 This keeps `readOnlyHint` truthful and reduces unnecessary WAL/lock churn.
 
-The 0.2-A/B dashboard keeps the same no-hidden-write property. 0.2-C preparation is also non-mutating; only the explicit confirmation step invokes the existing Start mutation authority.
+The 0.2-A/B dashboard keeps the same no-hidden-write property. 0.2-C Start preparation and 0.2-D Finish preparation are also non-mutating; only their explicit confirmation steps invoke the existing Application mutation authorities.
 
 ## 14. Project privacy
 
@@ -158,7 +160,7 @@ Persist salted workspace fingerprint/display name, not full path/remote.
 
 Routine MCP outputs omit internal ProjectId/fingerprint/path.
 
-Web confirmation renders only safe Hero/Project display values plus normalized Quest type/title/goal. It does not render full workspace paths, Project fingerprints, internal HeroId, mutation request identity or persistence internals.
+Web confirmation renders only bounded safe presentation required for the user decision. Start confirmation renders Hero/Project/type/title/goal. Finish confirmation additionally renders normalized result/summary, bounded attestations and selected Skills. Neither renders full workspace paths, Project fingerprints/internal ProjectId, internal HeroId, mutation request identity, args hashes or persistence internals.
 
 Git identity resolver is read-only, scrubs redirection env vars, does not weaken `safe.directory`.
 
@@ -195,21 +197,42 @@ process restart = prior browser session invalid
 
 Bootstrap/session secrets are never persisted and must not appear in ordinary process logs, product HTML, redirect targets or SQLite. The Testing-only deterministic secret and `--no-open-browser` seams are rejected outside the exact Testing environment.
 
-0.2-C reuses that boundary without creating parallel authentication. Its confirmation handle is random process-local lookup state, not an auth credential. Pending confirmation state is capped at 8 entries, expires after 10 minutes and is never persisted. Malformed handles fail with 400; unknown/expired handles fail with 410; neither can mutate.
+0.2-C/D reuse that boundary without creating parallel authentication. Start and Finish confirmation handles are random process-local lookup state, not auth credentials. Each dedicated pending store is capped at 8 live entries, entries expire after 10 minutes and are never persisted. Malformed handles fail with 400; unknown/expired handles fail with 410; neither can mutate.
 
 Mutation request hardening:
 
 ```text
-routes = POST /quests/start and POST /quests/start/confirm/*
-content type = application/x-www-form-urlencoded only
-body ceiling = 8192 bytes before antiforgery/form parsing
-form models = dedicated Web DTOs only
-static SSR form names = unique
-session + same-origin + antiforgery = still mandatory
-bootstrap claim keeps its separate 1024-byte boundary
+Start routes:
+  POST /quests/start
+  POST /quests/start/confirm/*
+  body ceiling = 8192 bytes
+  individual encoded form value ceiling = 2048 bytes
+
+Finish routes:
+  POST /quests/finish/*
+  POST /quests/finish/confirm/*
+  body ceiling = 32768 bytes
+  individual encoded form value ceiling = 24 KiB
+
+all product mutation forms:
+  Content-Type = application/x-www-form-urlencoded only
+  form-entry count = 16
+  form-key ceiling = 128 bytes
+  dedicated Web DTOs only
+  unique static-SSR FormName values
+  current process session + same-origin browser provenance + antiforgery mandatory
+
+bootstrap claim:
+  separate 1024-byte boundary
 ```
 
-Quest title/goal may be rendered in the authenticated prepare/confirmation UX, but are excluded from redirect/query URLs and ordinary diagnostics. Web does not bind Domain/Application records directly from form input and does not expose a general REST/minimal-API product surface. `POST /__hero/bootstrap/claim` remains the only Minimal API-style endpoint.
+The Finish value ceiling is deliberately higher than the decoded SafeText semantic limit because form-urlencoding percent-encodes UTF-8 bytes. A valid 2000-scalar summary made only of supplementary Unicode code points can occupy about 24,000 raw encoded bytes. The independent 32 KiB whole-request ceiling still bounds total work and Start remains unchanged.
+
+Quest title/goal/summary, selected Skills and attestations may be rendered in their intended authenticated prepare/confirmation UX, but are excluded from redirect/query URLs and ordinary diagnostics. Web does not bind Domain/Application records directly from form input and does not expose a general REST/minimal-API product surface. `POST /__hero/bootstrap/claim` remains the only Minimal API-style endpoint.
+
+Finish prepare resolves the route `questId` only against `GetRuntimeContextAsync(currentProject)` open Quests. The route ID is a selector, not authorization. Malformed/non-canonical IDs return 400; a canonical ID unavailable in the current Project returns 404 without disclosing whether it belongs elsewhere or is already finalized.
+
+Finish terminal semantic disagreement (`HP135`/`HP136`) is a bounded conflict and removes the pending handle. Equivalent `AlreadyFinalized` converges to success. Unknown exceptions release the same prepared entry so retry uses the same `FinishRequestId` and durable receipt replay can resolve an uncertain post-commit outcome.
 
 This boundary does not claim isolation from a malicious same-user process able to inspect process memory or browser storage.
 
@@ -260,12 +283,19 @@ missing/cross-site antiforgery claims fail closed
 security secrets are absent from normal output/SQLite/product HTML
 Production rejects Testing-only secret/no-browser bypasses
 Start prepare creates no Quest
-multipart mutation form -> 415
-oversized mutation form -> 413
-missing-antiforgery Start POST -> 400/no mutation
-explicit confirm creates one Quest through Application
-repeat confirm is idempotent
-prepared Hero/request identity is stable across active-Hero preference changes
+Start multipart -> 415 and >8 KiB -> 413 before mutation
+Finish prepare creates no report/XP/finalization
+Finish multipart -> 415 and >32 KiB -> 413 before mutation
+Finish form-entry flood exceeds the 16-entry parser budget and fails before Application work
+maximum-valid 2000-scalar supplementary-Unicode Finish summary fits the bounded transport
+missing-antiforgery/cross-site Finish POSTs -> 400/no mutation
+explicit Start confirm creates one Quest through Application
+explicit Finish confirm finalizes one Quest/progression through Application
+repeat Start/Finish confirm is idempotent
+prepared identities survive active-Hero preference changes
+Finish same-ID replay/equivalent AlreadyFinalized converges safely
+HP135/HP136 remove terminal pending state without duplicate progression
 malformed/unknown confirmation handles fail 400/410 without mutation
 confirmation HTML omits internal IDs/fingerprint/request identity/full path
+finalized Quest disappears from dashboard open-Quest presentation
 ```
