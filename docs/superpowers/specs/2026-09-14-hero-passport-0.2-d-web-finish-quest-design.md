@@ -33,7 +33,7 @@ The starting repository already has:
 - one-time process-local browser bootstrap capability and process-local session cookie;
 - fail-closed session middleware before product reads;
 - `UseAntiforgery()`;
-- a dedicated mutation middleware that requires same-origin browser provenance, accepts only `application/x-www-form-urlencoded`, sets an 8192-byte request-body limit before body reads, and installs bounded `FormOptions`;
+- `MutationRequestBoundaryMiddleware`, which requires same-origin browser provenance before form/antiforgery processing and currently protects Start mutation POSTs;
 - a qualified Start Quest static-SSR mutation/confirmation flow;
 - `HeroPassportApplication.FinishQuestAsync(...)` with durable receipt replay/mismatch detection, atomic finalization, progression calculation and Project binding;
 - `GetRuntimeContextAsync(...)`, which returns current-Project open Quests across Heroes with safe Hero/Quest presentation fields;
@@ -115,21 +115,21 @@ SkillsUsed:
   1..3 unique values from the existing Skill key set
 ```
 
-0.2-D changes none of those product rules.
+0.2-D changes none of those product rules and must accept the full currently-valid semantic Finish payload, including a normalized 2000-scalar Unicode summary.
 
 ## 5. Application preparation seam
 
 Today Finish validation, normalization and args-hash preparation occur inside `HeroPassportApplication.FinishQuestAsync(...)` immediately before store mutation. The confirmation page must display the exact normalized semantic payload before any mutation, so Web must not copy those rules.
 
-Add a pure Application seam:
+Add the pure Application seam:
 
 ```text
-HeroPassportApplication.PrepareFinishQuest(...)
+public static PreparedFinishQuest PrepareFinishQuest(
+    FinishQuestRequest request,
+    ProjectBindingContext project)
 ```
 
-It accepts the same logical `FinishQuestRequest` plus the current `ProjectBindingContext`, validates the Project and Finish payload, normalizes summary, validates metrics and Skills, and returns a prepared immutable value.
-
-The prepared value contains at minimum:
+It validates the Project and Finish payload, normalizes summary, validates metrics and Skills, and returns an immutable prepared value containing at minimum:
 
 ```text
 FinishRequestId
@@ -140,46 +140,40 @@ validated FinishQuestMetrics
 validated SkillsUsed
 ```
 
-`FinishQuestAsync(...)` is refactored to use the same private preparation core before hashing/calling the store. There is one validation/normalization implementation, not parallel Web/Application rule sets.
+`FinishQuestAsync(...)` is refactored to call the same private preparation core before args hashing and store mutation. There is one validation/normalization implementation.
 
-Preparation performs no store read/write, does not finalize a Quest, does not calculate rewards/progression and does not create a mutation receipt.
+Preparation performs no store reads/writes, no Quest finalization, no reward/progression calculation and no mutation-receipt creation.
 
-The args hash remains an internal Application/store concern and is not part of the Web prepared value or confirmation presentation.
+Preparation must defensively copy the Skill collection. Neither `PreparedFinishQuest` nor the pending store may retain a mutable list owned by the form DTO/request caller.
 
-## 6. Quest selection and ownership
+The args hash remains an internal Application/store concern and is never exposed in the Web prepared value.
 
-Finish targets an explicit `questId`. The route identifier is a resource selector, not authorization.
+## 6. Quest selection, route parsing and ownership
 
-The Web service loads `GetRuntimeContextAsync(currentProject)` and finds the matching open Quest in that current-Project context before offering preparation. This supplies safe presentation fields already available through Application:
+Finish targets an explicit route `questId`. The identifier is a resource selector, not authorization.
 
-- Quest title/type/goal;
-- Hero display name;
-- Project display name;
-- start time/locale if needed for bounded context.
+`QuestId.Parse` already requires lowercase canonical UUIDv7. Web route behavior is exact:
 
-No new persistence read API is required for 0.2-D.
+- malformed/non-canonical/non-v7 `questId` -> `400 Bad Request`;
+- canonical UUIDv7 not present among the current Project's open Quests -> `404 Not Found`;
+- matching current-Project open Quest -> Finish form is available.
 
-If the Quest isn't present in the current Project's open-Quest context, the Finish page fails safely as unavailable/stale and does not prepare a mutation.
+The same current-Project lookup rule applies on prepare POST before a pending confirmation is created. Web does not reveal whether a syntactically valid missing ID belongs to another Project or a finalized/deleted Quest.
 
-The persisted Quest owner remains authoritative during commit. Active-Hero preference is never used to retarget Finish ownership. The existing Application/store behavior for Project mismatch and finalized/stale Quest state remains authoritative.
+The Web service uses `GetRuntimeContextAsync(currentProject)` to obtain safe Quest/Hero/Project presentation; no new persistence read API is required.
+
+The persisted Quest owner remains authoritative at commit. Active-Hero preference is never used to retarget Finish ownership. Existing Application/store behavior remains authoritative for races after preparation.
 
 ## 7. Web routes and form model
 
-### 7.1 Finish page
-
-Add static-SSR route:
+### Finish page
 
 ```text
 GET/POST /quests/finish/{questId}
+FormName = FinishQuestPrepare
 ```
 
-The prepare form name is exactly:
-
-```text
-FinishQuestPrepare
-```
-
-Use one dedicated form DTO containing only user-editable Finish fields:
+Use a dedicated form DTO containing only:
 
 ```text
 Result
@@ -194,31 +188,24 @@ TestsEvidence
 SkillsUsed
 ```
 
-`QuestId`, Hero identity, Project identity, request identity, confirmation handle, reward/progression state and persistence identifiers are not form-bound editable fields.
+`QuestId`, Hero/Project identity, `FinishRequestId`, confirmation handle, reward/progression state and persistence identifiers are not form-bound editable fields.
 
-The page may use HTML `maxlength`, numeric `min/max`, select options and checkbox controls for ergonomics. They are not authoritative validation.
+HTML `maxlength`, `min/max`, select options and checkbox controls are ergonomic only. Application validation remains authoritative.
 
-### 7.2 Confirmation page
-
-Add static-SSR route:
+### Confirmation page
 
 ```text
 GET/POST /quests/finish/confirm/{handle}
+FormName = FinishQuestConfirm
 ```
 
-The confirmation form name is exactly:
+The confirm form contains no hidden Finish product payload. Only the opaque route handle plus framework form/antiforgery metadata identifies server-side prepared state.
 
-```text
-FinishQuestConfirm
-```
-
-The confirm form contains no hidden Finish product payload. The opaque route handle plus normal framework antiforgery/form metadata identifies server-side prepared state.
-
-There must be exactly one `EditForm` for `FinishQuestConfirm` in the component. Conditional committed/pending presentation occurs inside that one form so the static-SSR form name remains unique.
+There must be exactly one `EditForm` with `FinishQuestConfirm` in the component. Pending/committed presentation is conditional content inside that one form.
 
 ## 8. Finish Web orchestration service
 
-Add a focused Web-owned service:
+Add:
 
 ```text
 HeroPassportFinishQuestService
@@ -227,26 +214,26 @@ HeroPassportFinishQuestService
 Responsibilities:
 
 - load current runtime context;
-- resolve the explicit open Quest under the current Project;
+- parse/resolve the explicit open Quest under the current Project;
 - generate `MutationRequestId.New()` exactly once per prepared Finish intent;
-- construct a `FinishQuestRequest` from the dedicated form DTO and explicit QuestId;
+- map the dedicated form DTO into `FinishQuestRequest`;
 - call `HeroPassportApplication.PrepareFinishQuest(...)`;
-- store the prepared command plus safe presentation fields in the process-local pending store;
-- load prepared confirmation presentation;
-- commit only through `HeroPassportApplication.FinishQuestAsync(...)` using the exact stored `FinishRequestId`, `QuestId` and prepared payload;
+- store prepared state and safe presentation in process memory;
+- load confirmation presentation;
+- commit only through `HeroPassportApplication.FinishQuestAsync(...)` with the exact stored request identity and payload;
 - map known Application outcomes/errors to bounded Web statuses/messages.
 
-It does not calculate reward, XP, levels, Skill progression, Rank, Trust/Strain, Streak, Traits/Titles or milestones.
+It never calculates reward, XP, levels, Skill progression, Rank, Trust/Strain, Streak, Traits/Titles or milestones.
 
 ## 9. Pending Finish confirmation store
 
-Add a dedicated process-local singleton:
+Add the dedicated singleton:
 
 ```text
 PendingFinishQuestStore
 ```
 
-Do not generalize or refactor `PendingStartQuestStore` in this slice.
+Do not generalize/refactor `PendingStartQuestStore` in 0.2-D.
 
 Each entry contains:
 
@@ -260,97 +247,87 @@ ExpiresAtUtc
 state: pending | committing | committed
 ```
 
-The confirmation handle is generated from 16 cryptographically random bytes and encoded as unpadded base64url text (22 characters), matching the proven 0.2-C shape. It is an opaque process-local lookup handle, not authentication.
+Handle shape matches 0.2-C: 16 cryptographically random bytes encoded as 22-character unpadded base64url. It is not authentication.
 
-Match the current Start-store operational policy exactly unless implementation evidence proves a correctness problem:
+Match the current Start-store operational policy exactly:
 
-- capacity: 8 live entries per Web process;
-- lifetime: 10 minutes from preparation; commit does not extend lifetime;
+- capacity = 8 live entries;
+- lifetime = 10 minutes from preparation; commit doesn't extend it;
 - remove expired entries before lookup/insert/transition;
-- if capacity is full, evict only the oldest `pending` entry;
+- when full, evict only the oldest `pending` entry;
 - never evict `committing` or `committed` entries;
-- if capacity remains full because no pending entry is evictable, new prepare returns safe capacity failure (`429`) without game mutation;
+- if still full because nothing is evictable, prepare fails safely with `429` and no game mutation;
 - exactly one caller can transition `pending -> committing`;
-- successful commit, Application replay or equivalent already-finalized convergence -> `committed`;
-- duplicate confirmation of a `committed` entry returns success without issuing a fresh Application mutation;
-- unexpected failure where durable outcome is unknown -> `committing -> pending` with the same prepared `FinishRequestId`;
-- known semantic conflict -> release to `pending` only when retrying the exact same prepared intent can still safely converge; otherwise return a bounded conflict and leave no automatic fresh request-ID path.
+- successful first commit, Application replay or equivalent `AlreadyFinalized` convergence -> `committed`;
+- duplicate confirm of `committed` -> success without a fresh Application call;
+- unexpected exception with uncertain durable outcome -> `committing -> pending` with the same `FinishRequestId`;
+- terminal known conflicts (`HP135`, `HP136`, wrong/stale target) return the current bounded conflict response and remove the pending entry; a later use of that handle therefore yields `410`;
+- no conflict path automatically creates a replacement request ID.
 
-The store is process memory only and is never persisted to SQLite.
+Pending Finish state is never persisted to SQLite.
 
 ## 10. Prepare flow
 
 `POST /quests/finish/{questId}` performs:
 
-1. existing browser session authorization;
-2. existing mutation request boundary before form/antiforgery parsing;
-3. existing same-origin provenance check;
-4. existing ASP.NET Core antiforgery validation;
-5. static-SSR binding to the dedicated `FinishQuestPrepare` DTO;
-6. load current runtime context and resolve the explicit open Quest under the current Project;
+1. current browser-session authorization;
+2. current mutation request boundary before form/antiforgery parsing;
+3. current same-origin provenance validation;
+4. ASP.NET Core antiforgery validation;
+5. static-SSR DTO binding;
+6. strict UUIDv7 parse and current-Project open-Quest resolution;
 7. generate one `FinishRequestId`;
-8. call pure Application preparation/normalization;
-9. store the prepared Finish plus safe presentation under an opaque handle;
+8. call pure Application preparation;
+9. store prepared state under an opaque handle;
 10. redirect to `/quests/finish/confirm/{handle}`.
 
-This phase performs no Finish mutation, report insert, XP event, projection update or Quest finalization.
+This phase performs no final report insert, XP event, projection write, receipt commit or Quest finalization.
 
 ## 11. Confirmation display
 
-`GET /quests/finish/confirm/{handle}` requires the normal browser session.
-
-It renders the exact prepared state that will be committed:
+`GET /quests/finish/confirm/{handle}` requires the current browser session and renders exactly:
 
 - Hero display name;
 - Project display name;
-- Quest type/title/goal as safe context;
-- normalized Finish result;
+- Quest type/title/goal as context;
+- normalized result;
 - normalized summary;
 - `TestsMentioned`;
 - scope-violation count;
 - user-correction count;
 - build status/evidence;
 - tests status/evidence;
-- selected Skill keys.
+- selected Skills.
 
-It does not render:
+It does not render HeroId, Project fingerprint/internal ProjectId, `FinishRequestId`, mutation args hash, SQLite details or browser security secrets. `QuestId` isn't repeated as product text on the confirmation page.
 
-- `HeroId`;
-- `QuestId` as raw internal text unless already required by the route itself;
-- Project fingerprint/internal ProjectId;
-- `FinishRequestId`;
-- mutation args hash;
-- SQLite details;
-- bootstrap/session/antiforgery secrets.
+Handle behavior:
 
-Malformed handle syntax returns safe `400 Bad Request`. A syntactically valid but unknown, expired or evicted handle returns safe `410 Gone`. Neither response reflects the handle or sensitive Finish content.
+- malformed handle -> `400`;
+- valid but unknown/expired/evicted handle -> `410`;
+- `committing` -> bounded busy state;
+- `committed` -> bounded already-finished/continue state using the same single confirmation form.
 
-A currently `committing` handle renders bounded busy state. A `committed` handle renders a safe already-finished/continue state with the same single confirmation form.
+Error bodies never reflect the handle or sensitive Finish content.
 
 ## 12. Commit flow
 
 `POST /quests/finish/confirm/{handle}` performs:
 
-1. existing session/origin/request-size/content-type/antiforgery gates;
-2. validate bounded handle syntax;
-3. atomically claim `pending -> committing`;
-4. reconstruct `FinishQuestRequest` only from server-side prepared state;
-5. call existing `HeroPassportApplication.FinishQuestAsync(...)` with the Web process's existing `ProjectBindingContext`;
-6. classify the Application result/error;
-7. update pending state;
+1. session/origin/request-size/content-type/antiforgery gates;
+2. handle syntax validation;
+3. atomic `pending -> committing` claim;
+4. reconstruct `FinishQuestRequest` solely from server-side prepared state;
+5. call existing `HeroPassportApplication.FinishQuestAsync(...)` with the existing Web `ProjectBindingContext`;
+6. classify the result/error;
+7. update/remove/release pending state according to section 9;
 8. on successful convergence redirect to `/`.
 
-Successful convergence includes:
-
-- first committed finalization;
-- replay of the same durable request;
-- existing `AlreadyFinalized` result for semantically equivalent finalization.
-
-No new reward/progression calculation occurs in Web.
+Successful convergence means first finalization, same-request replay, or semantically equivalent `AlreadyFinalized` result.
 
 ## 13. Existing Finish concurrency/idempotency mapping
 
-The current core semantics are preserved:
+Preserve current core semantics:
 
 ```text
 same FinishRequestId + same Project/Quest/payload
@@ -359,77 +336,96 @@ same FinishRequestId + same Project/Quest/payload
 same FinishRequestId + changed semantic payload/context
   -> HP135
 
-fresh request + already-finalized equivalent semantic payload
-  -> AlreadyFinalized=true with original durable outcome
+fresh request + already-finalized equivalent payload
+  -> AlreadyFinalized=true with original outcome
 
-fresh request + already-finalized different semantic payload
+fresh request + already-finalized different payload
   -> HP136
 
 wrong Project binding
   -> HP134
 
 concurrent different finalizations
-  -> at most one durable finalization; loser conflicts
+  -> at most one durable finalization
 ```
 
-Web maps these without inventing new identity:
+Web mapping:
 
-- first success / replay / equivalent `AlreadyFinalized` -> success redirect and mark confirmation committed;
-- `HP135` -> safe `409 Conflict`;
-- `HP136` -> safe `409 Conflict`;
-- Project/Quest eligibility conflict -> safe bounded conflict/not-available response;
-- unknown unexpected exception -> generic safe error and return the exact prepared entry to retryable `pending` state with the same request ID.
-
-A conflict never generates a replacement `FinishRequestId` automatically.
+- first success / replay / equivalent `AlreadyFinalized` -> mark committed and redirect success;
+- `HP135` -> safe `409 Conflict`, remove pending entry;
+- `HP136` -> safe `409 Conflict`, remove pending entry;
+- stale/wrong target conflict -> bounded conflict/not-found semantics and no new request ID;
+- unexpected exception -> generic safe error and release the exact entry back to `pending` for same-ID retry.
 
 ## 14. Request bounds and same-origin boundary
 
-Extend the existing `MutationRequestBoundaryMiddleware` path predicate to the new Finish POST routes. Do not create a second Finish-specific request-boundary middleware.
+0.2-D extends the existing `MutationRequestBoundaryMiddleware`; it does not create a parallel Finish middleware.
 
-The existing exact policy remains:
+Security behavior stays common across Start and Finish mutation POSTs:
 
 ```text
 Content-Type:
   application/x-www-form-urlencoded only
 
-Max request body:
-  8192 bytes
+unsupported content type:
+  415
 
-Known Content-Length > 8192:
-  413 Payload Too Large
+missing/invalid same-origin provenance:
+  400
 
-Unsupported content type:
-  415 Unsupported Media Type
-
-Missing/invalid same-origin browser provenance:
-  400 Bad Request
-
-IHttpMaxRequestBodySizeFeature.MaxRequestBodySize:
-  8192 before body read
-
-FormOptions:
-  BufferBodyLengthLimit = 8192
-  KeyLengthLimit = 128
-  ValueCountLimit = 16
-  ValueLengthLimit = 2048
+body ceiling configured through IHttpMaxRequestBodySizeFeature
+before request body read
 ```
 
-The existing bootstrap claim remains separate with its stricter 1024-byte boundary.
+However, the body/value ceilings are path-specific because the existing Finish semantic contract allows a 2000-Unicode-scalar summary.
 
-The global `AddRazorComponents` form-mapping limits already qualified in 0.2-C remain unchanged unless real maximum-valid Finish input proves them insufficient. Any limit adjustment must be evidence-driven and must not broaden bootstrap or unrelated request surfaces.
+### Existing Start routes — unchanged
 
-Because Finish has more fields than Start, acceptance must prove that the maximum supported semantic payload can still be encoded under the existing 8192-byte request limit and 16-value form limit. If the legitimate field count exceeds the current form-value limit once actual Blazor field names/antiforgery metadata are counted, the implementation must first document the exact required count and raise only the narrowest relevant limit. It must not silently relax the boundary.
+```text
+MaxRequestBodySize = 8192
+BufferBodyLengthLimit = 8192
+KeyLengthLimit = 128
+ValueCountLimit = 16
+ValueLengthLimit = 2048
+```
 
-## 15. ASP.NET Core 10 static-SSR requirements
+### New Finish routes
 
-Follow the current official ASP.NET Core 10 guidance:
+```text
+MaxRequestBodySize = 32768
+BufferBodyLengthLimit = 32768
+KeyLengthLimit = 128
+ValueCountLimit = 16
+ValueLengthLimit = 4096
+```
 
-- `FormName` is required for statically rendered server-side POST forms and must be unique;
-- `[SupplyParameterFromForm]` does not use MVC model binding; dedicated form DTOs are required to prevent overposting;
-- `AddRazorComponents(...)` is the supported place for form-mapping bounds;
-- request-body size overrides must be set before the request body has started being read;
-- `UseAntiforgery()` remains enabled and token-based validation remains part of the POST boundary;
-- all client-supplied values remain untrusted until server-side Application validation.
+Rationale: a valid 2000-scalar summary may contain supplementary Unicode code points. In UTF-8 form-urlencoding, a 4-byte scalar can occupy 12 ASCII bytes after percent encoding, so summary data alone can approach 24 KiB. In decoded UTF-16, 2000 supplementary scalars occupy 4000 code units. A global 8 KiB/2048-char limit would therefore silently reject valid Application payloads.
+
+The 32 KiB Finish ceiling remains small and bounded while supporting the current semantic maximum plus form-name/antiforgery/other-field overhead. It applies only to the exact Finish mutation POST paths. Start remains 8 KiB. Bootstrap remains its separate 1024-byte boundary.
+
+Known `Content-Length` above the route ceiling returns `413`. The Kestrel feature is set before body reads.
+
+The already-qualified global Razor form-mapping limits remain:
+
+```text
+MaxFormMappingCollectionSize = 16
+MaxFormMappingRecursionDepth = 4
+MaxFormMappingErrorCount = 16
+MaxFormMappingKeySize = 128
+```
+
+Acceptance must prove the actual maximum valid Finish form, including antiforgery/form-name metadata and three Skills, stays inside the 16-value mapping budget. If it doesn't, implementation must document the observed count and raise only the narrowest collection/value-count limit; it must not relax body, key, recursion or unrelated-route limits.
+
+## 15. ASP.NET Core 10 requirements
+
+Current official ASP.NET Core 10 guidance is normative for framework behavior:
+
+- static-SSR POST forms require unique `FormName` values;
+- `[SupplyParameterFromForm]` doesn't use MVC model binding, so dedicated DTOs are the overposting boundary;
+- `AddRazorComponents(...)` is the supported form-mapping configuration point;
+- per-request body limits must be configured before request-body reading begins;
+- `UseAntiforgery()` remains enabled and token validation remains part of the POST boundary;
+- all client input remains untrusted until server-side Application validation.
 
 Official references:
 
@@ -438,74 +434,65 @@ Official references:
 - https://learn.microsoft.com/aspnet/core/blazor/security/static-server-side-rendering?view=aspnetcore-10.0
 - https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel?view=aspnetcore-10.0
 
-0.2-C demonstrated that a valid antiforgery token must not be treated as a substitute for the Web adapter's explicit same-origin provenance requirement. 0.2-D keeps both layers.
+0.2-C demonstrated that a valid antiforgery token isn't a substitute for this adapter's explicit same-origin provenance requirement. 0.2-D keeps both layers.
 
 ## 16. Privacy and diagnostics
 
-Potentially sensitive local metadata includes:
+Potentially sensitive local metadata includes Quest title/goal, Finish summary, selected Skills, build/test status/evidence and correction/violation counts.
 
-- Quest title/goal;
-- Finish summary;
-- selected Skills;
-- build/test status/evidence attestations;
-- user-correction/scope-violation counts.
-
-These values may appear on the intended authenticated Finish/confirmation pages because the user must review them. Outside that intended presentation they must not appear in ordinary process stdout/stderr, redirect/query strings, application-controlled request-target logs, generic error bodies or unrelated telemetry.
+These values may appear only in intended authenticated Finish/confirmation presentation. Outside that presentation they must not appear in ordinary process stdout/stderr, redirect/query strings, application-controlled request-target logs, generic error bodies or unrelated telemetry.
 
 Redirects contain only the opaque random confirmation handle.
 
-Safe errors are bounded product messages. Raw exception text, SQL, workspace fingerprint, internal ProjectId, request hashes, mutation receipt data, browser bootstrap/session material, full paths, source/diffs/raw logs/prompts and Git remotes are not rendered.
+Safe errors never render raw exception text, SQL, workspace fingerprint, internal ProjectId, request hashes, mutation-receipt data, browser bootstrap/session material, full paths, source/diffs/raw logs/prompts or Git remotes.
 
 The pending Finish store is memory-only, so there is no pre-commit SQLite copy of summary/attestation data.
 
 ## 17. Error semantics
 
-Expected bounded cases:
+Exact bounded behavior:
 
-- setup incomplete / no matching current-Project open Quest: Finish unavailable, no mutation;
-- malformed route QuestId: safe not-found/bad-request behavior, no mutation;
-- invalid result/summary/metrics/Skills: safe validation error, no pending game mutation;
-- malformed confirmation handle: `400`, no mutation;
-- unknown/expired/evicted confirmation handle: `410`, no mutation;
-- confirmation currently committing: bounded busy state, no second commit;
-- pending-store saturation with no evictable pending entry: `429`, no mutation;
-- missing/invalid session: existing `401` boundary;
-- hostile Host: existing `400` boundary;
-- cross-site/missing provenance: existing mutation boundary `400` before mutation;
-- missing/invalid antiforgery: framework/security rejection before mutation;
-- oversized POST: `413`;
-- unsupported form content type: `415`;
-- `HP135`: safe `409 Conflict`;
-- `HP136`: safe `409 Conflict`;
-- wrong Project/stale Quest/eligibility conflict: bounded conflict/unavailable response with no retargeting;
-- unexpected server failure: generic safe error; retry reuses the same prepared `FinishRequestId`.
+- malformed route `questId` -> `400`, no mutation;
+- canonical UUIDv7 not available as an open Quest in the current Project -> `404`, no mutation;
+- invalid result/summary/metrics/Skills -> safe validation error, no pending durable mutation;
+- malformed confirmation handle -> `400`;
+- unknown/expired/evicted/terminal-conflict-removed handle -> `410`;
+- confirmation currently committing -> bounded busy state, no second commit;
+- pending-store saturation with no evictable pending entry -> `429`;
+- missing/invalid session -> existing `401`;
+- hostile Host -> existing `400`;
+- cross-site/missing provenance -> `400` before form processing;
+- missing/invalid antiforgery -> framework rejection before mutation;
+- oversized POST -> `413` using the route-specific ceiling;
+- unsupported content type -> `415`;
+- `HP135` -> `409`, remove pending entry;
+- `HP136` -> `409`, remove pending entry;
+- unexpected server failure -> generic safe error; retry uses the same prepared `FinishRequestId`.
 
-No fallback path bypasses explicit confirmation.
+No fallback path bypasses confirmation.
 
 ## 18. UI scope
 
-The Finish page is intentionally functional, not a broad visual redesign.
+Required UI work is functional only:
 
-Required UI additions:
-
-- a Finish action from the existing dashboard for open Quest rows/cards;
+- Finish action from existing dashboard open-Quest presentation;
 - one static-SSR Finish form;
 - one confirmation page;
 - bounded validation/conflict/busy/gone messages;
-- redirect to the existing dashboard after successful convergence.
+- redirect to existing dashboard after successful convergence.
 
-0.2-D does not add a separate reward/progression result page. The existing dashboard/card read model remains the post-commit destination. Detailed reward/history/progression presentation belongs to later roadmap slices.
+No separate reward/final-report/progression result page is added. Detailed history/reward/Skill/Rank/Trait/Title presentation remains later roadmap work.
 
-## 19. Files expected to change
+## 19. Expected files
 
-Likely Application areas:
+Likely Application files:
 
 ```text
 src/HeroPassport.Application/Runtime/HeroPassportApplication.cs
 src/HeroPassport.Application/Runtime/FinishQuestModels.cs
 ```
 
-Likely Web areas:
+Likely Web files:
 
 ```text
 src/HeroPassport.Web/Program.cs
@@ -525,11 +512,11 @@ tests/HeroPassport.Application.Tests/FinishQuestPreparationTests.cs
 tests/HeroPassport.Web.Tests/PendingFinishQuestStoreTests.cs
 tests/HeroPassport.Web.Tests/FinishQuestServiceTests.cs
 tests/HeroPassport.Web.Tests/FinishQuestWebAcceptanceTests.cs
-existing WebProcess/LocalWebSecurity/Start Quest regression suites
+existing WebProcess/LocalWebSecurity/Start regression suites
 tests/HeroPassport.Architecture.Tests/ProjectDependencyTests.cs
 ```
 
-Documentation changes occur only after behavior is green and remain narrow/evidence-backed.
+Canonical docs change only after behavior is green.
 
 ## 20. TDD and acceptance evidence
 
@@ -537,40 +524,40 @@ Implementation starts with RED tests before production behavior.
 
 Required exact-head evidence:
 
-1. unauthenticated Finish and confirm routes fail through the existing 0.2-B session boundary;
-2. Finish page GET performs no report/XP/projection/Quest-finalization write;
+1. unauthenticated Finish/confirm routes fail through the 0.2-B session boundary;
+2. Finish GET performs no report/XP/projection/finalization write;
 3. prepare POST performs no durable Finish mutation;
-4. Application preparation and `FinishQuestAsync(...)` use the same validation/normalization core;
-5. confirmation renders the exact safe normalized Hero/Project/Quest/result/summary/metrics/Skills intended for commit;
-6. invalid result/summary/metrics/Skills produce no pending game mutation;
-7. maximum valid Finish payload fits the chosen request/form limits;
-8. multipart/oversized/excess-form-entry/malformed form abuse fails boundedly before mutation;
-9. missing/invalid antiforgery and clearly cross-site POST fail before mutation;
-10. explicit confirm finalizes exactly one Quest and commits report/XP/projections once;
-11. active-Hero preference changes after preparation do not redirect progression;
-12. duplicate confirmation converges to success and does not issue a new durable Finish;
-13. retry after an unknown outcome uses the same `FinishRequestId` and converges through existing receipt semantics;
-14. an equivalent already-finalized Finish converges safely through `AlreadyFinalized` semantics;
-15. a different already-finalized payload preserves `HP136` and does not alter the durable outcome;
-16. wrong Project / missing Quest / stale Quest / malformed, unknown, expired or evicted confirmation state fails closed;
-17. summary/attestation/Quest metadata is absent from ordinary diagnostics, generic errors and redirect targets outside intended authenticated content;
-18. dashboard no longer shows the finalized Quest as open and reflects the resulting card/progression data already in its read model;
-19. existing Start Web flow remains GREEN, including same-origin and request-boundary regression tests;
-20. CLI/MCP/Application contracts and packaged behavior remain unchanged;
-21. full CI, Web process acceptance and cross-platform packaged qualification are GREEN on exact PR head.
+4. Application prepare/commit share one validation/normalization core and prepared Skills are defensively copied;
+5. confirmation shows the exact normalized safe payload that will commit;
+6. invalid result/summary/metrics/Skills don't create a pending durable mutation;
+7. canonical maximum-valid 2000-scalar Unicode summary with maximum supported attestations/three Skills successfully passes the bounded Finish transport;
+8. a request above 32 KiB, multipart input and excess form entries fail boundedly before mutation;
+9. missing/invalid antiforgery and cross-site POST fail before mutation;
+10. malformed QuestId -> 400 and valid unavailable QuestId -> 404 without mutation;
+11. explicit confirm finalizes exactly one Quest and commits report/XP/projections once;
+12. active-Hero preference changes after prepare don't redirect progression;
+13. duplicate confirmation converges to success without a new Application mutation;
+14. unknown-outcome retry uses the same `FinishRequestId` and converges through receipt semantics;
+15. equivalent already-finalized Finish converges through `AlreadyFinalized`;
+16. different already-finalized payload preserves `HP136` with no durable change;
+17. wrong/stale target and malformed/unknown/expired/evicted confirmation state fail closed;
+18. summary/attestation/Quest metadata is absent from ordinary diagnostics, generic errors and redirect targets outside intended authenticated content;
+19. dashboard no longer presents the finalized Quest as open and reflects existing card/progression reads;
+20. Start Web flow stays GREEN with its unchanged 8 KiB boundary;
+21. CLI/MCP/Application contracts and packaged behavior remain unchanged;
+22. full CI, real-process Web acceptance and cross-platform packaged qualification are GREEN on exact PR head.
 
 ## 21. Explicit non-goals
 
 0.2-D does not add or refactor:
 
-- a generic mutation/confirmation framework;
+- generic mutation/confirmation framework;
 - Quest history browser;
 - dedicated reward/final-report detail page;
 - Skill progression/detail pages;
 - Rank/Traits/Titles detail pages;
-- Hero create/activate/archive/restore/delete Web management;
-- settings UI;
-- new RPG/game rules, reward formulas or Skill keys;
+- Hero management or settings UI;
+- new RPG rules/reward formulas/Skill keys;
 - direct Web persistence access;
 - general REST/Minimal API/GraphQL/gRPC product surface;
 - Interactive Server/WebAssembly;
@@ -583,9 +570,9 @@ Required exact-head evidence:
 
 0.2-D is complete only when:
 
-- the exact PR head passes full CI and required cross-platform/package qualification;
+- exact PR head passes full CI and cross-platform/package qualification;
 - architecture guards prove Web still owns no persistence and no general product API surface;
-- security acceptance proves the 0.2-B/0.2-C boundary remains effective for Finish;
+- security acceptance proves 0.2-B/0.2-C boundaries remain effective for Finish;
 - the PR is independently reviewed for privacy/idempotency/concurrency regressions;
-- post-merge `main` passes its push CI;
-- #42 closes through the merge.
+- post-merge `main` passes push CI;
+- #42 closes through merge.
