@@ -42,6 +42,48 @@ public sealed class MutationRequestBoundaryTests
     }
 
     [Fact]
+    public async Task FinishPostUsesDedicatedThirtyTwoKiBBoundary()
+    {
+        var nextCalled = false;
+        var middleware = new MutationRequestBoundaryMiddleware(_ =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        });
+        var context = Context(
+            "POST",
+            $"/quests/finish/{Guid.CreateVersion7():D}",
+            "application/x-www-form-urlencoded",
+            24_576);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.True(nextCalled);
+        Assert.Equal(32_768, context.Features.Get<IHttpMaxRequestBodySizeFeature>()!.MaxRequestBodySize);
+    }
+
+    [Fact]
+    public async Task OversizedFinishPostIsRejectedBeforeNextDelegate()
+    {
+        var nextCalled = false;
+        var middleware = new MutationRequestBoundaryMiddleware(_ =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        });
+        var context = Context(
+            "POST",
+            $"/quests/finish/confirm/abcdefghijklmnopqrstuv",
+            "application/x-www-form-urlencoded",
+            32_769);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status413PayloadTooLarge, context.Response.StatusCode);
+        Assert.False(nextCalled);
+    }
+
+    [Fact]
     public async Task CrossSiteAndMissingBrowserProvenanceAreRejectedBeforeNextDelegate()
     {
         var calls = 0;
