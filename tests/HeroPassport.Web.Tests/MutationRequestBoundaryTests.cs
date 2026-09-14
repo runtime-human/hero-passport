@@ -161,6 +161,37 @@ public sealed class MutationRequestBoundaryTests
     }
 
     [Fact]
+    public async Task RouteEquivalentCaseAndTrailingSlashVariantsKeepMutationBoundary()
+    {
+        var calls = 0;
+        var middleware = new MutationRequestBoundaryMiddleware(_ =>
+        {
+            calls++;
+            return Task.CompletedTask;
+        });
+        var paths = new[]
+        {
+            "/QUESTS/START",
+            "/Quests/Start/Confirm/abc/",
+            $"/Quests/Finish/{Guid.CreateVersion7():D}/",
+            "/Quests/Finish/Confirm/abcdefghijklmnopqrstuv/",
+        };
+
+        foreach (var path in paths)
+        {
+            var context = Context("POST", path, "application/x-www-form-urlencoded", 64);
+            context.Request.Headers["Sec-Fetch-Site"] = "cross-site";
+            context.Request.Headers["Origin"] = "https://attacker.example";
+
+            await middleware.InvokeAsync(context);
+
+            Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        }
+
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
     public async Task SmallUrlEncodedConfirmPostReachesNextWithBoundedBodyFeature()
     {
         var nextCalled = false;
