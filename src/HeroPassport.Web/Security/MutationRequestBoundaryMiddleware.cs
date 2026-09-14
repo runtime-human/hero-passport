@@ -70,7 +70,7 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
         }
 
         var path = request.Path.Value ?? string.Empty;
-        if (string.Equals(path, "/quests/start", StringComparison.Ordinal)
+        if (EqualsRoutePath(path, "/quests/start")
             || HasSingleSegmentAfter(path, "/quests/start/confirm/"))
         {
             return new(StartMaxRequestBodyBytes, StartMaxFormValueBytes);
@@ -85,14 +85,31 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
         return null;
     }
 
+    private static bool EqualsRoutePath(string path, string route)
+    {
+        if (string.Equals(path, route, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return path.Length == route.Length + 1
+            && path[^1] == '/'
+            && path.AsSpan(0, path.Length - 1).Equals(route.AsSpan(), StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool HasSingleSegmentAfter(string path, string prefix)
     {
-        if (!path.StartsWith(prefix, StringComparison.Ordinal))
+        if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
         var remainder = path[prefix.Length..];
+        if (remainder.EndsWith('/', StringComparison.Ordinal))
+        {
+            remainder = remainder[..^1];
+        }
+
         return remainder.Length > 0 && !remainder.Contains('/', StringComparison.Ordinal);
     }
 
