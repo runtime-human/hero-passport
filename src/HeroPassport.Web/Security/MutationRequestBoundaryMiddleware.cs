@@ -7,7 +7,7 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
     private const long StartMaxRequestBodyBytes = 8192;
     private const int StartMaxFormValueBytes = 2048;
     private const long FinishMaxRequestBodyBytes = 32768;
-    private const int FinishMaxFormValueBytes = 8192;
+    private const int FinishMaxFormValueBytes = 24 * 1024;
     private const int MaxFormEntries = 16;
     private const int MaxFormKeyBytes = 128;
     private const string UrlEncodedFormContentType = "application/x-www-form-urlencoded";
