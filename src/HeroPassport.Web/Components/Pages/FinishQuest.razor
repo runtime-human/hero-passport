@@ -1,0 +1,198 @@
+@page "/quests/finish/{QuestId}"
+@inject HeroPassportFinishQuestService FinishQuestFlow
+@inject NavigationManager Navigation
+
+<PageTitle>Finish Quest · Hero Passport</PageTitle>
+
+<main class="shell">
+    <header class="hero-header">
+        <p class="eyebrow">Hero Passport · Finish Quest</p>
+        <h1>Finish Quest</h1>
+    </header>
+
+    @if (_load is null)
+    {
+        <p>Loading Quest context…</p>
+    }
+    else if (_load.Status is FinishQuestPageStatus.Invalid or FinishQuestPageStatus.NotFound)
+    {
+        <section class="panel">
+            <p role="alert">This open Quest is not available in the current project.</p>
+            <p><a href="/">Back to dashboard</a></p>
+        </section>
+    }
+    else if (_load.Page is { } page)
+    {
+        <section class="panel">
+            <p>Hero: <strong>@page.HeroName</strong></p>
+            <p>Project: <strong>@page.ProjectDisplayName</strong></p>
+            <p>Quest: <strong>@page.QuestTitle</strong> · @page.QuestType</p>
+            <p>@page.QuestGoal</p>
+
+            @if (!string.IsNullOrEmpty(_message))
+            {
+                <p role="alert">@_message</p>
+            }
+
+            <EditForm Model="Input" FormName="FinishQuestPrepare" OnValidSubmit="PrepareAsync" method="post">
+                <label>
+                    Result
+                    <InputSelect @bind-Value="Input!.Result">
+                        <option value="success">Success</option>
+                        <option value="partial">Partial</option>
+                        <option value="blocked">Blocked</option>
+                        <option value="failed">Failed</option>
+                        <option value="abandoned">Abandoned</option>
+                    </InputSelect>
+                </label>
+
+                <label>
+                    Summary
+                    <InputTextArea @bind-Value="Input!.Summary" maxlength="2000" />
+                </label>
+
+                <label>
+                    <InputCheckbox @bind-Value="Input!.TestsMentioned" />
+                    Tests mentioned
+                </label>
+
+                <label>
+                    Scope violations
+                    <InputNumber @bind-Value="Input!.ScopeViolations" min="0" max="20" />
+                </label>
+
+                <label>
+                    User corrections
+                    <InputNumber @bind-Value="Input!.UserCorrections" min="0" max="20" />
+                </label>
+
+                <label>
+                    Build status
+                    <InputSelect @bind-Value="Input!.BuildStatus">
+                        <option value="not_run">Not run</option>
+                        <option value="passed">Passed</option>
+                        <option value="failed">Failed</option>
+                        <option value="unknown">Unknown</option>
+                    </InputSelect>
+                </label>
+
+                <label>
+                    Build evidence
+                    <InputSelect @bind-Value="Input!.BuildEvidence">
+                        <option value="none">None</option>
+                        <option value="observed">Observed</option>
+                        <option value="reported">Reported</option>
+                    </InputSelect>
+                </label>
+
+                <label>
+                    Tests status
+                    <InputSelect @bind-Value="Input!.TestsStatus">
+                        <option value="not_run">Not run</option>
+                        <option value="passed">Passed</option>
+                        <option value="failed">Failed</option>
+                        <option value="unknown">Unknown</option>
+                    </InputSelect>
+                </label>
+
+                <label>
+                    Tests evidence
+                    <InputSelect @bind-Value="Input!.TestsEvidence">
+                        <option value="none">None</option>
+                        <option value="observed">Observed</option>
+                        <option value="reported">Reported</option>
+                    </InputSelect>
+                </label>
+
+                <label>
+                    Skills used (choose 1–3)
+                    <InputSelect @bind-Value="Input!.SkillsUsed" multiple>
+                        <option value="coding">Coding</option>
+                        <option value="testing_awareness">Testing awareness</option>
+                        <option value="scope_control">Scope control</option>
+                        <option value="documentation">Documentation</option>
+                        <option value="tool_use">Tool use</option>
+                        <option value="planning">Planning</option>
+                        <option value="research">Research</option>
+                        <option value="debugging">Debugging</option>
+                        <option value="review">Review</option>
+                        <option value="maintenance">Maintenance</option>
+                    </InputSelect>
+                </label>
+
+                <div class="actions">
+                    <button type="submit">Review Finish</button>
+                    <a href="/">Cancel</a>
+                </div>
+            </EditForm>
+        </section>
+    }
+</main>
+
+@code {
+    [Parameter]
+    public string QuestId { get; set; } = string.Empty;
+
+    [CascadingParameter]
+    private Microsoft.AspNetCore.Http.HttpContext? HttpContext { get; set; }
+
+    [SupplyParameterFromForm(FormName = "FinishQuestPrepare")]
+    private FinishQuestForm? Input { get; set; }
+
+    private LoadFinishQuestWebResult? _load;
+    private string? _message;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Input ??= new FinishQuestForm();
+        _load = await FinishQuestFlow.LoadAsync(QuestId);
+        SetLoadStatus(_load.Status);
+    }
+
+    private async Task PrepareAsync()
+    {
+        var result = await FinishQuestFlow.PrepareAsync(QuestId, Input!);
+        if (result.Status == PrepareFinishQuestWebStatus.Prepared && result.Handle is not null)
+        {
+            Navigation.NavigateTo($"/quests/finish/confirm/{result.Handle}");
+            return;
+        }
+
+        switch (result.Status)
+        {
+            case PrepareFinishQuestWebStatus.Invalid:
+                SetStatus(Microsoft.AspNetCore.Http.StatusCodes.Status400BadRequest);
+                _load = new LoadFinishQuestWebResult(FinishQuestPageStatus.Invalid);
+                _message = "The Quest identifier is invalid.";
+                break;
+            case PrepareFinishQuestWebStatus.NotFound:
+                SetStatus(Microsoft.AspNetCore.Http.StatusCodes.Status404NotFound);
+                _load = new LoadFinishQuestWebResult(FinishQuestPageStatus.NotFound);
+                _message = "This open Quest is not available in the current project.";
+                break;
+            case PrepareFinishQuestWebStatus.Capacity:
+                SetStatus(Microsoft.AspNetCore.Http.StatusCodes.Status429TooManyRequests);
+                _message = result.Message ?? "Too many pending confirmations. Try again.";
+                break;
+            default:
+                SetStatus(Microsoft.AspNetCore.Http.StatusCodes.Status400BadRequest);
+                _message = result.Message ?? "Finish result, summary, attestations, or Skills are invalid.";
+                break;
+        }
+    }
+
+    private void SetLoadStatus(FinishQuestPageStatus status) => SetStatus(status switch
+    {
+        FinishQuestPageStatus.Invalid => Microsoft.AspNetCore.Http.StatusCodes.Status400BadRequest,
+        FinishQuestPageStatus.NotFound => Microsoft.AspNetCore.Http.StatusCodes.Status404NotFound,
+        _ => Microsoft.AspNetCore.Http.StatusCodes.Status200OK,
+    });
+
+    private void SetStatus(int statusCode)
+    {
+        if (HttpContext is not null)
+        {
+            HttpContext.Response.StatusCode = statusCode;
+        }
+    }
+}
