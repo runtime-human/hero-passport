@@ -1,0 +1,158 @@
+@page "/quests/finish/confirm/{Handle}"
+@inject HeroPassportFinishQuestService FinishQuest
+@inject NavigationManager Navigation
+
+<PageTitle>Confirm Finish · Hero Passport</PageTitle>
+
+<main class="shell">
+    <header class="hero-header">
+        <p class="eyebrow">Hero Passport · Confirm Finish</p>
+        <h1>Confirm Finish Quest</h1>
+    </header>
+
+    @if (_result is null)
+    {
+        <p>Loading confirmation…</p>
+    }
+    else if (_result.Status is ConfirmFinishQuestWebStatus.Invalid or ConfirmFinishQuestWebStatus.Gone)
+    {
+        <section class="panel">
+            <p role="alert">@(_message ?? "This confirmation is no longer available.")</p>
+            <p><a href="/">Back to dashboard</a></p>
+        </section>
+    }
+    else if (_result.Status == ConfirmFinishQuestWebStatus.Busy)
+    {
+        <section class="panel">
+            <p role="status">This confirmation is already being processed.</p>
+            <p><a href="/">Back to dashboard</a></p>
+        </section>
+    }
+    else if (_result.Status == ConfirmFinishQuestWebStatus.Committed || _result.Confirmation is not null)
+    {
+        <section class="panel">
+            @if (_result.Status == ConfirmFinishQuestWebStatus.Committed)
+            {
+                <p>Quest already finished.</p>
+            }
+            else if (_result.Confirmation is { } confirmation)
+            {
+                <dl class="confirmation-list">
+                    <dt>Hero</dt>
+                    <dd>@confirmation.HeroName</dd>
+                    <dt>Project</dt>
+                    <dd>@confirmation.ProjectDisplayName</dd>
+                    <dt>Quest type</dt>
+                    <dd>@confirmation.QuestType</dd>
+                    <dt>Quest title</dt>
+                    <dd>@confirmation.QuestTitle</dd>
+                    <dt>Quest goal</dt>
+                    <dd>@confirmation.QuestGoal</dd>
+                    <dt>Result</dt>
+                    <dd>@confirmation.Result</dd>
+                    <dt>Summary</dt>
+                    <dd>@confirmation.Summary</dd>
+                    <dt>Tests mentioned</dt>
+                    <dd>@confirmation.Metrics.TestsMentioned</dd>
+                    <dt>Scope violations</dt>
+                    <dd>@confirmation.Metrics.ScopeViolations</dd>
+                    <dt>User corrections</dt>
+                    <dd>@confirmation.Metrics.UserCorrections</dd>
+                    <dt>Build</dt>
+                    <dd>@confirmation.Metrics.BuildStatus · @confirmation.Metrics.BuildEvidence</dd>
+                    <dt>Tests</dt>
+                    <dd>@confirmation.Metrics.TestsStatus · @confirmation.Metrics.TestsEvidence</dd>
+                    <dt>Skills</dt>
+                    <dd>@string.Join(", ", confirmation.SkillsUsed)</dd>
+                </dl>
+
+                @if (!string.IsNullOrEmpty(_message))
+                {
+                    <p role="alert">@_message</p>
+                }
+            }
+
+            <EditForm Model="ConfirmationInput" FormName="FinishQuestConfirm" OnValidSubmit="ConfirmAsync" method="post">
+                @if (_result.Status == ConfirmFinishQuestWebStatus.Committed)
+                {
+                    <button type="submit">Continue</button>
+                }
+                else
+                {
+                    <div class="actions">
+                        <button type="submit">Finish Quest</button>
+                        <a href="/">Cancel</a>
+                    </div>
+                }
+            </EditForm>
+        </section>
+    }
+</main>
+
+@code {
+    [Parameter]
+    public string Handle { get; set; } = string.Empty;
+
+    [CascadingParameter]
+    private Microsoft.AspNetCore.Http.HttpContext? HttpContext { get; set; }
+
+    [SupplyParameterFromForm(FormName = "FinishQuestConfirm")]
+    private ConfirmFinishQuestForm? ConfirmationInput { get; set; }
+
+    private ConfirmFinishQuestWebResult? _result;
+    private string? _message;
+
+    protected override void OnParametersSet()
+    {
+        ConfirmationInput ??= new ConfirmFinishQuestForm();
+        _result = FinishQuest.LoadConfirmation(Handle);
+
+        if (HttpContext is null)
+        {
+            return;
+        }
+
+        HttpContext.Response.StatusCode = _result.Status switch
+        {
+            ConfirmFinishQuestWebStatus.Invalid => Microsoft.AspNetCore.Http.StatusCodes.Status400BadRequest,
+            ConfirmFinishQuestWebStatus.Gone => Microsoft.AspNetCore.Http.StatusCodes.Status410Gone,
+            _ => Microsoft.AspNetCore.Http.StatusCodes.Status200OK,
+        };
+    }
+
+    private async Task ConfirmAsync()
+    {
+        var result = await FinishQuest.CommitAsync(Handle);
+        switch (result.Status)
+        {
+            case CommitFinishQuestWebStatus.Success:
+                Navigation.NavigateTo("/");
+                return;
+            case CommitFinishQuestWebStatus.Invalid:
+                SetTerminalGone("This confirmation is invalid.", Microsoft.AspNetCore.Http.StatusCodes.Status400BadRequest);
+                return;
+            case CommitFinishQuestWebStatus.Gone:
+                SetTerminalGone("This confirmation is no longer available.", Microsoft.AspNetCore.Http.StatusCodes.Status410Gone);
+                return;
+            case CommitFinishQuestWebStatus.Busy:
+                _result = new ConfirmFinishQuestWebResult(ConfirmFinishQuestWebStatus.Busy);
+                _message = "This confirmation is already being processed.";
+                return;
+            default:
+                SetTerminalGone(
+                    result.Message ?? "The Quest could not be finished because its durable state changed.",
+                    Microsoft.AspNetCore.Http.StatusCodes.Status409Conflict);
+                return;
+        }
+    }
+
+    private void SetTerminalGone(string message, int statusCode)
+    {
+        _result = new ConfirmFinishQuestWebResult(ConfirmFinishQuestWebStatus.Gone);
+        _message = message;
+        if (HttpContext is not null)
+        {
+            HttpContext.Response.StatusCode = statusCode;
+        }
+    }
+}
