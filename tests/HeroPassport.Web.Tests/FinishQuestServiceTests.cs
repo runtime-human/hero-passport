@@ -80,10 +80,28 @@ public sealed class FinishQuestServiceTests
     }
 
     [Fact]
-    public async Task TerminalFinalizationConflictRemovesPendingHandle()
+    public async Task EquivalentAlreadyFinalizedConvergesAsSuccessAndCommitsPendingHandle()
     {
         var quest = OpenQuest();
-        var state = new FakeStateStore(Context([quest])) { FinishErrorCode = "HP136" };
+        var state = new FakeStateStore(Context([quest])) { ReturnAlreadyFinalized = true };
+        var service = Service(state, out var pending);
+        var prepared = await service.PrepareAsync(
+            quest.QuestId.ToString(), ValidForm(), TestContext.Current.CancellationToken);
+
+        var result = await service.CommitAsync(prepared.Handle!, TestContext.Current.CancellationToken);
+
+        Assert.Equal(CommitFinishQuestWebStatus.Success, result.Status);
+        Assert.Equal(1, state.FinishCalls);
+        Assert.Equal(PendingFinishQuestAccessStatus.Committed, pending.Lookup(prepared.Handle).Status);
+    }
+
+    [Theory]
+    [InlineData("HP135")]
+    [InlineData("HP136")]
+    public async Task TerminalFinalizationConflictRemovesPendingHandle(string errorCode)
+    {
+        var quest = OpenQuest();
+        var state = new FakeStateStore(Context([quest])) { FinishErrorCode = errorCode };
         var service = Service(state, out var pending);
         var prepared = await service.PrepareAsync(
             quest.QuestId.ToString(), ValidForm(), TestContext.Current.CancellationToken);
@@ -209,6 +227,7 @@ public sealed class FinishQuestServiceTests
         public List<FinishQuestStoreCommand> FinishCommands { get; } = [];
         public string? FinishErrorCode { get; set; }
         public bool ThrowFirstLocaleRead { get; set; }
+        public bool ReturnAlreadyFinalized { get; set; }
         private int _localeReads;
 
         public Task<RuntimeContextResult> GetRuntimeContextAsync(
@@ -231,7 +250,7 @@ public sealed class FinishQuestServiceTests
                 throw new HeroPassportException(FinishErrorCode, "bounded test conflict");
             }
 
-            return Task.FromResult(Result(command.QuestId));
+            return Task.FromResult(Result(command.QuestId, ReturnAlreadyFinalized));
         }
 
         public Task<string> GetQuestLocaleAsync(
@@ -247,7 +266,7 @@ public sealed class FinishQuestServiceTests
             return Task.FromResult("en-US");
         }
 
-        private static FinishQuestResult Result(QuestId questId) =>
+        private static FinishQuestResult Result(QuestId questId, bool alreadyFinalized) =>
             new(
                 questId,
                 "success",
@@ -263,7 +282,7 @@ public sealed class FinishQuestServiceTests
                 null,
                 [],
                 false,
-                false);
+                alreadyFinalized);
 
         private static InvalidOperationException Unused() => new("Unexpected state-store call.");
 
