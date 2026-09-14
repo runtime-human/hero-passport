@@ -4,15 +4,18 @@ namespace HeroPassport.Web.Security;
 
 internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
 {
-    private const long MaxRequestBodyBytes = 8192;
+    private const long StartMaxRequestBodyBytes = 8192;
+    private const int StartMaxFormValueChars = 2048;
+    private const long FinishMaxRequestBodyBytes = 32768;
+    private const int FinishMaxFormValueChars = 4096;
     private const int MaxFormEntries = 16;
     private const int MaxFormKeyChars = 128;
-    private const int MaxFormValueChars = 2048;
     private const string UrlEncodedFormContentType = "application/x-www-form-urlencoded";
 
     public async Task InvokeAsync(HttpContext context)
     {
-        if (!IsQuestMutationPost(context.Request))
+        var limits = GetMutationLimits(context.Request);
+        if (limits is null)
         {
             await next(context);
             return;
@@ -24,7 +27,8 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
             return;
         }
 
-        if (context.Request.ContentLength is > MaxRequestBodyBytes)
+        if (context.Request.ContentLength is > 0
+            && context.Request.ContentLength > limits.Value.MaxRequestBodyBytes)
         {
             context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
             return;
@@ -43,31 +47,53 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
             return;
         }
 
-        requestBodySize.MaxRequestBodySize = MaxRequestBodyBytes;
+        requestBodySize.MaxRequestBodySize = limits.Value.MaxRequestBodyBytes;
         context.Features.Set<IFormFeature>(
             new FormFeature(
                 context.Request,
                 new FormOptions
                 {
-                    BufferBodyLengthLimit = MaxRequestBodyBytes,
+                    BufferBodyLengthLimit = limits.Value.MaxRequestBodyBytes,
                     KeyLengthLimit = MaxFormKeyChars,
                     ValueCountLimit = MaxFormEntries,
-                    ValueLengthLimit = MaxFormValueChars,
+                    ValueLengthLimit = limits.Value.MaxFormValueChars,
                 }));
 
         await next(context);
     }
 
-    private static bool IsQuestMutationPost(HttpRequest request)
+    private static MutationLimits? GetMutationLimits(HttpRequest request)
     {
         if (!HttpMethods.IsPost(request.Method))
+        {
+            return null;
+        }
+
+        var path = request.Path.Value ?? string.Empty;
+        if (string.Equals(path, "/quests/start", StringComparison.Ordinal)
+            || HasSingleSegmentAfter(path, "/quests/start/confirm/"))
+        {
+            return new(StartMaxRequestBodyBytes, StartMaxFormValueChars);
+        }
+
+        if (HasSingleSegmentAfter(path, "/quests/finish/confirm/")
+            || HasSingleSegmentAfter(path, "/quests/finish/"))
+        {
+            return new(FinishMaxRequestBodyBytes, FinishMaxFormValueChars);
+        }
+
+        return null;
+    }
+
+    private static bool HasSingleSegmentAfter(string path, string prefix)
+    {
+        if (!path.StartsWith(prefix, StringComparison.Ordinal))
         {
             return false;
         }
 
-        var path = request.Path.Value ?? string.Empty;
-        return string.Equals(path, "/quests/start", StringComparison.Ordinal)
-            || path.StartsWith("/quests/start/confirm/", StringComparison.Ordinal);
+        var remainder = path[prefix.Length..];
+        return remainder.Length > 0 && !remainder.Contains('/', StringComparison.Ordinal);
     }
 
     private static bool IsUrlEncodedForm(HttpRequest request)
@@ -132,4 +158,6 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
             && string.IsNullOrEmpty(origin.Query)
             && string.IsNullOrEmpty(origin.Fragment);
     }
+
+    private readonly record struct MutationLimits(long MaxRequestBodyBytes, int MaxFormValueChars);
 }
