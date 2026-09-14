@@ -19,6 +19,14 @@ public sealed record FinishQuestRequest(
     FinishQuestMetrics Metrics,
     IReadOnlyList<string> SkillsUsed);
 
+public sealed record PreparedFinishQuest(
+    MutationRequestId FinishRequestId,
+    QuestId QuestId,
+    string Result,
+    string Summary,
+    FinishQuestMetrics Metrics,
+    IReadOnlyList<string> SkillsUsed);
+
 public sealed record RewardComponentSnapshot(string Key, long XpDelta);
 
 public sealed class QuestRewardSnapshot : IEquatable<QuestRewardSnapshot>
