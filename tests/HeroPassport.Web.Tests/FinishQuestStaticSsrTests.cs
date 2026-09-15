@@ -65,6 +65,31 @@ public sealed class FinishQuestStaticSsrTests
     }
 
     [Fact]
+    public void FinishConfirmFormRemainsRegisteredBeforeGoneAndBusyStateBranches()
+    {
+        var root = FindRepositoryRoot();
+        var path = Path.Combine(root, "src", "HeroPassport.Web", "Components", "Pages", "ConfirmFinishQuest.razor");
+        var source = File.ReadAllText(path);
+
+        var formIndex = source.IndexOf(
+            "<EditForm Model=\"ConfirmationInput\" FormName=\"FinishQuestConfirm\"",
+            StringComparison.Ordinal);
+        var goneBranchIndex = source.IndexOf(
+            "_result.Status is ConfirmFinishQuestWebStatus.Invalid or ConfirmFinishQuestWebStatus.Gone",
+            StringComparison.Ordinal);
+        var busyBranchIndex = source.IndexOf(
+            "_result.Status == ConfirmFinishQuestWebStatus.Busy",
+            StringComparison.Ordinal);
+
+        Assert.True(formIndex >= 0, "FinishQuestConfirm form must remain registered for static-SSR POST routing.");
+        Assert.True(goneBranchIndex >= 0, "Expected bounded invalid/gone state branch.");
+        Assert.True(busyBranchIndex >= 0, "Expected bounded busy state branch.");
+        Assert.True(
+            formIndex < goneBranchIndex && formIndex < busyBranchIndex,
+            "FinishQuestConfirm must be registered before retry-terminal/busy branches so stale or concurrent POSTs can dispatch to ConfirmAsync.");
+    }
+
+    [Fact]
     public void ProgramRegistersProcessLocalFinishQuestServices()
     {
         var root = FindRepositoryRoot();
