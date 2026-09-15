@@ -4,10 +4,18 @@ namespace HeroPassport.Web.Security;
 
 internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
 {
-    private const long StartMaxRequestBodyBytes = 8192;
-    private const int StartMaxFormValueBytes = 2048;
-    private const long FinishMaxRequestBodyBytes = 32768;
-    private const int FinishMaxFormValueBytes = 24 * 1024;
+    private const long CompactMaxRequestBodyBytes = 8192;
+    private const int CompactMaxFormValueBytes = 2048;
+
+    // SafeTextV1 NFC-normalizes before enforcing the 2000-scalar summary limit.
+    // Unicode canonical decomposition is stable at <= 3x UTF-16 code units. A
+    // 2000-scalar NFC string can therefore require up to 12000 raw UTF-16 code
+    // units; worst-case UTF-8 percent-encoding fits below 112 KiB. Keep 128 KiB
+    // as the independent whole-form ceiling. These wider limits apply only to
+    // Finish prepare; payload-free confirmation remains on the compact boundary.
+    private const long FinishPrepareMaxRequestBodyBytes = 128 * 1024;
+    private const int FinishPrepareMaxFormValueBytes = 112 * 1024;
+
     private const int MaxFormEntries = 16;
     private const int MaxFormKeyBytes = 128;
     private const string UrlEncodedFormContentType = "application/x-www-form-urlencoded";
@@ -73,13 +81,17 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
         if (EqualsRoutePath(path, "/quests/start")
             || HasSingleSegmentAfter(path, "/quests/start/confirm/"))
         {
-            return new(StartMaxRequestBodyBytes, StartMaxFormValueBytes);
+            return new(CompactMaxRequestBodyBytes, CompactMaxFormValueBytes);
         }
 
-        if (HasSingleSegmentAfter(path, "/quests/finish/confirm/")
-            || HasSingleSegmentAfter(path, "/quests/finish/"))
+        if (HasSingleSegmentAfter(path, "/quests/finish/confirm/"))
         {
-            return new(FinishMaxRequestBodyBytes, FinishMaxFormValueBytes);
+            return new(CompactMaxRequestBodyBytes, CompactMaxFormValueBytes);
+        }
+
+        if (HasSingleSegmentAfter(path, "/quests/finish/"))
+        {
+            return new(FinishPrepareMaxRequestBodyBytes, FinishPrepareMaxFormValueBytes);
         }
 
         return null;
