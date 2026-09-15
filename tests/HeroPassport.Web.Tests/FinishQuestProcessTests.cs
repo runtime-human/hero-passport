@@ -169,7 +169,7 @@ public sealed class FinishQuestProcessTests
                 Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
             }
 
-            using (var oversized = new StringContent(new string('x', 32_769), Encoding.UTF8, "application/x-www-form-urlencoded"))
+            using (var oversized = new StringContent(new string('x', 131_073), Encoding.UTF8, "application/x-www-form-urlencoded"))
             using (var request = SameOriginPost(web.Address, finishPath, oversized))
             using (var response = await client.SendAsync(request, token))
             {
@@ -180,8 +180,12 @@ public sealed class FinishQuestProcessTests
             Assert.Equal(0, await RowCountAsync(databasePath, "quest_reports", token));
             Assert.Equal("open", await ScalarTextAsync(databasePath, "SELECT status FROM quest_sessions LIMIT 1;", token));
 
-            var maxSummary = string.Concat(Enumerable.Repeat("🚀", 2000));
-            using var maximum = FinishForm(antiforgery, handler, maxSummary, threeSkills: true);
+            var normalizedMaxSummary = string.Concat(Enumerable.Repeat("각", 2000));
+            var decomposedMaxSummary = normalizedMaxSummary.Normalize(NormalizationForm.FormD);
+            Assert.Equal(6000, decomposedMaxSummary.Length);
+            using var maximum = FinishForm(antiforgery, handler, decomposedMaxSummary, threeSkills: true);
+            var maximumBytes = await maximum.ReadAsByteArrayAsync(token);
+            Assert.InRange(maximumBytes.Length, 32_769, 131_072);
             using var maximumRequest = SameOriginPost(web.Address, finishPath, maximum);
             using var maximumResponse = await client.SendAsync(maximumRequest, token);
             Assert.True(
@@ -193,7 +197,7 @@ public sealed class FinishQuestProcessTests
             using var confirmGet = await client.GetAsync(confirmPath, token);
             var confirmHtml = await confirmGet.Content.ReadAsStringAsync(token);
             Assert.Equal(HttpStatusCode.OK, confirmGet.StatusCode);
-            Assert.Contains(maxSummary, WebUtility.HtmlDecode(confirmHtml), StringComparison.Ordinal);
+            Assert.Contains(normalizedMaxSummary, WebUtility.HtmlDecode(confirmHtml), StringComparison.Ordinal);
 
             using var confirmResponse = await PostConfirmAsync(client, web.Address, confirmPath, confirmHtml, token);
             Assert.True(confirmResponse.StatusCode is HttpStatusCode.Found or HttpStatusCode.SeeOther);
