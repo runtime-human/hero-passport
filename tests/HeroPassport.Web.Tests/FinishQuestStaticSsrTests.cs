@@ -26,6 +26,27 @@ public sealed class FinishQuestStaticSsrTests
     }
 
     [Fact]
+    public void FinishPrepareFormRemainsRegisteredBeforeUnavailableStateBranch()
+    {
+        var root = FindRepositoryRoot();
+        var path = Path.Combine(root, "src", "HeroPassport.Web", "Components", "Pages", "FinishQuest.razor");
+        var source = File.ReadAllText(path);
+
+        var formIndex = source.IndexOf(
+            "<EditForm Model=\"Input\" FormName=\"FinishQuestPrepare\"",
+            StringComparison.Ordinal);
+        var unavailableBranchIndex = source.IndexOf(
+            "_load.Status is FinishQuestPageStatus.Invalid or FinishQuestPageStatus.NotFound",
+            StringComparison.Ordinal);
+
+        Assert.True(formIndex >= 0, "FinishQuestPrepare form must remain registered for static-SSR POST routing.");
+        Assert.True(unavailableBranchIndex >= 0, "Expected bounded unavailable-state branch.");
+        Assert.True(
+            formIndex < unavailableBranchIndex,
+            "FinishQuestPrepare must be registered before the unavailable-state branch so a stale POST can still dispatch to PrepareAsync.");
+    }
+
+    [Fact]
     public void FinishConfirmationPostsOnlyOpaqueRouteHandleAndFrameworkMetadata()
     {
         var root = FindRepositoryRoot();
