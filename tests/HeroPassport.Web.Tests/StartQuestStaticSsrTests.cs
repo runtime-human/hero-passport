@@ -51,14 +51,15 @@ public sealed class StartQuestStaticSsrTests
     }
 
     [Fact]
-    public void DashboardHasStartQuestEntryPointWithoutFinishControls()
+    public void DashboardExposesStartAndExplicitOpenQuestFinishEntryPoints()
     {
         var root = FindRepositoryRoot();
         var home = File.ReadAllText(Path.Combine(root, "src", "HeroPassport.Web", "Components", "Pages", "Home.razor"));
 
         Assert.Contains("href=\"/quests/start\"", home, StringComparison.Ordinal);
         Assert.Contains("Start Quest", home, StringComparison.Ordinal);
-        Assert.DoesNotContain("Finish Quest", home, StringComparison.Ordinal);
+        Assert.Contains("/quests/finish/{quest.QuestId}", home, StringComparison.Ordinal);
+        Assert.Contains("Finish Quest", home, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

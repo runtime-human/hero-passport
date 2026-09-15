@@ -4,15 +4,26 @@ namespace HeroPassport.Web.Security;
 
 internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
 {
-    private const long MaxRequestBodyBytes = 8192;
+    private const long CompactMaxRequestBodyBytes = 8192;
+    private const int CompactMaxFormValueBytes = 2048;
+
+    // SafeTextV1 NFC-normalizes before enforcing the 2000-scalar summary limit.
+    // Unicode canonical decomposition is stable at <= 3x UTF-16 code units. A
+    // 2000-scalar NFC string can therefore require up to 12000 raw UTF-16 code
+    // units; worst-case UTF-8 percent-encoding fits below 112 KiB. Keep 128 KiB
+    // as the independent whole-form ceiling. These wider limits apply only to
+    // Finish prepare; payload-free confirmation remains on the compact boundary.
+    private const long FinishPrepareMaxRequestBodyBytes = 128 * 1024;
+    private const int FinishPrepareMaxFormValueBytes = 112 * 1024;
+
     private const int MaxFormEntries = 16;
-    private const int MaxFormKeyChars = 128;
-    private const int MaxFormValueChars = 2048;
+    private const int MaxFormKeyBytes = 128;
     private const string UrlEncodedFormContentType = "application/x-www-form-urlencoded";
 
     public async Task InvokeAsync(HttpContext context)
     {
-        if (!IsQuestMutationPost(context.Request))
+        var limits = GetMutationLimits(context.Request);
+        if (limits is null)
         {
             await next(context);
             return;
@@ -24,7 +35,8 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
             return;
         }
 
-        if (context.Request.ContentLength is > MaxRequestBodyBytes)
+        if (context.Request.ContentLength is > 0
+            && context.Request.ContentLength > limits.Value.MaxRequestBodyBytes)
         {
             context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
             return;
@@ -43,31 +55,74 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
             return;
         }
 
-        requestBodySize.MaxRequestBodySize = MaxRequestBodyBytes;
+        requestBodySize.MaxRequestBodySize = limits.Value.MaxRequestBodyBytes;
         context.Features.Set<IFormFeature>(
             new FormFeature(
                 context.Request,
                 new FormOptions
                 {
-                    BufferBodyLengthLimit = MaxRequestBodyBytes,
-                    KeyLengthLimit = MaxFormKeyChars,
+                    BufferBodyLengthLimit = limits.Value.MaxRequestBodyBytes,
+                    KeyLengthLimit = MaxFormKeyBytes,
                     ValueCountLimit = MaxFormEntries,
-                    ValueLengthLimit = MaxFormValueChars,
+                    ValueLengthLimit = limits.Value.MaxFormValueBytes,
                 }));
 
         await next(context);
     }
 
-    private static bool IsQuestMutationPost(HttpRequest request)
+    private static MutationLimits? GetMutationLimits(HttpRequest request)
     {
         if (!HttpMethods.IsPost(request.Method))
+        {
+            return null;
+        }
+
+        var path = request.Path.Value ?? string.Empty;
+        if (EqualsRoutePath(path, "/quests/start")
+            || HasSingleSegmentAfter(path, "/quests/start/confirm/"))
+        {
+            return new(CompactMaxRequestBodyBytes, CompactMaxFormValueBytes);
+        }
+
+        if (HasSingleSegmentAfter(path, "/quests/finish/confirm/"))
+        {
+            return new(CompactMaxRequestBodyBytes, CompactMaxFormValueBytes);
+        }
+
+        if (HasSingleSegmentAfter(path, "/quests/finish/"))
+        {
+            return new(FinishPrepareMaxRequestBodyBytes, FinishPrepareMaxFormValueBytes);
+        }
+
+        return null;
+    }
+
+    private static bool EqualsRoutePath(string path, string route)
+    {
+        if (string.Equals(path, route, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return path.Length == route.Length + 1
+            && path[^1] == '/'
+            && path.AsSpan(0, path.Length - 1).Equals(route.AsSpan(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasSingleSegmentAfter(string path, string prefix)
+    {
+        if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        var path = request.Path.Value ?? string.Empty;
-        return string.Equals(path, "/quests/start", StringComparison.Ordinal)
-            || path.StartsWith("/quests/start/confirm/", StringComparison.Ordinal);
+        var remainder = path[prefix.Length..];
+        if (remainder.Length > 0 && remainder[^1] == '/')
+        {
+            remainder = remainder[..^1];
+        }
+
+        return remainder.Length > 0 && !remainder.Contains('/', StringComparison.Ordinal);
     }
 
     private static bool IsUrlEncodedForm(HttpRequest request)
@@ -132,4 +187,6 @@ internal sealed class MutationRequestBoundaryMiddleware(RequestDelegate next)
             && string.IsNullOrEmpty(origin.Query)
             && string.IsNullOrEmpty(origin.Fragment);
     }
+
+    private readonly record struct MutationLimits(long MaxRequestBodyBytes, int MaxFormValueBytes);
 }

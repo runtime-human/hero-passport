@@ -1,7 +1,7 @@
 # Hero Passport — Roadmap
 
-**Current design:** v3.2.1 core + 0.2-A/B/C local Web foundation/security/Start mutation  
-**Snapshot:** 2026-09-13
+**Current design:** v3.2.1 core + 0.2-A/B/C/D local Web foundation/security/Start/Finish mutations  
+**Snapshot:** 2026-09-15
 
 Roadmap is scope guidance, not permission to pre-build future abstractions.
 
@@ -119,12 +119,31 @@ existing HeroPassportApplication.StartQuestAsync remains mutation authority
 real-process security/idempotency/privacy qualification
 ```
 
-0.2-C adds Start Quest only. It does not add Finish Quest, result/summary/skills editing, Quest history, Hero/settings management, Identity/OAuth/accounts, public/LAN/local-HTTPS/reverse-proxy hosting, WebAssembly/Interactive Server, Streamable HTTP MCP or a general REST product surface.
+0.2-D extends the same proven pattern to Finish Quest without generalizing Start into a mutation framework:
+
+```text
+authenticated static-SSR Finish route for one explicit current-Project open Quest
+dedicated result/summary/attestation/Skills form DTO
+pure PrepareFinishQuest shares validation/normalization with FinishQuestAsync
+one FinishRequestId generated at prepare and retained through confirm/unknown-outcome retry
+dedicated process-local Finish confirmation state (8 entries / 10-minute TTL)
+opaque >=128-bit confirmation handle; no Finish payload in redirect/query/hidden fields
+existing HeroPassportApplication.FinishQuestAsync remains the only reward/progression mutation authority
+first success, receipt replay and equivalent AlreadyFinalized converge to success
+HP135/HP136/stale-target conflicts remain bounded and never mint a replacement request ID
+Finish prepare body ceiling = 128 KiB; encoded individual value ceiling = 112 KiB
+Finish confirm remains compact at 8 KiB / 2 KiB-value bounded
+Start remains exactly 8 KiB / 2 KiB-value bounded
+real Kestrel/SQLite qualification includes a maximum-valid 2000-scalar summary submitted in canonically decomposed NFD form and rendered back after NFC normalization
+```
+
+The larger Finish-prepare transport bounds do not widen the product text contract. Application remains authoritative at SafeTextV1 `summary` = 1..2000 Unicode scalars after NFC/whitespace normalization. The Web prepare boundary admits the bounded canonical-decomposition envelope before normalization: up to 12,000 raw UTF-16 code units in the textarea, 112 KiB for one encoded value and 128 KiB for the complete URL-encoded request. The payload-free Finish confirmation route stays at the stricter 8 KiB / 2 KiB boundary.
+
+0.2-C/D add only Start and Finish Quest browser mutations. They do not add Quest history browsing, Hero/settings management, Identity/OAuth/accounts, public/LAN/local-HTTPS/reverse-proxy hosting, WebAssembly/Interactive Server, Streamable HTTP MCP or a general REST product surface.
 
 Remaining 0.2 slices add, behind their own focused gates:
 
 ```text
-Finish Quest Web flow with bounded result/attestation input
 bounded project/Quest history
 Skill progression
 Rank/Traits/Titles detail
@@ -134,7 +153,7 @@ launch/package integration beyond the minimal browser launcher
 published browser/concurrency/release qualification
 ```
 
-Web never becomes a second game engine or direct DbContext UI. Future Web mutation slices must depend on the 0.2-B local browser authorization/CSRF boundary and the proven 0.2-C confirmation pattern instead of reimplementing or weakening either.
+Web never becomes a second game engine or direct DbContext UI. Future Web mutation slices must depend on the 0.2-B local browser authorization/CSRF boundary and the proven 0.2-C/D confirmation pattern instead of reimplementing or weakening either.
 
 ## Future candidates — trigger-based only
 

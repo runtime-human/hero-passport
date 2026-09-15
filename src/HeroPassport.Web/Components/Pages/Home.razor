@@ -52,7 +52,10 @@ else
                     <ul>
                         @foreach (var quest in _model.OpenQuests)
                         {
-                            <li><strong>@quest.Title</strong> · @quest.QuestType</li>
+                            <li>
+                                <strong>@quest.Title</strong> · @quest.QuestType ·
+                                <a href="@($"/quests/finish/{quest.QuestId}")">Finish Quest</a>
+                            </li>
                         }
                     </ul>
                 }
