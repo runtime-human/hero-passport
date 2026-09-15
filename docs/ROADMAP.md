@@ -1,7 +1,7 @@
 # Hero Passport — Roadmap
 
 **Current design:** v3.2.1 core + 0.2-A/B/C/D local Web foundation/security/Start/Finish mutations  
-**Snapshot:** 2026-09-14
+**Snapshot:** 2026-09-15
 
 Roadmap is scope guidance, not permission to pre-build future abstractions.
 
@@ -131,12 +131,13 @@ opaque >=128-bit confirmation handle; no Finish payload in redirect/query/hidden
 existing HeroPassportApplication.FinishQuestAsync remains the only reward/progression mutation authority
 first success, receipt replay and equivalent AlreadyFinalized converge to success
 HP135/HP136/stale-target conflicts remain bounded and never mint a replacement request ID
-Finish POST body ceiling = 32 KiB; encoded individual value ceiling = 24 KiB
+Finish prepare body ceiling = 128 KiB; encoded individual value ceiling = 112 KiB
+Finish confirm remains compact at 8 KiB / 2 KiB-value bounded
 Start remains exactly 8 KiB / 2 KiB-value bounded
-real Kestrel/SQLite qualification includes maximum-valid 2000-scalar supplementary-Unicode summary
+real Kestrel/SQLite qualification includes a maximum-valid 2000-scalar summary submitted in canonically decomposed NFD form and rendered back after NFC normalization
 ```
 
-The 24 KiB Finish value ceiling is a transport bound, not a wider product text contract. The Application contract remains SafeTextV1 `summary` = 1..2000 Unicode scalars. A maximum supplementary scalar can occupy four UTF-8 bytes and twelve bytes after form percent-encoding; the separate 32 KiB request ceiling still bounds total work.
+The larger Finish-prepare transport bounds do not widen the product text contract. Application remains authoritative at SafeTextV1 `summary` = 1..2000 Unicode scalars after NFC/whitespace normalization. The Web prepare boundary admits the bounded canonical-decomposition envelope before normalization: up to 12,000 raw UTF-16 code units in the textarea, 112 KiB for one encoded value and 128 KiB for the complete URL-encoded request. The payload-free Finish confirmation route stays at the stricter 8 KiB / 2 KiB boundary.
 
 0.2-C/D add only Start and Finish Quest browser mutations. They do not add Quest history browsing, Hero/settings management, Identity/OAuth/accounts, public/LAN/local-HTTPS/reverse-proxy hosting, WebAssembly/Interactive Server, Streamable HTTP MCP or a general REST product surface.
 
