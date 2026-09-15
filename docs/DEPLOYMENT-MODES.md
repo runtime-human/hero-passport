@@ -1,7 +1,7 @@
 # Hero Passport — Deployment Modes
 
 **Status:** Accepted v3.2.1 core + implemented 0.2-A/B/C/D Web boundary  
-**Snapshot:** 2026-09-14
+**Snapshot:** 2026-09-15
 
 ## 1. 0.1 primary profile — local project-bound stdio
 
@@ -157,21 +157,26 @@ Both confirmation steps are human UX safety gates, not authentication. Active-He
 Start and Finish mutation POSTs are limited before form/Application processing and accept only `application/x-www-form-urlencoded`:
 
 ```text
-Start:
+Start prepare + confirm:
   body ceiling = 8192 bytes
   encoded individual value ceiling = 2048 bytes
 
-Finish:
-  body ceiling = 32768 bytes
-  encoded individual value ceiling = 24 KiB
+Finish prepare:
+  body ceiling = 131072 bytes (128 KiB)
+  encoded individual value ceiling = 112 KiB
+  textarea raw UTF-16 ceiling = 12000 code units
 
-Both:
+Finish confirm:
+  body ceiling = 8192 bytes
+  encoded individual value ceiling = 2048 bytes
+
+All mutation forms:
   form entry count = 16
   form key ceiling = 128 bytes
   dedicated static-SSR form models and unique form names
 ```
 
-The larger Finish value limit is transport-only. The semantic summary contract remains SafeTextV1 `1..2000` Unicode scalars. A four-byte supplementary scalar can become twelve ASCII bytes after URL percent-encoding, so a maximum-valid summary can approach 24 KiB in the raw form value. The independent 32 KiB whole-request limit still bounds the route. Bootstrap keeps its separate stricter 1024-byte boundary.
+The larger Finish-prepare limits are transport-only and exist so Application-valid text is not rejected before SafeText normalization. The semantic summary contract remains SafeTextV1 `1..2000` Unicode scalars after NFC/whitespace normalization. Canonically decomposed input can contain up to three raw code points for one composed Hangul syllable; URL percent-encoding expands UTF-8 further. The qualified 128 KiB / 112 KiB prepare envelope admits that bounded canonical-decomposition case while the payload-free Finish confirmation route remains at the stricter 8 KiB / 2 KiB boundary. Bootstrap keeps its separate 1024-byte boundary.
 
 Finish idempotency/conflict behavior is inherited rather than reimplemented: success, same-request replay and equivalent `AlreadyFinalized` converge; `HP135`/`HP136` remain bounded terminal conflicts; an unknown response outcome releases the same pending entry so retry preserves its `FinishRequestId`.
 
