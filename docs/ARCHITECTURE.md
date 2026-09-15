@@ -1,7 +1,7 @@
 # Hero Passport — Architecture
 
 **Status:** Accepted v3.2.1 core + implemented 0.2-A/B/C/D Web adapter/security/Start/Finish mutations  
-**Snapshot:** 2026-09-14  
+**Snapshot:** 2026-09-15  
 **Target:** 0.1 local stdio MCP + Agent Skill + CLI, plus secured local 0.2 Web with a read dashboard and explicitly confirmed Start/Finish Quest mutations
 
 Normative core design: `superpowers/specs/2026-08-11-hero-passport-v3.2.1-design.md`.
@@ -350,7 +350,7 @@ unsupported Host = 400
 restart = prior cookie invalid
 ```
 
-0.2-C/D keep that boundary authoritative for mutations. All Start/Finish mutation POSTs accept only `application/x-www-form-urlencoded`, require the current process session plus same-origin/antiforgery validation and use dedicated static-SSR DTOs/form names. Start keeps an 8192-byte whole-body limit and 2048-byte encoded-value limit. Finish uses a separate 32768-byte body limit and 24 KiB encoded-value limit so the existing 2000-Unicode-scalar summary contract remains reachable even for four-byte supplementary scalars after percent encoding. Both use a 16-entry form-count limit and 128-byte key limit. Bootstrap remains separately bounded to 1024 bytes.
+0.2-C/D keep that boundary authoritative for mutations. All Start/Finish mutation POSTs accept only `application/x-www-form-urlencoded`, require the current process session plus same-origin/antiforgery validation and use dedicated static-SSR DTOs/form names. Start prepare/confirm and Finish confirm use an 8192-byte whole-body limit and 2048-byte encoded-value limit. Finish prepare alone uses a 131072-byte (128 KiB) body limit, 112 KiB encoded-value limit and 12000-code-unit textarea ceiling so Application-valid canonically decomposed text can reach SafeTextV1 normalization before the authoritative 2000-scalar semantic check. All mutation routes retain the 16-entry form-count and 128-byte key limits. Bootstrap remains separately bounded to 1024 bytes.
 
 Malformed confirmation handles return 400; unknown/expired handles return 410 and never mutate. Finish route selectors use 400 for malformed/non-canonical UUIDv7 and 404 for canonical IDs not present among the current Project's open Quests. Confirmation handles themselves are not authorization.
 
