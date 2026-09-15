@@ -1,7 +1,7 @@
 # Hero Passport — Security and Privacy
 
 **Status:** Accepted v3.2.1 core + implemented 0.2-B/C/D local Web boundary  
-**Snapshot:** 2026-09-14
+**Snapshot:** 2026-09-15
 
 ## 1. Security posture
 
@@ -202,17 +202,22 @@ Bootstrap/session secrets are never persisted and must not appear in ordinary pr
 Mutation request hardening:
 
 ```text
-Start routes:
+Start prepare + confirm:
   POST /quests/start
   POST /quests/start/confirm/*
   body ceiling = 8192 bytes
   individual encoded form value ceiling = 2048 bytes
 
-Finish routes:
+Finish prepare:
   POST /quests/finish/*
+  body ceiling = 131072 bytes (128 KiB)
+  individual encoded form value ceiling = 112 KiB
+  textarea raw UTF-16 ceiling = 12000 code units
+
+Finish confirm:
   POST /quests/finish/confirm/*
-  body ceiling = 32768 bytes
-  individual encoded form value ceiling = 24 KiB
+  body ceiling = 8192 bytes
+  individual encoded form value ceiling = 2048 bytes
 
 all product mutation forms:
   Content-Type = application/x-www-form-urlencoded only
@@ -226,7 +231,7 @@ bootstrap claim:
   separate 1024-byte boundary
 ```
 
-The Finish value ceiling is deliberately higher than the decoded SafeText semantic limit because form-urlencoding percent-encodes UTF-8 bytes. A valid 2000-scalar summary made only of supplementary Unicode code points can occupy about 24,000 raw encoded bytes. The independent 32 KiB whole-request ceiling still bounds total work and Start remains unchanged.
+The larger Finish-prepare envelope is deliberately a raw transport allowance, not a wider semantic contract. `SafeTextV1` first validates UTF-16, normalizes to NFC/whitespace and then enforces the existing `1..2000` Unicode-scalar summary bound. Canonically decomposed input can therefore be substantially larger before normalization. The qualified boundary admits the bounded canonical-decomposition case while keeping the payload-free Finish confirmation route and the entire Start flow at the stricter 8 KiB / 2 KiB limits.
 
 Quest title/goal/summary, selected Skills and attestations may be rendered in their intended authenticated prepare/confirmation UX, but are excluded from redirect/query URLs and ordinary diagnostics. Web does not bind Domain/Application records directly from form input and does not expose a general REST/minimal-API product surface. `POST /__hero/bootstrap/claim` remains the only Minimal API-style endpoint.
 
@@ -285,9 +290,10 @@ Production rejects Testing-only secret/no-browser bypasses
 Start prepare creates no Quest
 Start multipart -> 415 and >8 KiB -> 413 before mutation
 Finish prepare creates no report/XP/finalization
-Finish multipart -> 415 and >32 KiB -> 413 before mutation
+Finish prepare multipart -> 415 and >128 KiB -> 413 before mutation
+Finish confirm stays bounded at 8 KiB / 2 KiB-value limits
 Finish form-entry flood exceeds the 16-entry parser budget and fails before Application work
-maximum-valid 2000-scalar supplementary-Unicode Finish summary fits the bounded transport
+maximum-valid 2000-scalar Finish summary submitted as canonically decomposed NFD text exceeds the former 32 KiB envelope, passes the bounded prepare transport, and is rendered NFC-normalized in confirmation
 missing-antiforgery/cross-site Finish POSTs -> 400/no mutation
 explicit Start confirm creates one Quest through Application
 explicit Finish confirm finalizes one Quest/progression through Application
