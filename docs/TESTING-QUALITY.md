@@ -1,7 +1,7 @@
 # Hero Passport — Testing and Quality Strategy
 
 **Status:** Accepted v3.2.1 core + 0.2-A/B/C/D Web qualification  
-**Snapshot:** 2026-09-14
+**Snapshot:** 2026-09-15
 
 ## 1. Principle
 
@@ -365,18 +365,22 @@ wrong bootstrap guess does not consume legitimate capability
 successful capability replay fails
 prior-process session cookie fails after restart
 Testing-only deterministic secret/no-browser seams fail outside Testing
-Start/confirm POSTs reject multipart and >8 KiB bodies before product processing
-Finish/confirm POSTs reject multipart and >32 KiB bodies before mutation
+Start prepare/confirm POSTs reject multipart and >8 KiB bodies before product processing
+Finish prepare POST rejects multipart and >128 KiB bodies before mutation
+Finish confirm remains capped at 8 KiB body / 2 KiB encoded values
 Start individual encoded form values remain capped at 2 KiB
-Finish individual encoded form values remain capped at 24 KiB
+Finish prepare individual encoded form values remain capped at 112 KiB
+Finish prepare textarea raw UTF-16 input remains capped at 12000 code units
 form-entry count remains capped at 16 and excess entries fail form parsing before Application work
 missing-antiforgery Start/Finish POSTs fail without durable mutation
 cross-site Start/Finish POSTs fail before mutation
+case/trailing-slash route variants keep the same mutation boundary as endpoint routing
+static-SSR prepare/confirm FormName handlers remain registered across stale/Gone/Busy POST states
 confirmation pages omit internal HeroId/fingerprint/requestId/session/bootstrap material
 Quest title/goal/summary and Finish attestations do not enter redirect URLs or ordinary process diagnostics
 ```
 
-The 24 KiB Finish value limit is explicitly a raw `application/x-www-form-urlencoded` transport ceiling. The semantic summary remains SafeTextV1 1..2000 Unicode scalars; 2000 four-byte supplementary scalars can occupy about 24,000 ASCII bytes after percent encoding. The separate 32 KiB body limit remains the outer route bound.
+The wider Finish-prepare envelope is explicitly a raw `application/x-www-form-urlencoded` transport allowance, not a wider semantic text contract. `SafeTextV1` normalizes to NFC/whitespace before enforcing the existing `1..2000` Unicode-scalar summary limit. A maximum-valid normalized summary can arrive in canonically decomposed form substantially larger than its normalized representation; the qualified 112 KiB per-value / 128 KiB whole-request envelope admits that bounded case. Start and payload-free Finish confirmation remain at the stricter 8 KiB / 2 KiB limits.
 
 ## 20. 0.2-A/B/C/D Web qualification
 
@@ -452,10 +456,13 @@ unknown post-commit response failure releases the same prepared FinishRequestId 
 equivalent AlreadyFinalized converges to success
 HP135 and HP136 are terminal conflicts and remove pending state
 active-Hero changes cannot redirect persisted Quest progression
-maximum-valid 2000 supplementary-Unicode-scalar summary + three Skills passes the actual URL-encoded parser within 32 KiB
+maximum-valid 2000-scalar summary submitted as canonically decomposed NFD Hangul (~6000 raw Jamo and above the former 32 KiB request envelope) passes the real URL-encoded Kestrel/form/Application path and is rendered NFC-normalized in confirmation
 17th form entry fails the configured form parser budget
-multipart -> 415 and >32 KiB -> 413 before mutation
+Finish prepare multipart -> 415 and >128 KiB -> 413 before mutation
+Finish confirm remains independently bounded at 8 KiB / 2 KiB-value limits
 missing antiforgery/cross-site POST -> 400 without mutation
+route-equivalent case/trailing-slash variants do not bypass mutation request hardening
+stale prepare and Gone/Busy confirmation POSTs still resolve their named static-SSR forms instead of falling into framework form-not-found handling
 redirect targets contain only the opaque handle; confirmation omits internal IDs/fingerprint/requestId/full path
 GET / after Finish no longer presents the Quest as open and uses existing card/progression reads
 Start remains GREEN with its unchanged 8 KiB / 2 KiB-value boundary
@@ -463,7 +470,7 @@ Start remains GREEN with its unchanged 8 KiB / 2 KiB-value boundary
 
 Architecture tests prove Web Components/Services do not own EF/SQLite access. They permit exactly one Minimal API-style POST location, `Security/BootstrapEndpoint.cs`, with exact route `/__hero/bootstrap/claim`, while rejecting general `MapGet/MapPut/MapDelete/MapPatch/MapGroup`, Identity/OAuth/authentication provider wiring, permissive CORS, forwarded-header deployment and interactive Blazor modes. Start/Finish prepare and confirmation pages are guarded to retain dedicated unique static-SSR form names and avoid hidden product payloads.
 
-The security process tests intentionally use exact `ASPNETCORE_ENVIRONMENT=Testing` with deterministic secrets and `--no-open-browser`; both seams are rejected outside Testing. `UseStaticWebAssets()` is enabled only for that exact Testing profile so local build-output CSS can be qualified without enabling source-backed static assets in Production. Published Production Web artifact/static-asset and broader launch/package qualification remain separate later 0.2 release work.
+The security process tests intentionally use exact `ASPNETCORE_ENVIRONMENT=Testing` with deterministic secrets and `--no-open-browser`; both seams are rejected outside Testing. `UseStaticWebAssets()` is enabled only for that exact Testing profile so local build-output CSS can be qualified without enabling source-backed static Web assets in Production. Published Production Web artifact/static-asset and broader launch/package qualification remain separate later 0.2 release work.
 
 ## 21. Packaging/E2E risk-first checkpoint
 
