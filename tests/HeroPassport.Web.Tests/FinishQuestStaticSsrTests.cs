@@ -16,8 +16,9 @@ public sealed class FinishQuestStaticSsrTests
         Assert.Equal(1, Count(source, "FormName=\"FinishQuestPrepare\""));
         Assert.Equal(1, Count(source, "SupplyParameterFromForm(FormName = \"FinishQuestPrepare\")"));
         Assert.Contains("FinishQuestForm", source, StringComparison.Ordinal);
-        Assert.Contains("<InputTextArea @bind-Value=\"Input!.Summary\" maxlength=\"4000\" />", source, StringComparison.Ordinal);
+        Assert.Contains("<InputTextArea @bind-Value=\"Input!.Summary\" maxlength=\"12000\" />", source, StringComparison.Ordinal);
         Assert.DoesNotContain("maxlength=\"2000\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("maxlength=\"4000\"", source, StringComparison.Ordinal);
         Assert.DoesNotContain("FinishRequestId", source, StringComparison.Ordinal);
         Assert.DoesNotContain("HeroId", source, StringComparison.Ordinal);
         Assert.DoesNotContain("WorkspaceFingerprint", source, StringComparison.Ordinal);
