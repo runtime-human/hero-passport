@@ -1,6 +1,6 @@
 # Hero Passport 0.2-D — Web Finish Quest + bounded attestations + explicit confirmation
 
-**Status:** implemented; exact-head qualification in progress  
+**Status:** implemented; completion is governed by section 22  
 **Issue:** #42  
 **Baseline:** `main@9829facd653dc6fbcbd872a144eafdcb413c00b8`  
 **Branch:** `feat/0.2-d-web-finish-quest`
@@ -201,7 +201,9 @@ FormName = FinishQuestConfirm
 
 The confirm form contains no hidden Finish product payload. Only the opaque route handle plus framework form/antiforgery metadata identifies server-side prepared state.
 
-There must be exactly one `EditForm` with `FinishQuestConfirm` in the component. Pending/committed presentation is conditional content inside that one form.
+There must be exactly one `EditForm` with `FinishQuestConfirm` in the component. The named form remains registered across ready/committed/busy/gone states so static-SSR POST routing can resolve stale or concurrent submissions; only actionable controls are conditional.
+
+The prepare page follows the same static-SSR rule: `FinishQuestPrepare` remains registered while its loading/unavailable/ready contents vary, so a Quest becoming stale between GET and POST reaches the bounded Web handler instead of framework form-not-found handling.
 
 ## 8. Finish Web orchestration service
 
@@ -377,9 +379,11 @@ body ceiling configured through IHttpMaxRequestBodySizeFeature
 before request body read
 ```
 
-However, the body/value ceilings are path-specific because the existing Finish semantic contract allows a 2000-Unicode-scalar summary.
+Mutation-path matching follows ASP.NET Core endpoint equivalence for the supported paths: case-insensitive comparison and one optional trailing slash, while parameterized routes still require exactly one route-value segment. This prevents route spelling variants from bypassing the request boundary.
 
-### Existing Start routes — unchanged
+The body/value ceilings are path-specific because Finish prepare carries the existing 2000-Unicode-scalar summary while confirmation carries no product payload.
+
+### Existing Start prepare + confirm — unchanged
 
 ```text
 MaxRequestBodySize = 8192
@@ -389,21 +393,32 @@ ValueCountLimit = 16
 ValueLengthLimit = 2048
 ```
 
-### New Finish routes
+### Finish prepare
 
 ```text
-MaxRequestBodySize = 32768
-BufferBodyLengthLimit = 32768
+MaxRequestBodySize = 131072        # 128 KiB
+BufferBodyLengthLimit = 131072
 KeyLengthLimit = 128
 ValueCountLimit = 16
-ValueLengthLimit = 24576  # 24 KiB encoded individual value
+ValueLengthLimit = 114688           # 112 KiB encoded individual value
+HTML textarea maxlength = 12000    # raw UTF-16 code units, ergonomic only
 ```
 
-The `ValueLengthLimit` is intentionally a raw form-transport ceiling, not the semantic text length. `application/x-www-form-urlencoded` percent-encodes the UTF-8 representation before ASP.NET Core's URL-encoded form parser yields the decoded string. A valid 2000-scalar summary made from supplementary Unicode code points uses four UTF-8 bytes per scalar and twelve ASCII bytes per scalar after percent encoding (`%XX` per byte), so that one encoded value can approach 24,000 bytes. The Application contract remains SafeTextV1 `1..2000` Unicode scalars and does not widen.
+### Finish confirm
 
-The original draft value `4096` was therefore incompatible with the draft's own maximum-Unicode acceptance requirement. Real-process RED evidence reproduced the failure at 4096 and again at 8192; 24 KiB is the narrow bounded value ceiling that admits the semantic maximum. The independent 32 KiB whole-request ceiling still bounds all form fields and antiforgery/form metadata together.
+```text
+MaxRequestBodySize = 8192
+BufferBodyLengthLimit = 8192
+KeyLengthLimit = 128
+ValueCountLimit = 16
+ValueLengthLimit = 2048
+```
 
-The 32 KiB Finish ceiling applies only to the exact Finish mutation POST paths. Start remains 8 KiB with its 2 KiB encoded-value ceiling. Bootstrap remains its separate 1024-byte boundary.
+These are raw transport ceilings, not semantic text limits. `SafeTextV1.Normalize(...)` validates UTF-16, normalizes to NFC, collapses whitespace and only then enforces the existing `1..2000` Unicode-scalar summary contract. Therefore a semantically valid 2000-scalar normalized value can be materially larger on the wire before normalization.
+
+The supplementary-code-point case alone can approach 24 KiB after form percent-encoding, but it is not the worst canonical-equivalence case. For example, 2000 Hangul syllables can be submitted in NFD as roughly 6000 Jamo; the URL-encoded payload is above the former 32 KiB boundary and then composes to the same valid 2000-scalar NFC value. The qualified 12000-code-unit / 112 KiB-value / 128 KiB-request envelope admits the bounded canonical-decomposition case with headroom for antiforgery and the remaining bounded fields without widening Application semantics.
+
+The larger envelope applies only to exact Finish prepare POST paths. Finish confirm deliberately returns to the compact 8 KiB / 2 KiB profile because it posts only framework metadata and the opaque route handle. Start remains unchanged at 8 KiB / 2 KiB. Bootstrap remains its separate 1024-byte boundary.
 
 Known `Content-Length` above the route ceiling returns `413`. The Kestrel feature is set before body reads.
 
@@ -416,7 +431,7 @@ MaxFormMappingErrorCount = 16
 MaxFormMappingKeySize = 128
 ```
 
-The raw form parser also retains `ValueCountLimit = 16`. Qualification includes an actual `ReadFormAsync` check proving the maximum encoded Unicode value succeeds and a 17-entry form fails the parser budget before Application work.
+The raw form parser also retains `ValueCountLimit = 16`. Qualification includes actual `ReadFormAsync` coverage for the decomposed maximum-valid value, an outer-limit rejection, a compact-confirm regression and a 17-entry form failure before Application work.
 
 ## 15. ASP.NET Core 10 requirements
 
@@ -520,7 +535,7 @@ existing WebProcess/LocalWebSecurity/Start regression suites
 tests/HeroPassport.Architecture.Tests/ProjectDependencyTests.cs
 ```
 
-Canonical docs are updated after behavior and transport contracts are established; final acceptance still requires exact-head qualification.
+Canonical docs reflect the established behavior and transport contracts; final completion still requires the exact-head gate below.
 
 ## 20. TDD and acceptance evidence
 
@@ -534,8 +549,8 @@ Required exact-head evidence:
 4. Application prepare/commit share one validation/normalization core and prepared Skills are defensively copied;
 5. confirmation shows the exact normalized safe payload that will commit;
 6. invalid result/summary/metrics/Skills don't create a durable Finish mutation;
-7. canonical maximum-valid 2000-scalar Unicode summary with maximum supported attestations/three Skills successfully passes the bounded Finish transport;
-8. a request above 32 KiB, multipart input and excess form entries fail boundedly before mutation/Application work;
+7. maximum-valid 2000-scalar summary submitted in canonically decomposed form successfully passes the bounded Finish-prepare transport and confirmation renders the NFC-normalized value;
+8. a Finish-prepare request above 128 KiB, multipart input and excess form entries fail boundedly before mutation/Application work, while Finish confirm remains at its compact 8 KiB / 2 KiB-value limits;
 9. missing/invalid antiforgery and cross-site POST fail before mutation;
 10. malformed QuestId -> 400 and valid unavailable QuestId -> 404 without mutation;
 11. explicit confirm finalizes exactly one Quest and commits report/XP/projections once;
@@ -544,12 +559,14 @@ Required exact-head evidence:
 14. unknown-outcome retry uses the same `FinishRequestId` and converges through receipt semantics;
 15. equivalent already-finalized Finish converges through `AlreadyFinalized`;
 16. different already-finalized payload preserves `HP136` with no durable change;
-17. wrong/stale target and malformed/unknown/expired/evicted confirmation state fail closed;
+17. wrong/stale target and malformed/unknown/expired/evicted confirmation state fail closed, with static-SSR named forms still registered so stale/concurrent POSTs reach bounded handlers;
 18. summary/attestation/Quest metadata is absent from ordinary diagnostics, generic errors and redirect targets outside intended authenticated content;
 19. dashboard no longer presents the finalized Quest as open and reflects existing card/progression reads;
-20. Start Web flow stays GREEN with its unchanged 8 KiB boundary;
+20. Start Web flow stays GREEN with its unchanged 8 KiB / 2 KiB-value boundary, and case/trailing-slash endpoint variants cannot bypass mutation hardening;
 21. CLI/MCP/Application contracts and packaged behavior remain unchanged;
 22. full CI, real-process Web acceptance and cross-platform packaged qualification are GREEN on exact PR head.
+
+Review-driven TDD evidence additionally covers route-equivalent case/trailing-slash matching, supplementary Unicode browser length, canonical-decomposition transport size, stale prepare form dispatch and Gone/Busy confirmation form dispatch. These regressions are retained as executable tests rather than review-only assumptions.
 
 ## 21. Explicit non-goals
 
