@@ -13,13 +13,34 @@ public sealed class StartQuestStaticSsrTests
 
         var source = File.ReadAllText(path);
         Assert.Contains("@page \"/quests/start\"", source, StringComparison.Ordinal);
-        Assert.Contains("FormName=\"StartQuestPrepare\"", source, StringComparison.Ordinal);
-        Assert.Contains("SupplyParameterFromForm(FormName = \"StartQuestPrepare\")", source, StringComparison.Ordinal);
+        Assert.Equal(1, Count(source, "FormName=\"StartQuestPrepare\""));
+        Assert.Equal(1, Count(source, "SupplyParameterFromForm(FormName = \"StartQuestPrepare\")"));
         Assert.Contains("StartQuestForm", source, StringComparison.Ordinal);
         Assert.DoesNotContain("type=\"hidden\" name=\"Title\"", source, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("type=\"hidden\" name=\"Goal\"", source, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("HeroId", source, StringComparison.Ordinal);
         Assert.DoesNotContain("StartRequestId", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StartQuestPrepareFormRemainsRegisteredBeforeUnavailableStateBranch()
+    {
+        var root = FindRepositoryRoot();
+        var path = Path.Combine(root, "src", "HeroPassport.Web", "Components", "Pages", "StartQuest.razor");
+        var source = File.ReadAllText(path);
+
+        var formIndex = source.IndexOf(
+            "<EditForm Model=\"Input\" FormName=\"StartQuestPrepare\"",
+            StringComparison.Ordinal);
+        var unavailableBranchIndex = source.IndexOf(
+            "else if (!_page.Available)",
+            StringComparison.Ordinal);
+
+        Assert.True(formIndex >= 0, "StartQuestPrepare form must remain registered for static-SSR POST routing.");
+        Assert.True(unavailableBranchIndex >= 0, "Expected bounded unavailable-state branch.");
+        Assert.True(
+            formIndex < unavailableBranchIndex,
+            "StartQuestPrepare must be registered before the unavailable-state branch so a stale POST can still dispatch to PrepareAsync.");
     }
 
     [Fact]
@@ -60,6 +81,19 @@ public sealed class StartQuestStaticSsrTests
         Assert.Contains("Start Quest", home, StringComparison.Ordinal);
         Assert.Contains("/quests/finish/{quest.QuestId}", home, StringComparison.Ordinal);
         Assert.Contains("Finish Quest", home, StringComparison.Ordinal);
+    }
+
+    private static int Count(string source, string value)
+    {
+        var count = 0;
+        var offset = 0;
+        while ((offset = source.IndexOf(value, offset, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            offset += value.Length;
+        }
+
+        return count;
     }
 
     private static string FindRepositoryRoot()
