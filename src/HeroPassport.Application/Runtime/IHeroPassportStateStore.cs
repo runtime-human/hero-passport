@@ -18,6 +18,15 @@ public interface IHeroPassportStateStore
         ProjectBindingContext project,
         CancellationToken cancellationToken = default);
 
+    Task<ProjectQuestHistoryResult> GetProjectQuestHistoryAsync(
+        ProjectBindingContext project,
+        CancellationToken cancellationToken = default);
+
+    Task<QuestHistoryDetailResult?> GetQuestHistoryDetailAsync(
+        QuestId questId,
+        ProjectBindingContext project,
+        CancellationToken cancellationToken = default);
+
     Task<CreateHeroResult> CreateHeroAsync(
         CreateHeroStoreCommand command,
         DateTimeOffset now,
