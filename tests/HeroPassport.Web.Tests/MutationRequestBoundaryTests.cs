@@ -42,6 +42,151 @@ public sealed class MutationRequestBoundaryTests
     }
 
     [Fact]
+    public async Task FinishPreparePostUsesCanonicalDecompositionBudget()
+    {
+        var nextCalled = false;
+        var middleware = new MutationRequestBoundaryMiddleware(_ =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        });
+        var context = Context(
+            "POST",
+            $"/quests/finish/{Guid.CreateVersion7():D}",
+            "application/x-www-form-urlencoded",
+            54_000);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.True(nextCalled);
+        Assert.Equal(128 * 1024, context.Features.Get<IHttpMaxRequestBodySizeFeature>()!.MaxRequestBodySize);
+    }
+
+    [Fact]
+    public async Task MaximumEncodedUnicodeFinishValuePassesBoundedFormParser()
+    {
+        var summary = string.Concat(Enumerable.Repeat("🚀", 2000));
+        using var content = new FormUrlEncodedContent([new("summary", summary)]);
+        var body = await content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken);
+        Assert.InRange(body.Length, 24_000, 128 * 1024);
+
+        string? parsed = null;
+        var middleware = new MutationRequestBoundaryMiddleware(async context =>
+        {
+            var form = await context.Request.ReadFormAsync(TestContext.Current.CancellationToken);
+            parsed = form["summary"];
+        });
+        var context = Context(
+            "POST",
+            $"/quests/finish/{Guid.CreateVersion7():D}",
+            content.Headers.ContentType!.ToString(),
+            body.Length);
+        context.Request.Body = new MemoryStream(body);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(summary, parsed);
+    }
+
+    [Fact]
+    public async Task CanonicallyDecomposedMaximumFinishValuePassesBoundedFormParser()
+    {
+        var normalizedSummary = string.Concat(Enumerable.Repeat("각", 2000));
+        var decomposedSummary = normalizedSummary.Normalize(System.Text.NormalizationForm.FormD);
+        Assert.Equal(6000, decomposedSummary.Length);
+        Assert.Equal(normalizedSummary, decomposedSummary.Normalize(System.Text.NormalizationForm.FormC));
+
+        using var content = new FormUrlEncodedContent([new("summary", decomposedSummary)]);
+        var body = await content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken);
+        Assert.InRange(body.Length, 54_000, 128 * 1024);
+
+        string? parsed = null;
+        var middleware = new MutationRequestBoundaryMiddleware(async context =>
+        {
+            var form = await context.Request.ReadFormAsync(TestContext.Current.CancellationToken);
+            parsed = form["summary"];
+        });
+        var context = Context(
+            "POST",
+            $"/quests/finish/{Guid.CreateVersion7():D}",
+            content.Headers.ContentType!.ToString(),
+            body.Length);
+        context.Request.Body = new MemoryStream(body);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(decomposedSummary, parsed);
+    }
+
+    [Fact]
+    public async Task FinishFormFloodIsRejectedByConfiguredParser()
+    {
+        var values = Enumerable.Range(0, 17)
+            .Select(index => new KeyValuePair<string, string>($"k{index}", "v"))
+            .ToArray();
+        using var content = new FormUrlEncodedContent(values);
+        var body = await content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken);
+        var nextCalled = false;
+        var middleware = new MutationRequestBoundaryMiddleware(async context =>
+        {
+            nextCalled = true;
+            _ = await context.Request.ReadFormAsync(TestContext.Current.CancellationToken);
+        });
+        var context = Context(
+            "POST",
+            $"/quests/finish/{Guid.CreateVersion7():D}",
+            content.Headers.ContentType!.ToString(),
+            body.Length);
+        context.Request.Body = new MemoryStream(body);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => middleware.InvokeAsync(context));
+
+        Assert.True(nextCalled);
+    }
+
+    [Fact]
+    public async Task OversizedFinishPreparePostIsRejectedBeforeNextDelegate()
+    {
+        var nextCalled = false;
+        var middleware = new MutationRequestBoundaryMiddleware(_ =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        });
+        var context = Context(
+            "POST",
+            $"/quests/finish/{Guid.CreateVersion7():D}",
+            "application/x-www-form-urlencoded",
+            (128 * 1024) + 1);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status413PayloadTooLarge, context.Response.StatusCode);
+        Assert.False(nextCalled);
+    }
+
+    [Fact]
+    public async Task FinishConfirmKeepsCompactRequestBoundary()
+    {
+        var nextCalled = false;
+        var middleware = new MutationRequestBoundaryMiddleware(_ =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        });
+        var context = Context(
+            "POST",
+            "/quests/finish/confirm/abcdefghijklmnopqrstuv",
+            "application/x-www-form-urlencoded",
+            8193);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status413PayloadTooLarge, context.Response.StatusCode);
+        Assert.False(nextCalled);
+    }
+
+    [Fact]
     public async Task CrossSiteAndMissingBrowserProvenanceAreRejectedBeforeNextDelegate()
     {
         var calls = 0;
@@ -63,6 +208,37 @@ public sealed class MutationRequestBoundaryTests
 
         Assert.Equal(StatusCodes.Status400BadRequest, crossSite.Response.StatusCode);
         Assert.Equal(StatusCodes.Status400BadRequest, missing.Response.StatusCode);
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public async Task RouteEquivalentCaseAndTrailingSlashVariantsKeepMutationBoundary()
+    {
+        var calls = 0;
+        var middleware = new MutationRequestBoundaryMiddleware(_ =>
+        {
+            calls++;
+            return Task.CompletedTask;
+        });
+        var paths = new[]
+        {
+            "/QUESTS/START",
+            "/Quests/Start/Confirm/abc/",
+            $"/Quests/Finish/{Guid.CreateVersion7():D}/",
+            "/Quests/Finish/Confirm/abcdefghijklmnopqrstuv/",
+        };
+
+        foreach (var path in paths)
+        {
+            var context = Context("POST", path, "application/x-www-form-urlencoded", 64);
+            context.Request.Headers["Sec-Fetch-Site"] = "cross-site";
+            context.Request.Headers["Origin"] = "https://attacker.example";
+
+            await middleware.InvokeAsync(context);
+
+            Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        }
+
         Assert.Equal(0, calls);
     }
 

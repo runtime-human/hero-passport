@@ -32,6 +32,7 @@ public sealed class HeroPassportDashboardService
 
         var openQuests = context.OpenQuests
             .Select(static quest => new HeroPassportDashboardOpenQuestViewModel(
+                quest.QuestId.ToString(),
                 quest.Title,
                 quest.QuestType))
             .ToArray();
@@ -93,6 +94,7 @@ public sealed record HeroPassportDashboardProjectViewModel(
     long TotalXpEarned);
 
 public sealed record HeroPassportDashboardOpenQuestViewModel(
+    string QuestId,
     string Title,
     string QuestType);
 

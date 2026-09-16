@@ -105,6 +105,15 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
             cancellationToken);
     }
 
+    public static PreparedFinishQuest PrepareFinishQuest(
+        FinishQuestRequest request,
+        ProjectBindingContext project)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        _ = ValidateProject(project);
+        return PrepareFinishQuestCore(request);
+    }
+
     public async Task<FinishQuestResult> FinishQuestAsync(
         FinishQuestRequest request,
         ProjectBindingContext project,
@@ -112,37 +121,34 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
     {
         ArgumentNullException.ThrowIfNull(request);
         var validatedProject = ValidateProject(project);
-        var result = RequireFinishResult(request.Result);
-        var summary = NormalizeRequestText(request.Summary, 1, 2000, "summary");
-        var metrics = ValidateFinishMetrics(request.Metrics);
-        var skillsUsed = ValidateSkills(request.SkillsUsed);
+        var prepared = PrepareFinishQuestCore(request);
         var argsHash = CanonicalMutationEncoder.HashFinishQuest(
-            request.QuestId,
-            result,
-            summary,
-            metrics.TestsMentioned,
-            metrics.ScopeViolations,
-            metrics.UserCorrections,
-            metrics.BuildStatus,
-            metrics.BuildEvidence,
-            metrics.TestsStatus,
-            metrics.TestsEvidence,
-            skillsUsed);
+            prepared.QuestId,
+            prepared.Result,
+            prepared.Summary,
+            prepared.Metrics.TestsMentioned,
+            prepared.Metrics.ScopeViolations,
+            prepared.Metrics.UserCorrections,
+            prepared.Metrics.BuildStatus,
+            prepared.Metrics.BuildEvidence,
+            prepared.Metrics.TestsStatus,
+            prepared.Metrics.TestsEvidence,
+            prepared.SkillsUsed);
 
         var finish = await store.FinishQuestAsync(
             new FinishQuestStoreCommand(
-                request.FinishRequestId,
+                prepared.FinishRequestId,
                 HeroPassportVersions.MutationArgsVersion,
                 argsHash,
-                request.QuestId,
-                result,
-                summary,
-                metrics,
-                skillsUsed,
+                prepared.QuestId,
+                prepared.Result,
+                prepared.Summary,
+                prepared.Metrics,
+                prepared.SkillsUsed,
                 validatedProject),
             timeProvider.GetUtcNow(),
             cancellationToken).ConfigureAwait(false);
-        var questLocale = await store.GetQuestLocaleAsync(request.QuestId, cancellationToken).ConfigureAwait(false);
+        var questLocale = await store.GetQuestLocaleAsync(prepared.QuestId, cancellationToken).ConfigureAwait(false);
         return finish with { QuestLocale = questLocale };
     }
 
@@ -153,6 +159,15 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
             RequireQuestType(request.QuestType),
             NormalizeRequestText(request.Title, 1, 120, "title"),
             NormalizeRequestText(request.Goal, 1, 500, "goal"));
+
+    private static PreparedFinishQuest PrepareFinishQuestCore(FinishQuestRequest request) =>
+        new(
+            request.FinishRequestId,
+            request.QuestId,
+            RequireFinishResult(request.Result),
+            NormalizeRequestText(request.Summary, 1, 2000, "summary"),
+            ValidateFinishMetrics(request.Metrics),
+            ValidateSkills(request.SkillsUsed));
 
     private static ProjectBindingContext ValidateProject(ProjectBindingContext project)
     {
