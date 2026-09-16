@@ -2,6 +2,7 @@ using HeroPassport.Application.Runtime;
 using HeroPassport.Domain.Primitives;
 using HeroPassport.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
+using System.Globalization;
 using Xunit;
 
 namespace HeroPassport.Infrastructure.Tests;
@@ -61,7 +62,7 @@ public sealed class QuestHistoryReadTests
         await using var connection = await HeroPassportDatabase.OpenConnectionAsync(path, token);
         await using var command = connection.CreateCommand();
         command.CommandText = $"SELECT COUNT(*) FROM {table};";
-        return Convert.ToInt64(await command.ExecuteScalarAsync(token));
+        return Convert.ToInt64(await command.ExecuteScalarAsync(token), CultureInfo.InvariantCulture);
     }
 
     private static string CreateDatabasePath()
