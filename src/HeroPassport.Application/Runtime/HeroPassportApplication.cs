@@ -39,6 +39,17 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
     public Task<RuntimeContextResult> GetRuntimeContextAsync(ProjectBindingContext project, CancellationToken cancellationToken = default) =>
         store.GetRuntimeContextAsync(ValidateProject(project), cancellationToken);
 
+    public Task<ProjectQuestHistoryResult> GetProjectQuestHistoryAsync(
+        ProjectBindingContext project,
+        CancellationToken cancellationToken = default) =>
+        store.GetProjectQuestHistoryAsync(ValidateProject(project), cancellationToken);
+
+    public Task<QuestHistoryDetailResult?> GetQuestHistoryDetailAsync(
+        QuestId questId,
+        ProjectBindingContext project,
+        CancellationToken cancellationToken = default) =>
+        store.GetQuestHistoryDetailAsync(questId, ValidateProject(project), cancellationToken);
+
     public Task<CreateHeroResult> CreateHeroAsync(CreateHeroRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
