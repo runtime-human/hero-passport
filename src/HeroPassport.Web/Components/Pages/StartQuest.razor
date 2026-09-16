@@ -10,29 +10,29 @@
         <h1>Start Quest</h1>
     </header>
 
-    @if (_page is null)
-    {
-        <p>Loading Quest context…</p>
-    }
-    else if (!_page.Available)
-    {
-        <section class="panel">
-            <p>@_page.Message</p>
-            <p><a href="/">Back to dashboard</a></p>
-        </section>
-    }
-    else
-    {
-        <section class="panel">
-            <p>Hero: <strong>@_page.HeroName</strong></p>
-            <p>Project: <strong>@_page.ProjectDisplayName</strong></p>
+    <EditForm Model="Input" FormName="StartQuestPrepare" OnValidSubmit="PrepareAsync" method="post">
+        @if (_page is null)
+        {
+            <p>Loading Quest context…</p>
+        }
+        else if (!_page.Available)
+        {
+            <section class="panel">
+                <p>@_page.Message</p>
+                <p><a href="/">Back to dashboard</a></p>
+            </section>
+        }
+        else
+        {
+            <section class="panel">
+                <p>Hero: <strong>@_page.HeroName</strong></p>
+                <p>Project: <strong>@_page.ProjectDisplayName</strong></p>
 
-            @if (!string.IsNullOrEmpty(_message))
-            {
-                <p role="alert">@_message</p>
-            }
+                @if (!string.IsNullOrEmpty(_message))
+                {
+                    <p role="alert">@_message</p>
+                }
 
-            <EditForm Model="Input" FormName="StartQuestPrepare" OnValidSubmit="PrepareAsync" method="post">
                 <label>
                     Quest type
                     <InputSelect @bind-Value="Input!.QuestType">
@@ -61,9 +61,9 @@
                     <button type="submit">Review Quest</button>
                     <a href="/">Cancel</a>
                 </div>
-            </EditForm>
-        </section>
-    }
+            </section>
+        }
+    </EditForm>
 </main>
 
 @code {
