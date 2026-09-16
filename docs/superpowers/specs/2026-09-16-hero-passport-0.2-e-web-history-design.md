@@ -1,6 +1,6 @@
 # Hero Passport 0.2-E — bounded Web Project / Quest history
 
-**Status:** design awaiting approval; no implementation yet  
+**Status:** design ready for user review; no implementation yet  
 **Issue:** #46  
 **Baseline:** `main@d380efeea503af743b94572657726e7b8abdf1de`  
 **Branch:** `feat/0.2-e-web-history`
@@ -101,6 +101,8 @@ Task<ProjectQuestHistoryResult> GetProjectQuestHistoryAsync(
 
 The bound is not caller-controlled: Application/store always returns at most 25 rows.
 
+For an unseen Project that has no persisted row, Application returns an empty `Items` collection and uses the already-validated `ProjectBindingContext.DisplayName` as `ProjectDisplayName`. Infrastructure must not create a Project row merely to answer the read.
+
 ### Quest detail
 
 ```text
@@ -111,7 +113,6 @@ QuestHistoryDetailResult
   QuestType
   Title
   Goal
-  Locale
   Status
   StartedAtUtc
   FinishedAtUtc?
@@ -337,7 +338,7 @@ Allowed display values are already bounded product facts:
 Hero display name
 Project display name
 Quest title/type/goal
-Quest locale/status/result/summary
+Quest status/result/summary
 bounded attestation values
 Skill keys
 XP gained
