@@ -1,7 +1,7 @@
 # Hero Passport — Testing and Quality Strategy
 
-**Status:** Accepted v3.2.1 core + 0.2-A/B/C/D Web qualification  
-**Snapshot:** 2026-09-15
+**Status:** Accepted v3.2.1 core + 0.2-A/B/C/D/E Web qualification  
+**Snapshot:** 2026-09-17
 
 ## 1. Principle
 
@@ -378,11 +378,14 @@ case/trailing-slash route variants keep the same mutation boundary as endpoint r
 static-SSR prepare/confirm FormName handlers remain registered across stale/Gone/Busy POST states
 confirmation pages omit internal HeroId/fingerprint/requestId/session/bootstrap material
 Quest title/goal/summary and Finish attestations do not enter redirect URLs or ordinary process diagnostics
+history pages omit workspace fingerprint/internal ProjectId/full paths/database path/request IDs/args hashes
+missing and foreign-Project history detail render identical bounded 404 content
+history GETs leave durable product state unchanged
 ```
 
 The wider Finish-prepare envelope is explicitly a raw `application/x-www-form-urlencoded` transport allowance, not a wider semantic text contract. `SafeTextV1` normalizes to NFC/whitespace before enforcing the existing `1..2000` Unicode-scalar summary limit. A maximum-valid normalized summary can arrive in canonically decomposed form substantially larger than its normalized representation; the qualified 112 KiB per-value / 128 KiB whole-request envelope admits that bounded case. Start and payload-free Finish confirmation remain at the stricter 8 KiB / 2 KiB limits.
 
-## 20. 0.2-A/B/C/D Web qualification
+## 20. 0.2-A/B/C/D/E Web qualification
 
 `HeroPassport.Web.Tests` launches real Kestrel child processes against isolated `HERO_PASSPORT_HOME` and temporary Project roots.
 
@@ -468,7 +471,28 @@ GET / after Finish no longer presents the Quest as open and uses existing card/p
 Start remains GREEN with its unchanged 8 KiB / 2 KiB-value boundary
 ```
 
-Architecture tests prove Web Components/Services do not own EF/SQLite access. They permit exactly one Minimal API-style POST location, `Security/BootstrapEndpoint.cs`, with exact route `/__hero/bootstrap/claim`, while rejecting general `MapGet/MapPut/MapDelete/MapPatch/MapGroup`, Identity/OAuth/authentication provider wiring, permissive CORS, forwarded-header deployment and interactive Blazor modes. Start/Finish prepare and confirmation pages are guarded to retain dedicated unique static-SSR form names and avoid hidden product payloads.
+0.2-E adds read-only bounded history qualification without changing the mutation boundary:
+
+```text
+Application validates Project binding before list/detail store access
+real SQLite list is current-Project-only across Heroes and returns exactly the newest 25 of >25 rows
+open rows preserve null report/xp/finished facts; finished detail maps bounded report + ordered 1..3 Skills
+unseen Project list is empty and does not create a Project row
+foreign-Project and missing detail return the same Application null / Web 404 behavior
+Web history service gates setup through GetRuntimeContextAsync before history reads
+malformed/noncanonical/non-v7 route QuestId is rejected before history store access
+/history and /history/{questId} add no form/POST/interactive surface
+.NET 10 NavigationManager.NotFound + Router.NotFoundPage provides the qualified static-SSR 404 path
+real Kestrel anonymous /history -> 401
+real Kestrel list renders exactly 25 current-Project links, excludes foreign/oldest rows and preserves newest-first order
+real Kestrel detail renders only approved report/attestation/Skill facts
+rendered history HTML omits fingerprint/internal ProjectId/full paths/database path/request IDs/args hashes
+canonical missing and foreign-Project detail bodies are byte-for-byte equal
+PRAGMA data_version witness and canonical product-table row counts are unchanged across authenticated history GETs
+no schema/migration/index is introduced for 0.2-E
+```
+
+Architecture tests prove Web Components/Services do not own EF/SQLite access. They permit exactly one Minimal API-style POST location, `Security/BootstrapEndpoint.cs`, with exact route `/__hero/bootstrap/claim`, while rejecting general `MapGet/MapPut/MapDelete/MapPatch/MapGroup`, Identity/OAuth/authentication provider wiring, permissive CORS, forwarded-header deployment and interactive Blazor modes. Start/Finish prepare and confirmation pages are guarded to retain dedicated unique static-SSR form names and avoid hidden product payloads. History source guards additionally require the two GET routes, service registration, no mutation form/interactivity and bounded not-found routing.
 
 The security process tests intentionally use exact `ASPNETCORE_ENVIRONMENT=Testing` with deterministic secrets and `--no-open-browser`; both seams are rejected outside Testing. `UseStaticWebAssets()` is enabled only for that exact Testing profile so local build-output CSS can be qualified without enabling source-backed static Web assets in Production. Published Production Web artifact/static-asset and broader launch/package qualification remain separate later 0.2 release work.
 
@@ -509,4 +533,4 @@ packaged Codex E2E green
 cross-host compatibility recorded
 ```
 
-0.2 release adds Web-specific browser security, bounded mutation confirmation, management, published-artifact and cross-platform Web qualification on top of these inherited Core gates. 0.2-A/B/C/D are incremental slices, not by themselves a full 0.2 release claim.
+0.2 release adds Web-specific browser security, bounded mutation confirmation, management, published-artifact and cross-platform Web qualification on top of these inherited Core gates. 0.2-A/B/C/D/E are incremental slices, not by themselves a full 0.2 release claim.
