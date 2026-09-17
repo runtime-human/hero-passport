@@ -118,13 +118,13 @@ feat(domain): expose Skill level-band progress
 - Modify: `src/HeroPassport.Application/Runtime/IHeroPassportStateStore.cs`
 - Modify: `src/HeroPassport.Application/Runtime/HeroPassportApplication.cs`
 - Create: `tests/HeroPassport.Application.Tests/SkillProgressionReadContractTests.cs`
-- Modify: every existing test fake implementing `IHeroPassportStateStore` only as required to compile, using explicit `throw new InvalidOperationException("Unused in this test.")` stubs unless the fake is the subject of this task.
+- Modify: every existing test fake implementing `IHeroPassportStateStore` only as required to compile, using explicit `throw new InvalidOperationException("Unexpected state-store call.")` stubs unless that fake is the subject of this task.
 
 **Interfaces:**
-- Produces:
+- Produces names that deliberately avoid the existing Domain `SkillProgressionResult` type:
 
 ```csharp
-public sealed record SkillProgressionSnapshot(
+public sealed record SkillProgressionReadSnapshot(
     string SkillKey,
     long Xp,
     int Level,
@@ -132,27 +132,27 @@ public sealed record SkillProgressionSnapshot(
     long LevelXp,
     long? NextLevelXpRequired);
 
-public sealed record SkillProgressionRow(
+public sealed record SkillProgressionReadRow(
     string SkillKey,
-    SkillProgressionSnapshot Hero,
-    SkillProgressionSnapshot Project);
+    SkillProgressionReadSnapshot Hero,
+    SkillProgressionReadSnapshot Project);
 
-public sealed record SkillProgressionResult(
+public sealed record HeroSkillProgressionReadResult(
     string HeroName,
     string ProjectDisplayName,
-    IReadOnlyList<SkillProgressionRow> Skills);
+    IReadOnlyList<SkillProgressionReadRow> Skills);
 ```
 
 - Store method:
 
 ```csharp
-Task<SkillProgressionResult> GetSkillProgressionAsync(
+Task<HeroSkillProgressionReadResult> GetSkillProgressionAsync(
     HeroId heroId,
     ProjectBindingContext project,
     CancellationToken cancellationToken = default);
 ```
 
-- Application facade method has the same signature and calls `ValidateProject(project)` before delegation.
+- Application facade method has the same return/signature and calls `ValidateProject(project)` before delegation.
 
 - [ ] **Step 1: Write failing Application tests**
 
@@ -164,7 +164,7 @@ Project display name is SafeText-normalized before delegation;
 invalid fingerprint or identity version throws HP310 before store access.
 ```
 
-The test should assert the fake store call count remains zero for invalid Project binding.
+The fake returns an empty `HeroSkillProgressionReadResult` for valid delegation. Assert store call count remains zero for invalid Project binding.
 
 - [ ] **Step 2: Verify RED**
 
@@ -207,7 +207,7 @@ feat(application): add Skill progression read contract
 - Create: `tests/HeroPassport.Infrastructure.Tests/SkillProgressionReadTests.cs`
 
 **Interfaces:**
-- Implements `IHeroPassportStateStore.GetSkillProgressionAsync`.
+- Implements `IHeroPassportStateStore.GetSkillProgressionAsync` returning `HeroSkillProgressionReadResult`.
 - Consumes `SkillProgressionRules.Level`, `LevelXp`, `NextLevelXpRequired`, `HeroPassportVersions.CurrentRules.SkillProgression`.
 
 - [ ] **Step 1: Write a real-file SQLite RED test for ten canonical rows**
@@ -242,7 +242,7 @@ Add real SQLite tests proving:
 3. another Hero's Project A Skill XP is excluded;
 4. unseen Project returns ten zero Project snapshots and does not create a `projects` row;
 5. Level/LevelXp/cap values match `SkillProgressionRules`;
-6. before/after snapshot of all canonical product tables is byte/row-equivalent for the read operation after test setup completes.
+6. before/after snapshot of all canonical product tables is row-equivalent for the read operation after test setup completes.
 
 For the no-write assertion, capture all product tables listed by the canonical data model and exclude only SQLite/EF internal metadata tables.
 
@@ -262,7 +262,7 @@ Within that transaction:
 4. when `projectId != null`, aggregate `quest_report_skills.xp_gained` through `quest_sessions` + `quest_reports` for exact `hero_id` + `project_id`;
 5. materialize all ten canonical keys in fixed order, filling missing totals with zero;
 6. derive each scope's Level/LevelXp/cap/next-band requirement using Domain rules;
-7. commit/end the SELECT-only transaction and return the bounded result.
+7. commit/end the SELECT-only transaction and return `HeroSkillProgressionReadResult`.
 
 All SQL must be parameterized. Do not call `ExecuteAsync`, mutation helpers or commit observers.
 
@@ -365,7 +365,7 @@ handles capped Skills without printing a fabricated next-level denominator;
 does not use interactive render mode or a form.
 ```
 
-Also assert Home includes an authenticated progression link to `/skills` next to the existing history/top-Skills surface.
+Also assert Home includes a progression link to `/skills` next to the existing history/top-Skills surface.
 
 - [ ] **Step 2: Verify RED**
 
@@ -430,7 +430,7 @@ feat(web): render Skill progression page
 
 - [ ] **Step 1: Synchronize canonical documentation**
 
-Document 0.2-F as implemented read-only Skill progression, preserving explicit separation from the later Rank/Traits/Titles and management slices. State that Hero Card remains Top-3 and `/skills` is the complete Web read surface.
+Document 0.2-F as implemented read-only Skill progression, preserving explicit separation from the later Rank/Traits/Titles and management slices. State that Hero Card remains Top-3 and `/skills` is the complete Web Skill read surface.
 
 - [ ] **Step 2: Run stale-contract review**
 
