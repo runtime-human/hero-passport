@@ -15,17 +15,19 @@ public sealed class HistoryStaticSsrTests
         Assert.Contains("Latest 25", source, StringComparison.Ordinal);
         Assert.Contains("href=\"/history/@item.QuestId\"", source, StringComparison.Ordinal);
         Assert.Contains("href=\"/\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("NavigationManager", source, StringComparison.Ordinal);
         AssertGetOnlyStaticSsr(source);
         AssertHistoryPrivacySurface(source);
     }
 
     [Fact]
-    public void HistoryDetailUsesCanonicalServiceStatusMappingAndCascadingHttpContext()
+    public void HistoryDetailUsesDotNetTenNotFoundFlowAndCascadingHttpContextForBadRequest()
     {
         var source = ReadPage("QuestHistory.razor");
 
         Assert.Contains("@page \"/history/{QuestId}\"", source, StringComparison.Ordinal);
         Assert.Contains("@inject HeroPassportHistoryService HistoryFlow", source, StringComparison.Ordinal);
+        Assert.Contains("@inject NavigationManager Navigation", source, StringComparison.Ordinal);
         Assert.Contains("[Parameter]", source, StringComparison.Ordinal);
         Assert.Contains("public string QuestId", source, StringComparison.Ordinal);
         Assert.Contains("[CascadingParameter]", source, StringComparison.Ordinal);
@@ -34,11 +36,31 @@ public sealed class HistoryStaticSsrTests
         Assert.Contains("QuestHistoryPageStatus.Invalid", source, StringComparison.Ordinal);
         Assert.Contains("Status400BadRequest", source, StringComparison.Ordinal);
         Assert.Contains("QuestHistoryPageStatus.NotFound", source, StringComparison.Ordinal);
-        Assert.Contains("Status404NotFound", source, StringComparison.Ordinal);
+        Assert.Contains("Navigation.NotFound()", source, StringComparison.Ordinal);
         Assert.Contains("QuestHistoryPageStatus.SetupRequired", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Status404NotFound", source, StringComparison.Ordinal);
         Assert.DoesNotContain("IHttpContextAccessor", source, StringComparison.Ordinal);
         AssertGetOnlyStaticSsr(source);
         AssertHistoryPrivacySurface(source);
+    }
+
+    [Fact]
+    public void RouterOwnsBoundedNotFoundPresentation()
+    {
+        var root = FindRepositoryRoot();
+        var routes = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "HeroPassport.Web",
+            "Components",
+            "Routes.razor"));
+        var notFound = ReadPage("NotFound.razor");
+
+        Assert.Contains("NotFoundPage=\"typeof(Pages.NotFound)\"", routes, StringComparison.Ordinal);
+        Assert.Contains("@page \"/not-found\"", notFound, StringComparison.Ordinal);
+        Assert.Contains("The requested resource is not available.", notFound, StringComparison.Ordinal);
+        AssertGetOnlyStaticSsr(notFound);
+        AssertHistoryPrivacySurface(notFound);
     }
 
     [Fact]
@@ -97,7 +119,6 @@ public sealed class HistoryStaticSsrTests
         Assert.DoesNotContain("method=\"post\"", source, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("@rendermode", source, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("StreamRendering", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("NavigationManager", source, StringComparison.Ordinal);
     }
 
     private static void AssertHistoryPrivacySurface(string source)
