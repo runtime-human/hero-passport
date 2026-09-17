@@ -1,5 +1,6 @@
 @page "/history/{QuestId}"
 @inject HeroPassportHistoryService HistoryFlow
+@inject NavigationManager Navigation
 
 <PageTitle>Quest History · Hero Passport</PageTitle>
 
@@ -27,12 +28,6 @@
     {
         <section class="panel">
             <p role="alert">The Quest identifier is invalid.</p>
-        </section>
-    }
-    else if (_load.Status == QuestHistoryPageStatus.NotFound)
-    {
-        <section class="panel">
-            <p role="alert">This Quest is not available in the current project.</p>
         </section>
     }
     else if (_load.Page is { } historyDetail)
@@ -89,12 +84,15 @@
     protected override async Task OnParametersSetAsync()
     {
         _load = await HistoryFlow.LoadDetailAsync(QuestId);
-        SetStatus(_load.Status switch
+        if (_load.Status == QuestHistoryPageStatus.NotFound)
         {
-            QuestHistoryPageStatus.Invalid => Microsoft.AspNetCore.Http.StatusCodes.Status400BadRequest,
-            QuestHistoryPageStatus.NotFound => Microsoft.AspNetCore.Http.StatusCodes.Status404NotFound,
-            _ => Microsoft.AspNetCore.Http.StatusCodes.Status200OK,
-        });
+            Navigation.NotFound();
+            return;
+        }
+
+        SetStatus(_load.Status == QuestHistoryPageStatus.Invalid
+            ? Microsoft.AspNetCore.Http.StatusCodes.Status400BadRequest
+            : Microsoft.AspNetCore.Http.StatusCodes.Status200OK);
     }
 
     private void SetStatus(int statusCode)
