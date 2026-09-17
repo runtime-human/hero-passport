@@ -4,81 +4,66 @@ using Xunit;
 
 namespace HeroPassport.Application.Tests;
 
-public sealed class HistoryBehaviorTests
+public sealed class SkillProgressionReadContractTests
 {
     [Fact]
-    public async Task HistoryValidatesProjectBeforeStoreAccess()
+    public async Task SkillProgressionDelegatesExactHeroAndNormalizedProject()
     {
         var token = TestContext.Current.CancellationToken;
         var store = new RecordingStateStore();
         var app = new HeroPassportApplication(store, TimeProvider.System);
-        var invalid = new ProjectBindingContext("Project", "bad", "project-identity/1");
-
-        var listError = await Assert.ThrowsAsync<HeroPassportException>(() =>
-            app.GetProjectQuestHistoryAsync(invalid, token));
-        var detailError = await Assert.ThrowsAsync<HeroPassportException>(() =>
-            app.GetQuestHistoryDetailAsync(QuestId.New(), invalid, token));
-
-        Assert.Equal("HP310", listError.Code);
-        Assert.Equal("HP310", detailError.Code);
-        Assert.Equal(0, store.ListHistoryCalls);
-        Assert.Equal(0, store.DetailHistoryCalls);
-    }
-
-    [Fact]
-    public async Task HistoryDelegatesNormalizedProjectAndExactQuestSelector()
-    {
-        var token = TestContext.Current.CancellationToken;
-        var store = new RecordingStateStore();
-        var app = new HeroPassportApplication(store, TimeProvider.System);
-        var questId = QuestId.New();
+        var heroId = HeroId.New();
         var project = new ProjectBindingContext(
             "  Demo   Project  ",
             new string('a', 64),
             "project-identity/1");
 
-        var list = await app.GetProjectQuestHistoryAsync(project, token);
-        var detail = await app.GetQuestHistoryDetailAsync(questId, project, token);
+        var result = await app.GetSkillProgressionAsync(heroId, project, token);
 
-        Assert.Empty(list.Items);
-        Assert.Null(detail);
-        Assert.Equal(1, store.ListHistoryCalls);
-        Assert.Equal(1, store.DetailHistoryCalls);
-        Assert.NotNull(store.ListProject);
-        Assert.NotNull(store.DetailProject);
-        Assert.Equal("Demo Project", store.ListProject!.DisplayName);
-        Assert.Equal("Demo Project", store.DetailProject!.DisplayName);
-        Assert.Equal(project.WorkspaceFingerprint, store.ListProject.WorkspaceFingerprint);
-        Assert.Equal(project.WorkspaceFingerprint, store.DetailProject.WorkspaceFingerprint);
-        Assert.Equal(questId, store.DetailQuestId);
+        Assert.Equal("Nova", result.HeroName);
+        Assert.Empty(result.Skills);
+        Assert.Equal(1, store.SkillProgressionCalls);
+        Assert.Equal(heroId, store.SkillProgressionHeroId);
+        Assert.NotNull(store.SkillProgressionProject);
+        Assert.Equal("Demo Project", store.SkillProgressionProject!.DisplayName);
+        Assert.Equal(project.WorkspaceFingerprint, store.SkillProgressionProject.WorkspaceFingerprint);
+        Assert.Equal(project.IdentityVersion, store.SkillProgressionProject.IdentityVersion);
+    }
+
+    [Theory]
+    [InlineData("bad", "project-identity/1")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "project-identity/0")]
+    public async Task SkillProgressionRejectsInvalidProjectBeforeStoreAccess(
+        string fingerprint,
+        string identityVersion)
+    {
+        var token = TestContext.Current.CancellationToken;
+        var store = new RecordingStateStore();
+        var app = new HeroPassportApplication(store, TimeProvider.System);
+        var project = new ProjectBindingContext("Project", fingerprint, identityVersion);
+
+        var error = await Assert.ThrowsAsync<HeroPassportException>(() =>
+            app.GetSkillProgressionAsync(HeroId.New(), project, token));
+
+        Assert.Equal("HP310", error.Code);
+        Assert.Equal(0, store.SkillProgressionCalls);
     }
 
     private sealed class RecordingStateStore : IHeroPassportStateStore
     {
-        public int ListHistoryCalls { get; private set; }
-        public int DetailHistoryCalls { get; private set; }
-        public ProjectBindingContext? ListProject { get; private set; }
-        public ProjectBindingContext? DetailProject { get; private set; }
-        public QuestId? DetailQuestId { get; private set; }
+        public int SkillProgressionCalls { get; private set; }
+        public HeroId? SkillProgressionHeroId { get; private set; }
+        public ProjectBindingContext? SkillProgressionProject { get; private set; }
 
-        public Task<ProjectQuestHistoryResult> GetProjectQuestHistoryAsync(
+        public Task<HeroSkillProgressionReadResult> GetSkillProgressionAsync(
+            HeroId heroId,
             ProjectBindingContext project,
             CancellationToken cancellationToken = default)
         {
-            ListHistoryCalls++;
-            ListProject = project;
-            return Task.FromResult(new ProjectQuestHistoryResult(project.DisplayName, []));
-        }
-
-        public Task<QuestHistoryDetailResult?> GetQuestHistoryDetailAsync(
-            QuestId questId,
-            ProjectBindingContext project,
-            CancellationToken cancellationToken = default)
-        {
-            DetailHistoryCalls++;
-            DetailQuestId = questId;
-            DetailProject = project;
-            return Task.FromResult<QuestHistoryDetailResult?>(null);
+            SkillProgressionCalls++;
+            SkillProgressionHeroId = heroId;
+            SkillProgressionProject = project;
+            return Task.FromResult(new HeroSkillProgressionReadResult("Nova", project.DisplayName, []));
         }
 
         private static InvalidOperationException Unused() => new("Unexpected state-store call.");
@@ -86,7 +71,8 @@ public sealed class HistoryBehaviorTests
         public Task<BootstrapResult> BootstrapAsync(BootstrapStoreCommand command, DateTimeOffset now, CancellationToken cancellationToken = default) => throw Unused();
         public Task<ConfigureResult> ConfigureAsync(ConfigureRequest request, DateTimeOffset now, CancellationToken cancellationToken = default) => throw Unused();
         public Task<RuntimeContextResult> GetRuntimeContextAsync(ProjectBindingContext project, CancellationToken cancellationToken = default) => throw Unused();
-        public Task<HeroSkillProgressionReadResult> GetSkillProgressionAsync(HeroId heroId, ProjectBindingContext project, CancellationToken cancellationToken = default) => throw Unused();
+        public Task<ProjectQuestHistoryResult> GetProjectQuestHistoryAsync(ProjectBindingContext project, CancellationToken cancellationToken = default) => throw Unused();
+        public Task<QuestHistoryDetailResult?> GetQuestHistoryDetailAsync(QuestId questId, ProjectBindingContext project, CancellationToken cancellationToken = default) => throw Unused();
         public Task<CreateHeroResult> CreateHeroAsync(CreateHeroStoreCommand command, DateTimeOffset now, CancellationToken cancellationToken = default) => throw Unused();
         public Task ActivateHeroAsync(HeroId heroId, DateTimeOffset now, CancellationToken cancellationToken = default) => throw Unused();
         public Task<HeroListResult> ListHeroesAsync(CancellationToken cancellationToken = default) => throw Unused();

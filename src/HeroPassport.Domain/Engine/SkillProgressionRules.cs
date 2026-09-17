@@ -69,6 +69,17 @@ public static class SkillProgressionRules
             RuleVersion);
     }
 
+    public static long LevelXp(long totalXp, int level, string ruleVersion)
+    {
+        RequireVersion(ruleVersion);
+        JsonSafeInteger.Require(totalXp);
+        RequireLevel(level);
+
+        var threshold = LevelThresholds[level - 1];
+        ArgumentOutOfRangeException.ThrowIfLessThan(totalXp, threshold);
+        return checked(totalXp - threshold);
+    }
+
     public static long? NextLevelXpRequired(int level, string ruleVersion)
     {
         RequireVersion(ruleVersion);
