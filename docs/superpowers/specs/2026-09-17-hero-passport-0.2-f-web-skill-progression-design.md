@@ -80,10 +80,10 @@ At Skill Level 10, XP continues accumulating. `IsLevelCapped=true`, `NextLevelXp
 
 ## Application read contract
 
-Add a dedicated Application model instead of altering Hero Card:
+Add a dedicated Application model instead of altering Hero Card. Names deliberately avoid the existing Domain `SkillProgressionResult` type:
 
 ```csharp
-public sealed record SkillProgressionSnapshot(
+public sealed record SkillProgressionReadSnapshot(
     string SkillKey,
     long Xp,
     int Level,
@@ -91,21 +91,21 @@ public sealed record SkillProgressionSnapshot(
     long LevelXp,
     long? NextLevelXpRequired);
 
-public sealed record SkillProgressionRow(
+public sealed record SkillProgressionReadRow(
     string SkillKey,
-    SkillProgressionSnapshot Hero,
-    SkillProgressionSnapshot Project);
+    SkillProgressionReadSnapshot Hero,
+    SkillProgressionReadSnapshot Project);
 
-public sealed record SkillProgressionResult(
+public sealed record HeroSkillProgressionReadResult(
     string HeroName,
     string ProjectDisplayName,
-    IReadOnlyList<SkillProgressionRow> Skills);
+    IReadOnlyList<SkillProgressionReadRow> Skills);
 ```
 
 Application exposes:
 
 ```csharp
-Task<SkillProgressionResult> GetSkillProgressionAsync(
+Task<HeroSkillProgressionReadResult> GetSkillProgressionAsync(
     HeroId heroId,
     ProjectBindingContext project,
     CancellationToken cancellationToken = default);
@@ -169,7 +169,7 @@ They never contain workspace fingerprint, internal ProjectId, local paths, reque
 
 `/skills` is static SSR and GET-only. It reuses the existing local session middleware; no antiforgery or confirmation state applies because there is no mutation.
 
-The page should make the two scopes explicit: `Hero` means all persisted progression for the active Hero; `Project` means XP contributed by completed Quests in the current Project for that Hero.
+The page makes the two scopes explicit: `Hero` means all persisted progression for the active Hero; `Project` means XP contributed by completed Quests in the current Project for that Hero.
 
 For uncapped Skills, progress is presented as `LevelXp / NextLevelXpRequired`. For capped Skills, show `Level 10 · capped` and total XP; do not fabricate a next-level target.
 
@@ -225,7 +225,7 @@ Prove:
 
 - setup-required state short-circuits before Skill read;
 - configured active Hero maps all ten rows into privacy-bounded view models;
-- `/skills` renders through static SSR and is linked from the dashboard/history navigation surface;
+- `/skills` renders through static SSR and is linked from the dashboard navigation surface;
 - unauthenticated `/skills` returns 401;
 - authenticated `/skills` returns 200;
 - rendered page includes all ten Skills and both Hero/Project scopes;
