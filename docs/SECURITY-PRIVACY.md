@@ -1,7 +1,7 @@
 # Hero Passport — Security and Privacy
 
-**Status:** Accepted v3.2.1 core + implemented 0.2-B/C/D local Web boundary  
-**Snapshot:** 2026-09-15
+**Status:** Accepted v3.2.1 core + implemented 0.2-B/C/D/E local Web boundary  
+**Snapshot:** 2026-09-17
 
 ## 1. Security posture
 
@@ -154,6 +154,8 @@ This keeps `readOnlyHint` truthful and reduces unnecessary WAL/lock churn.
 
 The 0.2-A/B dashboard keeps the same no-hidden-write property. 0.2-C Start preparation and 0.2-D Finish preparation are also non-mutating; only their explicit confirmation steps invoke the existing Application mutation authorities.
 
+0.2-E extends the same invariant to authenticated history GETs. `/history` and `/history/{questId}` must not create Project rows, mutate Quest/report/progression/settings/receipts or run product commit hooks. A valid but unseen Project returns an empty list without persistence. Qualification compares a live SQLite `PRAGMA data_version` witness plus all canonical product-table row counts before and after the HTTP reads.
+
 ## 14. Project privacy
 
 Persist salted workspace fingerprint/display name, not full path/remote.
@@ -161,6 +163,8 @@ Persist salted workspace fingerprint/display name, not full path/remote.
 Routine MCP outputs omit internal ProjectId/fingerprint/path.
 
 Web confirmation renders only bounded safe presentation required for the user decision. Start confirmation renders Hero/Project/type/title/goal. Finish confirmation additionally renders normalized result/summary, bounded attestations and selected Skills. Neither renders full workspace paths, Project fingerprints/internal ProjectId, internal HeroId, mutation request identity, args hashes or persistence internals.
+
+0.2-E history pages use dedicated Web view models and render only bounded Quest/report facts. Workspace fingerprints, internal Project IDs, full Project/database paths, mutation request/receipt IDs, args hashes, installation/session/bootstrap secrets and persistence metadata stay outside the history HTML. Canonical QuestId appears only where needed for the history link/selector.
 
 Git identity resolver is read-only, scrubs redirection env vars, does not weaken `safe.directory`.
 
@@ -197,7 +201,7 @@ process restart = prior browser session invalid
 
 Bootstrap/session secrets are never persisted and must not appear in ordinary process logs, product HTML, redirect targets or SQLite. The Testing-only deterministic secret and `--no-open-browser` seams are rejected outside the exact Testing environment.
 
-0.2-C/D reuse that boundary without creating parallel authentication. Start and Finish confirmation handles are random process-local lookup state, not auth credentials. Each dedicated pending store is capped at 8 live entries, entries expire after 10 minutes and are never persisted. Malformed handles fail with 400; unknown/expired handles fail with 410; neither can mutate.
+0.2-C/D/E reuse that boundary without creating parallel authentication. Start and Finish confirmation handles are random process-local lookup state, not auth credentials. Each dedicated pending store is capped at 8 live entries, entries expire after 10 minutes and are never persisted. Malformed handles fail with 400; unknown/expired handles fail with 410; neither can mutate.
 
 Mutation request hardening:
 
@@ -236,6 +240,8 @@ The larger Finish-prepare envelope is deliberately a raw transport allowance, no
 Quest title/goal/summary, selected Skills and attestations may be rendered in their intended authenticated prepare/confirmation UX, but are excluded from redirect/query URLs and ordinary diagnostics. Web does not bind Domain/Application records directly from form input and does not expose a general REST/minimal-API product surface. `POST /__hero/bootstrap/claim` remains the only Minimal API-style endpoint.
 
 Finish prepare resolves the route `questId` only against `GetRuntimeContextAsync(currentProject)` open Quests. The route ID is a selector, not authorization. Malformed/non-canonical IDs return 400; a canonical ID unavailable in the current Project returns 404 without disclosing whether it belongs elsewhere or is already finalized.
+
+0.2-E adds no POST surface and therefore no new antiforgery/form parsing path. Both history routes are protected by the existing session middleware. Detail parses canonical lowercase UUIDv7 before the history store read; malformed/noncanonical/non-v7 selectors return 400. Canonical IDs missing globally and canonical IDs belonging to another Project both flow through the same .NET 10 `NavigationManager.NotFound()` / `Router.NotFoundPage` path and render the same bounded 404 body.
 
 Finish terminal semantic disagreement (`HP135`/`HP136`) is a bounded conflict and removes the pending handle. Equivalent `AlreadyFinalized` converges to success. Unknown exceptions release the same prepared entry so retry uses the same `FinishRequestId` and durable receipt replay can resolve an uncertain post-commit outcome.
 
@@ -304,4 +310,11 @@ HP135/HP136 remove terminal pending state without duplicate progression
 malformed/unknown confirmation handles fail 400/410 without mutation
 confirmation HTML omits internal IDs/fingerprint/request identity/full path
 finalized Quest disappears from dashboard open-Quest presentation
+unauthenticated /history -> 401 before product read
+/history returns only current-Project Quests and at most the newest 25
+history selector malformed/noncanonical/non-v7 -> 400 before history persistence access
+canonical missing and foreign-Project history detail -> identical bounded 404
+history HTML omits fingerprint/internal ProjectId/full paths/database path/request IDs/args hashes/history persistence internals
+unseen Project /history remains empty without Project creation
+real-process history GETs leave PRAGMA data_version and canonical product-table counts unchanged
 ```
