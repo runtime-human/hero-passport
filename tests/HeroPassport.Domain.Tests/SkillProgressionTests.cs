@@ -31,6 +31,21 @@ public sealed class SkillProgressionTests
         Assert.Equal(expectedLevel, SkillProgressionRules.Level(totalXp, "skill-progression/2.0.0"));
     }
 
+    [Theory]
+    [InlineData(0, 1, 0)]
+    [InlineData(49, 1, 49)]
+    [InlineData(50, 2, 0)]
+    [InlineData(95, 2, 45)]
+    [InlineData(124, 2, 74)]
+    [InlineData(125, 3, 0)]
+    [InlineData(1349, 9, 249)]
+    [InlineData(1350, 10, 0)]
+    [InlineData(6350, 10, 5000)]
+    public void LevelXpReturnsXpInsideCurrentSkillLevel(long totalXp, int level, long expected)
+    {
+        Assert.Equal(expected, SkillProgressionRules.LevelXp(totalXp, level, "skill-progression/2.0.0"));
+    }
+
     [Fact]
     public void ProgressionSnapshotUsesCheckedTotalXpAndThresholdDeltas()
     {
@@ -66,11 +81,16 @@ public sealed class SkillProgressionTests
     }
 
     [Fact]
-    public void UnsupportedVersionNegativeXpAndJsonSafeBoundaryAreRejected()
+    public void UnsupportedVersionNegativeXpInvalidLevelAndBelowThresholdAreRejected()
     {
         Assert.Throws<ArgumentException>(() => SkillProgressionRules.Level(0, "skill-progression/1.0.0"));
         Assert.Throws<ArgumentOutOfRangeException>(() => SkillProgressionRules.Level(-1, "skill-progression/2.0.0"));
         Assert.Throws<ArgumentOutOfRangeException>(() => SkillProgressionRules.Apply(0, -1, "skill-progression/2.0.0"));
         Assert.Throws<ArgumentOutOfRangeException>(() => SkillProgressionRules.Apply(9_007_199_254_740_991L, 1, "skill-progression/2.0.0"));
+        Assert.Throws<ArgumentException>(() => SkillProgressionRules.LevelXp(0, 1, "skill-progression/1.0.0"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SkillProgressionRules.LevelXp(-1, 1, "skill-progression/2.0.0"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SkillProgressionRules.LevelXp(0, 0, "skill-progression/2.0.0"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SkillProgressionRules.LevelXp(0, 11, "skill-progression/2.0.0"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SkillProgressionRules.LevelXp(49, 2, "skill-progression/2.0.0"));
     }
 }
