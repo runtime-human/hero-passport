@@ -290,7 +290,7 @@ public sealed class HistoryProcessTests
 
     private static async Task<long> RowCountAsync(string databasePath, string table, CancellationToken token)
     {
-        Assert.Contains(table, new[] { "projects" });
+        Assert.Equal("projects", table);
         await using var connection = await HeroPassportDatabase.OpenConnectionAsync(databasePath, token);
         await using var command = connection.CreateCommand();
         command.CommandText = $"SELECT COUNT(*) FROM {table};";
