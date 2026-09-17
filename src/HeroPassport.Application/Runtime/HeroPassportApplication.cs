@@ -50,6 +50,12 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
         CancellationToken cancellationToken = default) =>
         store.GetQuestHistoryDetailAsync(questId, ValidateProject(project), cancellationToken);
 
+    public Task<HeroSkillProgressionReadResult> GetSkillProgressionAsync(
+        HeroId heroId,
+        ProjectBindingContext project,
+        CancellationToken cancellationToken = default) =>
+        store.GetSkillProgressionAsync(heroId, ValidateProject(project), cancellationToken);
+
     public Task<CreateHeroResult> CreateHeroAsync(CreateHeroRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
