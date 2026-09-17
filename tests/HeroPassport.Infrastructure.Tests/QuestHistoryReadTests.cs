@@ -171,7 +171,7 @@ public sealed class QuestHistoryReadTests
                 new StartQuestRequest(
                     MutationRequestId.New(),
                     hero.HeroId,
-                    "testing_awareness",
+                    "review",
                     "Qualify history detail",
                     "Persist a canonical finished Quest report for bounded history detail."),
                 currentProject,
@@ -221,7 +221,7 @@ public sealed class QuestHistoryReadTests
             Assert.Equal(finishedQuest.QuestId, detail.QuestId);
             Assert.Equal("Nova", detail.HeroName);
             Assert.Equal("Detail Project", detail.ProjectDisplayName);
-            Assert.Equal("testing_awareness", detail.QuestType);
+            Assert.Equal("review", detail.QuestType);
             Assert.Equal("Qualify history detail", detail.Title);
             Assert.Equal("Persist a canonical finished Quest report for bounded history detail.", detail.Goal);
             Assert.Equal("finished", detail.Status);
@@ -396,6 +396,7 @@ public sealed class QuestHistoryReadTests
         private long _ticks;
 
         public override DateTimeOffset GetUtcNow() =>
-            new(2026, 9, 17, 0, 0, 0, TimeSpan.Zero).AddSeconds(Interlocked.Increment(ref _ticks));
+            new DateTimeOffset(2026, 9, 17, 0, 0, 0, TimeSpan.Zero)
+                .AddSeconds(Interlocked.Increment(ref _ticks));
     }
 }
