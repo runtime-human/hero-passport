@@ -1,7 +1,7 @@
 # Hero Passport — Deployment Modes
 
-**Status:** Accepted v3.2.1 core + implemented 0.2-A/B/C/D Web boundary  
-**Snapshot:** 2026-09-15
+**Status:** Accepted v3.2.1 core + implemented 0.2-A/B/C/D/E Web boundary  
+**Snapshot:** 2026-09-17
 
 ## 1. 0.1 primary profile — local project-bound stdio
 
@@ -90,7 +90,7 @@ process start
   -> authenticated static-SSR dashboard
 ```
 
-The supported browser authority is exactly `127.0.0.1`. Host Filtering is code-owned with `AllowedHosts = ["127.0.0.1"]`; `localhost`, arbitrary DNS names, wildcard hosts and forwarded-host/reverse-proxy semantics are not part of 0.2-B/C/D.
+The supported browser authority is exactly `127.0.0.1`. Host Filtering is code-owned with `AllowedHosts = ["127.0.0.1"]`; `localhost`, arbitrary DNS names, wildcard hosts and forwarded-host/reverse-proxy semantics are not part of 0.2-B/C/D/E.
 
 The bootstrap capability and browser session bearer are independent 32-byte cryptographically random process-local values. They are not derived from Project identity, PID, port, machine/user identity or database state; they are not persisted. Bootstrap consumption is one-time and atomic. A wrong guess does not consume the legitimate capability; replay after success fails.
 
@@ -108,7 +108,7 @@ Max-Age absent
 Secure=false for current HTTP-loopback profile
 ```
 
-`Secure=false` reflects the actual plain-HTTP local profile; 0.2-B/C/D makes no local-HTTPS claim. A future HTTPS slice would need its own certificate/lifecycle qualification.
+`Secure=false` reflects the actual plain-HTTP local profile; 0.2-B/C/D/E makes no local-HTTPS claim. A future HTTPS slice would need its own certificate/lifecycle qualification.
 
 Every Web process restart generates new bootstrap/session secrets, so a browser cookie from a prior process fails closed even if a port is reused. No Web session state is written to SQLite.
 
@@ -119,7 +119,7 @@ explicit --project-root else process cwd
 -> project-identity/1
 ```
 
-0.2-A/B remain read-only. 0.2-C adds explicitly confirmed Start Quest. 0.2-D adds explicitly confirmed Finish Quest for one current-Project open Quest.
+0.2-A/B remain read-only. 0.2-C adds explicitly confirmed Start Quest. 0.2-D adds explicitly confirmed Finish Quest for one current-Project open Quest. 0.2-E adds authenticated read-only current-Project Quest history.
 
 ### 0.2-C Start Quest
 
@@ -180,7 +180,28 @@ The larger Finish-prepare limits are transport-only and exist so Application-val
 
 Finish idempotency/conflict behavior is inherited rather than reimplemented: success, same-request replay and equivalent `AlreadyFinalized` converge; `HP135`/`HP136` remain bounded terminal conflicts; an unknown response outcome releases the same pending entry so retry preserves its `FinishRequestId`.
 
-0.2-C/D do not add Hero/settings management, history, Identity/OAuth/accounts, public/LAN hosting, local HTTPS, reverse-proxy support, Streamable HTTP MCP or a general REST/minimal-API product surface. `Security/BootstrapEndpoint.cs` remains the only Minimal API-style POST endpoint.
+### 0.2-E bounded Quest history
+
+```text
+authenticated GET /history
+  -> existing session boundary
+  -> setup gate through GetRuntimeContextAsync
+  -> Application GetProjectQuestHistoryAsync
+  -> current Project only
+  -> started_at_utc DESC, QuestId DESC
+  -> maximum 25 rows
+
+authenticated GET /history/{questId}
+  -> canonical lowercase UUIDv7 parse before history lookup
+  -> Application GetQuestHistoryDetailAsync
+  -> QuestId + current Project predicate
+  -> missing and foreign-Project Quest share one 404 path
+  -> .NET 10 NavigationManager.NotFound / Router.NotFoundPage
+```
+
+History is static SSR and GET-only. It has no form, query/filter protocol, client-side interactivity or product REST endpoint. Web consumes dedicated Application presentation contracts and owns no SQL/EF. Infrastructure performs parameterized reads through the existing `SqliteHeroPassportStateStore`; multi-query reads use a short deferred read snapshot. Visiting history for an unseen Project does not create that Project row, and qualified history GETs commit no durable product-state change. No schema, migration or index was added for 0.2-E.
+
+0.2-C/D/E do not add Hero/settings management, Identity/OAuth/accounts, public/LAN hosting, local HTTPS, reverse-proxy support, Streamable HTTP MCP or a general REST/minimal-API product surface. `Security/BootstrapEndpoint.cs` remains the only Minimal API-style POST endpoint.
 
 The production process opens the system browser only after the actual loopback endpoint is known. If browser launch fails synchronously, startup fails closed instead of exposing or printing the capability. `--no-open-browser` plus deterministic Web secrets are Testing-only seams and are rejected outside `ASPNETCORE_ENVIRONMENT=Testing`.
 
@@ -198,7 +219,7 @@ Use current official MCP ASP.NET Core adapter/security requirements rather than 
 
 A different architecture requiring HTTPS, current MCP authorization, authenticated principal, Hero/Project authorization, tenant isolation, remote durable store, abuse controls, secrets, backups and explicit retention/deletion/security logging.
 
-The 0.2-B/C/D local process capability/session is not a public authentication system and must not be reused as one.
+The 0.2-B/C/D/E local process capability/session is not a public authentication system and must not be reused as one.
 
 Local fingerprints, questId, confirmation handles and mutation request IDs are not authentication credentials.
 
@@ -208,7 +229,7 @@ No sync requirement in 0.1/0.2. Current schema is sync-conscious, not sync-ready
 
 Future sync requires dedicated cross-device identity/conflict/delete/security design. Never point two machines at one shared writable SQLite WAL file.
 
-## 9. Unsupported 0.1/0.2-A/B/C/D profiles
+## 9. Unsupported 0.1/0.2-A/B/C/D/E profiles
 
 ```text
 writable SQLite on network/NFS/cloud-shared filesystem

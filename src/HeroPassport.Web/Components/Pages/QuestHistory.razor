@@ -1,0 +1,105 @@
+@page "/history/{QuestId}"
+@inject HeroPassportHistoryService HistoryFlow
+@inject NavigationManager Navigation
+
+<PageTitle>Quest History · Hero Passport</PageTitle>
+
+<main class="shell">
+    <header class="hero-header">
+        <p class="eyebrow">Hero Passport · Quest History</p>
+        <h1>Quest detail</h1>
+        <p><a href="/history">Back to history</a> · <a href="/">Dashboard</a></p>
+    </header>
+
+    @if (_load is null)
+    {
+        <section class="panel">
+            <p>Loading Quest history…</p>
+        </section>
+    }
+    else if (_load.Status == QuestHistoryPageStatus.SetupRequired)
+    {
+        <section class="panel">
+            <h2>Setup required</h2>
+            <p>Initialize Hero Passport before viewing Quest history.</p>
+        </section>
+    }
+    else if (_load.Status == QuestHistoryPageStatus.Invalid)
+    {
+        <section class="panel">
+            <p role="alert">The Quest identifier is invalid.</p>
+        </section>
+    }
+    else if (_load.Page is { } historyDetail)
+    {
+        <section class="panel">
+            <p class="eyebrow">@historyDetail.ProjectDisplayName · @historyDetail.HeroName</p>
+            <h2>@historyDetail.Title</h2>
+            <p>@historyDetail.QuestType · @historyDetail.Status</p>
+            <p>@historyDetail.Goal</p>
+            <p>Started @historyDetail.StartedAtUtc.ToString("u")</p>
+            @if (historyDetail.FinishedAtUtc is { } finished)
+            {
+                <p>Finished @finished.ToString("u")</p>
+            }
+        </section>
+
+        @if (historyDetail.Report is { } report)
+        {
+            <section class="panel">
+                <h2>Finish report</h2>
+                <p><strong>@report.Result</strong> · +@report.XpGained XP</p>
+                <p>@report.Summary</p>
+                <p>Tests mentioned: @(report.TestsMentioned ? "yes" : "no")</p>
+                <p>Scope violations: @report.ScopeViolations · User corrections: @report.UserCorrections</p>
+                <p>Build: @report.BuildStatus (@report.BuildEvidence)</p>
+                <p>Tests: @report.TestsStatus (@report.TestsEvidence)</p>
+                <h3>Skills used</h3>
+                <ul>
+                    @foreach (var skill in report.SkillsUsed)
+                    {
+                        <li>@skill</li>
+                    }
+                </ul>
+            </section>
+        }
+        else
+        {
+            <section class="panel">
+                <p>This Quest is still open.</p>
+            </section>
+        }
+    }
+</main>
+
+@code {
+    [Parameter]
+    public string QuestId { get; set; } = string.Empty;
+
+    [CascadingParameter]
+    private Microsoft.AspNetCore.Http.HttpContext? HttpContext { get; set; }
+
+    private LoadQuestHistoryWebResult? _load;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _load = await HistoryFlow.LoadDetailAsync(QuestId);
+        if (_load.Status == QuestHistoryPageStatus.NotFound)
+        {
+            Navigation.NotFound();
+            return;
+        }
+
+        SetStatus(_load.Status == QuestHistoryPageStatus.Invalid
+            ? Microsoft.AspNetCore.Http.StatusCodes.Status400BadRequest
+            : Microsoft.AspNetCore.Http.StatusCodes.Status200OK);
+    }
+
+    private void SetStatus(int statusCode)
+    {
+        if (HttpContext is not null)
+        {
+            HttpContext.Response.StatusCode = statusCode;
+        }
+    }
+}

@@ -1,0 +1,75 @@
+@page "/history"
+@inject HeroPassportHistoryService HistoryFlow
+
+<PageTitle>Quest History · Hero Passport</PageTitle>
+
+<main class="shell">
+    <header class="hero-header">
+        <p class="eyebrow">Hero Passport · Quest History</p>
+        <h1>Quest history</h1>
+        <p><a href="/">Back to dashboard</a></p>
+    </header>
+
+    @if (_load is null)
+    {
+        <section class="panel">
+            <p>Loading Quest history…</p>
+        </section>
+    }
+    else if (_load.Status == QuestHistoryPageStatus.SetupRequired)
+    {
+        <section class="panel">
+            <h2>Setup required</h2>
+            <p>Initialize Hero Passport before viewing Quest history.</p>
+        </section>
+    }
+    else if (_load.Page is { } historyPage)
+    {
+        <section class="panel">
+            <p class="eyebrow">@historyPage.ProjectDisplayName</p>
+            <h2>Latest 25 Quests</h2>
+
+            @if (historyPage.Items.Count == 0)
+            {
+                <p>No Quest history for this project yet.</p>
+            }
+            else
+            {
+                <ul>
+                    @foreach (var item in historyPage.Items)
+                    {
+                        <li>
+                            <a href="/history/@item.QuestId"><strong>@item.Title</strong></a>
+                            · @item.HeroName · @item.QuestType · @item.Status
+                            @if (item.Result is not null)
+                            {
+                                <span> · @item.Result</span>
+                            }
+                            @if (item.XpGained is { } xp)
+                            {
+                                <span> · +@xp XP</span>
+                            }
+                            <br />
+                            <small>
+                                Started @item.StartedAtUtc.ToString("u")
+                                @if (item.FinishedAtUtc is { } finished)
+                                {
+                                    <span> · Finished @finished.ToString("u")</span>
+                                }
+                            </small>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+    }
+</main>
+
+@code {
+    private LoadHistoryListWebResult? _load;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _load = await HistoryFlow.LoadListAsync();
+    }
+}

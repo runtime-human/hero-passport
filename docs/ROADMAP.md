@@ -1,7 +1,7 @@
 # Hero Passport — Roadmap
 
-**Current design:** v3.2.1 core + 0.2-A/B/C/D local Web foundation/security/Start/Finish mutations  
-**Snapshot:** 2026-09-15
+**Current design:** v3.2.1 core + 0.2-A/B/C/D/E local Web foundation/security/Start/Finish/history  
+**Snapshot:** 2026-09-17
 
 Roadmap is scope guidance, not permission to pre-build future abstractions.
 
@@ -139,12 +139,29 @@ real Kestrel/SQLite qualification includes a maximum-valid 2000-scalar summary s
 
 The larger Finish-prepare transport bounds do not widen the product text contract. Application remains authoritative at SafeTextV1 `summary` = 1..2000 Unicode scalars after NFC/whitespace normalization. The Web prepare boundary admits the bounded canonical-decomposition envelope before normalization: up to 12,000 raw UTF-16 code units in the textarea, 112 KiB for one encoded value and 128 KiB for the complete URL-encoded request. The payload-free Finish confirmation route stays at the stricter 8 KiB / 2 KiB boundary.
 
-0.2-C/D add only Start and Finish Quest browser mutations. They do not add Quest history browsing, Hero/settings management, Identity/OAuth/accounts, public/LAN/local-HTTPS/reverse-proxy hosting, WebAssembly/Interactive Server, Streamable HTTP MCP or a general REST product surface.
+0.2-E adds the first dedicated browser history surface without adding mutation or a general query API:
+
+```text
+authenticated GET-only static-SSR /history and /history/{questId}
+current-Project-only Quest history with fixed newest-first limit 25
+open and finished Quest rows across Heroes
+bounded finished-report detail with 1..3 persisted Skills
+canonical lowercase UUIDv7 selector validation before history lookup
+missing and foreign-Project Quest converge to the same bounded 404 presentation
+.NET 10 NavigationManager.NotFound + Router.NotFoundPage for static-SSR 404 handling
+Application-owned history contracts through IHeroPassportStateStore
+parameterized Microsoft.Data.Sqlite reads in the existing store; no Web persistence access
+short deferred read snapshot for multi-query history reads
+unseen Project history remains empty without creating a Project row
+real-process privacy/project-scope/no-write qualification
+no schema/migration/index added
+```
+
+0.2-C/D add only Start and Finish Quest browser mutations. 0.2-E is read-only history. None of C/D/E adds Hero/settings management, Identity/OAuth/accounts, public/LAN/local-HTTPS/reverse-proxy hosting, WebAssembly/Interactive Server, Streamable HTTP MCP or a general REST product surface.
 
 Remaining 0.2 slices add, behind their own focused gates:
 
 ```text
-bounded project/Quest history
 Skill progression
 Rank/Traits/Titles detail
 settings/Hero management

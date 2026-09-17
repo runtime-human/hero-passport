@@ -1,13 +1,14 @@
 # Hero Passport — Architecture
 
-**Status:** Accepted v3.2.1 core + implemented 0.2-A/B/C/D Web adapter/security/Start/Finish mutations  
-**Snapshot:** 2026-09-15  
-**Target:** 0.1 local stdio MCP + Agent Skill + CLI, plus secured local 0.2 Web with a read dashboard and explicitly confirmed Start/Finish Quest mutations
+**Status:** Accepted v3.2.1 core + implemented 0.2-A/B/C/D/E Web adapter/security/Start/Finish/history  
+**Snapshot:** 2026-09-17  
+**Target:** 0.1 local stdio MCP + Agent Skill + CLI, plus secured local 0.2 Web with a read dashboard, explicitly confirmed Start/Finish Quest mutations and bounded current-Project Quest history
 
 Normative core design: `superpowers/specs/2026-08-11-hero-passport-v3.2.1-design.md`.
 0.2-B security design: `superpowers/specs/2026-09-13-hero-passport-0.2-b-web-security-design.md`.
 0.2-C Start mutation design: `superpowers/specs/2026-09-13-hero-passport-0.2-c-web-start-quest-design.md`.
 0.2-D Finish mutation design: `superpowers/specs/2026-09-14-hero-passport-0.2-d-web-finish-quest-design.md`.
+0.2-E history design: `superpowers/specs/2026-09-16-hero-passport-0.2-e-web-history-design.md`.
 
 ## 1. Runtime
 
@@ -41,7 +42,7 @@ HeroPassport.Infrastructure
 same-host SQLite
 ```
 
-0.2-A/B/C/D adds a sibling secured browser adapter over the same Application/store authority:
+0.2-A/B/C/D/E adds a sibling secured browser adapter over the same Application/store authority:
 
 ```text
 Browser
@@ -55,13 +56,14 @@ Browser
      - read dashboard composition
      - confirmed Start Quest form orchestration
      - confirmed Finish Quest form orchestration
+     - bounded current-Project Quest history list/detail
      - dedicated bounded process-local pending confirmation state
   -> HeroPassport.Application read use cases + StartQuest/FinishQuest mutation authorities
   -> HeroPassport.Infrastructure
   -> same-host SQLite
 ```
 
-0.2-A/B are read-only browser foundations. 0.2-C adds Start Quest and 0.2-D adds Finish Quest after explicit confirmation, both still through `HeroPassport.Application`. `HeroPassport.Web` does not own game rules, Hero/settings mutation semantics, reward/progression calculations or persistence access from Razor/components. Browser authorization state and pending confirmation state are process memory owned by the Web adapter and are never persisted to SQLite. Later Web management slices must reuse both Application authority and the 0.2-B browser security boundary rather than creating a second game engine or parallel auth path.
+0.2-A/B are read-only browser foundations. 0.2-C adds Start Quest and 0.2-D adds Finish Quest after explicit confirmation, both still through `HeroPassport.Application`. 0.2-E adds GET-only bounded Project/Quest history through Application-owned read contracts and the existing SQLite store. `HeroPassport.Web` does not own game rules, Hero/settings mutation semantics, reward/progression calculations or persistence access from Razor/components. Browser authorization state and pending confirmation state are process memory owned by the Web adapter and are never persisted to SQLite. Later Web management slices must reuse both Application authority and the 0.2-B browser security boundary rather than creating a second game engine or parallel auth path.
 
 ## 2. Dependency direction
 
@@ -72,9 +74,9 @@ Domain <- Application <- Infrastructure <- App
                                   Web
 ```
 
-Equivalently, both `HeroPassport.App` and `HeroPassport.Web` are outer adapters/composition roots. Domain has no EF/MCP/CLI/localization/Git/filesystem/network. Application has no MCP SDK/presentation. Infrastructure implements persistence/platform ports. App owns MCP/CLI/presentation composition; Web owns browser/static-SSR presentation, local browser security composition and bounded confirmation orchestration only.
+Equivalently, both `HeroPassport.App` and `HeroPassport.Web` are outer adapters/composition roots. Domain has no EF/MCP/CLI/localization/Git/filesystem/network. Application has no MCP SDK/presentation. Infrastructure implements persistence/platform ports. App owns MCP/CLI/presentation composition; Web owns browser/static-SSR presentation, local browser security composition and bounded confirmation/history orchestration only.
 
-No separate Contracts assembly in 0.1/0.2-A/B/C/D.
+No separate Contracts assembly in 0.1/0.2-A/B/C/D/E.
 
 ## 3. Domain authority
 
@@ -96,11 +98,13 @@ RestoreHero
 StartQuest
 FinishQuest
 GetHeroCard
+GetProjectQuestHistory
+GetQuestHistoryDetail
 ```
 
 CLI-only administration includes permanent logical Hero deletion, diagnostics, export/backup and migration-lock recovery.
 
-0.2-A/B Web consumes existing read semantics (`GetRuntimeContext` / `GetHeroCard`) through bounded Web presentation models. The 0.2-B bootstrap/session/Host/CSRF machinery authorizes browser access but adds no game mutation use case. 0.2-C adds pure `PrepareStartQuest(...)` validation/normalization for preview and commits only through the existing `StartQuestAsync(...)` authority. 0.2-D adds the equivalent pure `PrepareFinishQuest(...)` seam and commits only through existing `FinishQuestAsync(...)`. Web never duplicates Start/Finish rules or directly calls persistence.
+0.2-A/B Web consumes existing read semantics (`GetRuntimeContext` / `GetHeroCard`) through bounded Web presentation models. The 0.2-B bootstrap/session/Host/CSRF machinery authorizes browser access but adds no game mutation use case. 0.2-C adds pure `PrepareStartQuest(...)` validation/normalization for preview and commits only through the existing `StartQuestAsync(...)` authority. 0.2-D adds the equivalent pure `PrepareFinishQuest(...)` seam and commits only through existing `FinishQuestAsync(...)`. 0.2-E adds `GetProjectQuestHistoryAsync(...)` and `GetQuestHistoryDetailAsync(...)`; both validate the Project binding in Application before delegating to `IHeroPassportStateStore`. Web never duplicates Start/Finish/history rules or directly calls persistence.
 
 ## 5. Skill/Core boundary
 
@@ -229,6 +233,26 @@ authenticated POST /quests/finish/confirm/{handle}
 
 Finish pending state is independently capped at 8 live entries with a 10-minute TTL. It is never persisted and it never contains a second reward/progression implementation.
 
+### 10.1 Bounded Web history reads
+
+0.2-E is observational only:
+
+```text
+authenticated GET /history or /history/{questId}
+-> HeroPassportHistoryService
+-> GetRuntimeContextAsync(currentProject) setup gate
+-> Application history facade
+-> IHeroPassportStateStore
+-> SqliteHeroPassportStateStore.History
+-> parameterized SELECTs inside one short deferred read transaction
+-> bounded Web view models
+-> static SSR
+```
+
+The list is current-Project-only, newest first (`started_at_utc DESC, quest_id DESC`) and fixed at 25 rows. An unseen Project returns an empty list without creating the Project. Detail parses the canonical lowercase UUIDv7 before history lookup and applies both QuestId and internal ProjectId predicates in Infrastructure. Missing and foreign-Project Quest detail converge to the same bounded 404. The Web adapter never sees the workspace fingerprint/internal ProjectId or owns SQL/EF.
+
+For .NET 10 static SSR, not-found detail uses the framework `NavigationManager.NotFound()` path with `Router.NotFoundPage`; malformed selectors remain HTTP 400 through the existing cascading `HttpContext` status mechanism. No streaming/interactivity is introduced.
+
 ## 11. Current HP-MCP/2 adapter
 
 Official C# SDK baseline:
@@ -297,6 +321,8 @@ WAL/runtime version are database initialization/qualification concerns. `synchro
 
 All invariant read-modify-write operations acquire writer intent before invariant reads.
 
+The 0.2-E history read side deliberately reuses the existing `SqliteHeroPassportStateStore` and connection policy instead of introducing a second persistence stack. It uses parameterized `Microsoft.Data.Sqlite` projections, fixed SQL bounds and short deferred read transactions to keep multi-query detail/list observations on one SQLite snapshot. It performs no INSERT/UPDATE/DELETE, receipt write or projection mutation and adds no migration/index.
+
 Web browser-session state and Start/Finish pending confirmation state are not part of persistence. Restart creates new random bootstrap/session secrets, invalidates any prior browser cookie, and discards uncommitted confirmations independently of SQLite lifecycle.
 
 ## 14. Data authority
@@ -335,7 +361,7 @@ Build/test fields are bounded attestations. `observed` is an agent assertion of 
 
 Quest title/goal/summary remain potentially sensitive local metadata.
 
-The Web presentation renders bounded fields only. Full local paths, workspace fingerprints, mutation receipt internals and raw evidence remain outside the browser surface.
+The Web presentation renders bounded fields only. Full local paths, workspace fingerprints, mutation receipt internals and raw evidence remain outside the browser surface. 0.2-E list/detail additionally omit internal ProjectId, request/receipt IDs, hashes, database paths and other persistence identity.
 
 0.2-B treats the browser request boundary as untrusted even on loopback:
 
@@ -351,6 +377,8 @@ restart = prior cookie invalid
 ```
 
 0.2-C/D keep that boundary authoritative for mutations. All Start/Finish mutation POSTs accept only `application/x-www-form-urlencoded`, require the current process session plus same-origin/antiforgery validation and use dedicated static-SSR DTOs/form names. Start prepare/confirm and Finish confirm use an 8192-byte whole-body limit and 2048-byte encoded-value limit. Finish prepare alone uses a 131072-byte (128 KiB) body limit, 112 KiB encoded-value limit and 12000-code-unit textarea ceiling so Application-valid canonically decomposed text can reach SafeTextV1 normalization before the authoritative 2000-scalar semantic check. All mutation routes retain the 16-entry form-count and 128-byte key limits. Bootstrap remains separately bounded to 1024 bytes.
+
+0.2-E adds no POST surface. Both history routes are protected by the same 0.2-B session middleware; the list is GET-only and detail returns 400 for malformed/non-canonical UUIDv7 and an indistinguishable bounded 404 for missing/foreign Project canonical IDs.
 
 Malformed confirmation handles return 400; unknown/expired handles return 410 and never mutate. Finish route selectors use 400 for malformed/non-canonical UUIDv7 and 404 for canonical IDs not present among the current Project's open Quests. Confirmation handles themselves are not authorization.
 
