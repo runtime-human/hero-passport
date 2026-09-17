@@ -1,5 +1,5 @@
 @page "/history"
-@inject HeroPassportHistoryService History
+@inject HeroPassportHistoryService HistoryFlow
 
 <PageTitle>Quest History · Hero Passport</PageTitle>
 
@@ -23,20 +23,20 @@
             <p>Initialize Hero Passport before viewing Quest history.</p>
         </section>
     }
-    else if (_load.Page is { } page)
+    else if (_load.Page is { } historyPage)
     {
         <section class="panel">
-            <p class="eyebrow">@page.ProjectDisplayName</p>
+            <p class="eyebrow">@historyPage.ProjectDisplayName</p>
             <h2>Latest 25 Quests</h2>
 
-            @if (page.Items.Count == 0)
+            @if (historyPage.Items.Count == 0)
             {
                 <p>No Quest history for this project yet.</p>
             }
             else
             {
                 <ul>
-                    @foreach (var item in page.Items)
+                    @foreach (var item in historyPage.Items)
                     {
                         <li>
                             <a href="/history/@item.QuestId"><strong>@item.Title</strong></a>
@@ -70,6 +70,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _load = await History.LoadListAsync();
+        _load = await HistoryFlow.LoadListAsync();
     }
 }
