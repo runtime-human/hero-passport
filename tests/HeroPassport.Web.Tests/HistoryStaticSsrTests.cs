@@ -10,7 +10,7 @@ public sealed class HistoryStaticSsrTests
         var source = ReadPage("History.razor");
 
         Assert.Contains("@page \"/history\"", source, StringComparison.Ordinal);
-        Assert.Contains("@inject HeroPassportHistoryService History", source, StringComparison.Ordinal);
+        Assert.Contains("@inject HeroPassportHistoryService HistoryFlow", source, StringComparison.Ordinal);
         Assert.Contains("LoadListAsync", source, StringComparison.Ordinal);
         Assert.Contains("Latest 25", source, StringComparison.Ordinal);
         Assert.Contains("href=\"/history/@item.QuestId\"", source, StringComparison.Ordinal);
@@ -25,7 +25,7 @@ public sealed class HistoryStaticSsrTests
         var source = ReadPage("QuestHistory.razor");
 
         Assert.Contains("@page \"/history/{QuestId}\"", source, StringComparison.Ordinal);
-        Assert.Contains("@inject HeroPassportHistoryService History", source, StringComparison.Ordinal);
+        Assert.Contains("@inject HeroPassportHistoryService HistoryFlow", source, StringComparison.Ordinal);
         Assert.Contains("[Parameter]", source, StringComparison.Ordinal);
         Assert.Contains("public string QuestId", source, StringComparison.Ordinal);
         Assert.Contains("[CascadingParameter]", source, StringComparison.Ordinal);
