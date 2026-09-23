@@ -21,7 +21,11 @@ public sealed class SkillProgressionReadContractTests
         var result = await app.GetSkillProgressionAsync(heroId, project, token);
 
         Assert.Equal("Nova", result.HeroName);
-        Assert.Empty(result.Skills);
+        Assert.Single(result.Skills);
+        Assert.Equal("coding", result.Skills[0].SkillKey);
+        Assert.Equal(50, result.Skills[0].Hero.Xp);
+        Assert.Equal(2, result.Skills[0].Hero.Level);
+        Assert.Equal(12, result.Skills[0].ProjectContribution.Xp);
         Assert.Equal(1, store.SkillProgressionCalls);
         Assert.Equal(heroId, store.SkillProgressionHeroId);
         Assert.NotNull(store.SkillProgressionProject);
@@ -63,7 +67,20 @@ public sealed class SkillProgressionReadContractTests
             SkillProgressionCalls++;
             SkillProgressionHeroId = heroId;
             SkillProgressionProject = project;
-            return Task.FromResult(new HeroSkillProgressionReadResult("Nova", project.DisplayName, []));
+            return Task.FromResult(new HeroSkillProgressionReadResult(
+                "Nova",
+                project.DisplayName,
+                [
+                    new SkillProgressionReadRow(
+                        "coding",
+                        new SkillProgressionReadSnapshot(
+                            Xp: 50,
+                            Level: 2,
+                            IsLevelCapped: false,
+                            LevelXp: 0,
+                            NextLevelXpRequired: 75),
+                        new SkillProjectContributionReadSnapshot(Xp: 12)),
+                ]));
         }
 
         private static InvalidOperationException Unused() => new("Unexpected state-store call.");
