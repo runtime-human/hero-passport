@@ -30,15 +30,15 @@
             <p>The active Hero changed or is no longer available. Return to the dashboard and retry.</p>
         </section>
     }
-    else if (_load.Page is { } page)
+    else if (_load.Page is { } skillPage)
     {
         <section class="panel">
-            <p class="eyebrow">@page.HeroName · @page.ProjectDisplayName</p>
+            <p class="eyebrow">@skillPage.HeroName · @skillPage.ProjectDisplayName</p>
             <h2>Hero progression</h2>
             <p>Hero values are global. Current project values show XP contributed by completed Quests in this project.</p>
 
             <ul class="skill-list">
-                @foreach (var skill in page.Skills)
+                @foreach (var skill in skillPage.Skills)
                 {
                     <li>
                         <strong>@skill.SkillKey</strong>
