@@ -46,6 +46,15 @@ public sealed class SkillProgressionTests
         Assert.Equal(expected, SkillProgressionRules.LevelXp(totalXp, level, "skill-progression/2.0.0"));
     }
 
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(9, false)]
+    [InlineData(10, true)]
+    public void IsLevelCappedMatchesCanonicalSkillDisplayCap(int level, bool expected)
+    {
+        Assert.Equal(expected, SkillProgressionRules.IsLevelCapped(level, "skill-progression/2.0.0"));
+    }
+
     [Fact]
     public void ProgressionSnapshotUsesCheckedTotalXpAndThresholdDeltas()
     {
@@ -92,5 +101,8 @@ public sealed class SkillProgressionTests
         Assert.Throws<ArgumentOutOfRangeException>(() => SkillProgressionRules.LevelXp(0, 0, "skill-progression/2.0.0"));
         Assert.Throws<ArgumentOutOfRangeException>(() => SkillProgressionRules.LevelXp(0, 11, "skill-progression/2.0.0"));
         Assert.Throws<ArgumentOutOfRangeException>(() => SkillProgressionRules.LevelXp(49, 2, "skill-progression/2.0.0"));
+        Assert.Throws<ArgumentException>(() => SkillProgressionRules.IsLevelCapped(1, "skill-progression/1.0.0"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SkillProgressionRules.IsLevelCapped(0, "skill-progression/2.0.0"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SkillProgressionRules.IsLevelCapped(11, "skill-progression/2.0.0"));
     }
 }
