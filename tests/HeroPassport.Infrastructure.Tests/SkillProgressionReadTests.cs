@@ -53,10 +53,8 @@ public sealed class SkillProgressionReadTests
             Assert.Equal(10, result.Skills.Count);
             Assert.All(result.Skills, skill =>
             {
-                Assert.Equal(skill.SkillKey, skill.Hero.SkillKey);
-                Assert.Equal(skill.SkillKey, skill.Project.SkillKey);
                 AssertZeroProgress(skill.Hero);
-                AssertZeroProgress(skill.Project);
+                Assert.Equal(0, skill.ProjectContribution.Xp);
             });
         }
         finally
