@@ -1,17 +1,18 @@
 namespace HeroPassport.Application.Runtime;
 
 public sealed record SkillProgressionReadSnapshot(
-    string SkillKey,
     long Xp,
     int Level,
     bool IsLevelCapped,
     long LevelXp,
     long? NextLevelXpRequired);
 
+public sealed record SkillProjectContributionReadSnapshot(long Xp);
+
 public sealed record SkillProgressionReadRow(
     string SkillKey,
     SkillProgressionReadSnapshot Hero,
-    SkillProgressionReadSnapshot Project);
+    SkillProjectContributionReadSnapshot ProjectContribution);
 
 public sealed record HeroSkillProgressionReadResult(
     string HeroName,
