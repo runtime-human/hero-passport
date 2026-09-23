@@ -94,6 +94,29 @@ public sealed class RewardAndSkillAllocationTests
         Assert.Equal(40, capped.XpGained);
     }
 
+
+    [Fact]
+    public void SkillCatalogExposesCanonicalDeterministicOrder()
+    {
+        Assert.Equal(
+            [
+                "coding",
+                "testing_awareness",
+                "scope_control",
+                "documentation",
+                "tool_use",
+                "planning",
+                "research",
+                "debugging",
+                "review",
+                "maintenance",
+            ],
+            SkillCatalog.Keys);
+        Assert.All(SkillCatalog.Keys, static key => Assert.True(SkillCatalog.Contains(key)));
+        Assert.False(SkillCatalog.Contains(null));
+        Assert.False(SkillCatalog.Contains("unknown"));
+    }
+
     [Fact]
     public void SkillAllocationUsesCumulativeFloorsAndConservesQuestXp()
     {
