@@ -70,6 +70,7 @@ builder.Services.AddSingleton(application);
 builder.Services.AddSingleton(project);
 builder.Services.AddSingleton<HeroPassportDashboardService>();
 builder.Services.AddSingleton<HeroPassportHistoryService>();
+builder.Services.AddSingleton<HeroPassportSkillProgressionService>();
 builder.Services.AddSingleton<PendingStartQuestStore>();
 builder.Services.AddSingleton<HeroPassportStartQuestService>();
 builder.Services.AddSingleton<PendingFinishQuestStore>();
