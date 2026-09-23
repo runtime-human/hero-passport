@@ -21,7 +21,7 @@ public static class SkillAllocationRules
         for (var index = 0; index < skillsUsed.Count; index++)
         {
             var skill = skillsUsed[index];
-            if (!IsCanonicalSkill(skill) || !seen.Add(skill))
+            if (!SkillCatalog.Contains(skill) || !seen.Add(skill))
             {
                 throw new ArgumentException("Skill allocation requires distinct canonical skills.", nameof(skillsUsed));
             }
@@ -59,15 +59,4 @@ public static class SkillAllocationRules
     private static long PercentageFloor(long value, int percent) =>
         checked(value * percent / 100L);
 
-    private static bool IsCanonicalSkill(string? skill) => skill is
-        "coding" or
-        "testing_awareness" or
-        "scope_control" or
-        "documentation" or
-        "tool_use" or
-        "planning" or
-        "research" or
-        "debugging" or
-        "review" or
-        "maintenance";
 }

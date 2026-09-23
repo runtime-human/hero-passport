@@ -57,7 +57,7 @@ public static class SkillProgressionRules
         var xpAfter = JsonSafeInteger.Require(checked(xpBefore + xpGained));
         var levelBefore = Level(xpBefore, ruleVersion);
         var levelAfter = Level(xpAfter, ruleVersion);
-        var capped = levelAfter == LevelThresholds.Length;
+        var capped = IsLevelCapped(levelAfter, ruleVersion);
 
         return new SkillProgressionResult(
             xpBefore,
@@ -67,6 +67,24 @@ public static class SkillProgressionRules
             capped,
             NextLevelXpRequired(levelAfter, ruleVersion),
             RuleVersion);
+    }
+
+    public static bool IsLevelCapped(int level, string ruleVersion)
+    {
+        RequireVersion(ruleVersion);
+        RequireLevel(level);
+        return level == LevelThresholds.Length;
+    }
+
+    public static long LevelXp(long totalXp, int level, string ruleVersion)
+    {
+        RequireVersion(ruleVersion);
+        JsonSafeInteger.Require(totalXp);
+        RequireLevel(level);
+
+        var threshold = LevelThresholds[level - 1];
+        ArgumentOutOfRangeException.ThrowIfLessThan(totalXp, threshold);
+        return checked(totalXp - threshold);
     }
 
     public static long? NextLevelXpRequired(int level, string ruleVersion)

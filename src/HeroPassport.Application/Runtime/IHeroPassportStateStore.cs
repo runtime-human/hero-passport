@@ -27,6 +27,11 @@ public interface IHeroPassportStateStore
         ProjectBindingContext project,
         CancellationToken cancellationToken = default);
 
+    Task<HeroSkillProgressionReadResult> GetSkillProgressionAsync(
+        HeroId heroId,
+        ProjectBindingContext project,
+        CancellationToken cancellationToken = default);
+
     Task<CreateHeroResult> CreateHeroAsync(
         CreateHeroStoreCommand command,
         DateTimeOffset now,

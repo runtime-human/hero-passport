@@ -1,0 +1,72 @@
+@page "/skills"
+@inject HeroPassportSkillProgressionService SkillFlow
+
+<PageTitle>Skill Progression · Hero Passport</PageTitle>
+
+<main class="shell">
+    <header class="hero-header">
+        <p class="eyebrow">Hero Passport · Skill Progression</p>
+        <h1>Skill progression</h1>
+        <p><a href="/">Back to dashboard</a></p>
+    </header>
+
+    @if (_load is null)
+    {
+        <section class="panel">
+            <p>Loading Skill progression…</p>
+        </section>
+    }
+    else if (_load.Status == SkillProgressionPageStatus.SetupRequired)
+    {
+        <section class="panel">
+            <h2>Setup required</h2>
+            <p>Initialize Hero Passport before viewing Skill progression.</p>
+        </section>
+    }
+    else if (_load.Status == SkillProgressionPageStatus.Invalid)
+    {
+        <section class="panel">
+            <h2>Progression unavailable</h2>
+            <p>The active Hero changed or is no longer available. Return to the dashboard and retry.</p>
+        </section>
+    }
+    else if (_load.Page is { } skillPage)
+    {
+        <section class="panel">
+            <p class="eyebrow">@skillPage.HeroName · @skillPage.ProjectDisplayName</p>
+            <h2>Hero progression</h2>
+            <p>Hero values are global. Current project values show XP contributed by completed Quests in this project.</p>
+
+            <ul class="skill-list">
+                @foreach (var skill in skillPage.Skills)
+                {
+                    <li>
+                        <strong>@skill.SkillKey</strong>
+                        @if (skill.HeroIsLevelCapped)
+                        {
+                            <span>Hero: Level @skill.HeroLevel · capped · @skill.HeroXp XP</span>
+                        }
+                        else
+                        {
+                            <span>
+                                Hero: Level @skill.HeroLevel ·
+                                @skill.HeroLevelXp / @skill.HeroNextLevelXpRequired level XP ·
+                                @skill.HeroXp total XP
+                            </span>
+                        }
+                        <span>Current project: @skill.ProjectContributionXp XP contributed</span>
+                    </li>
+                }
+            </ul>
+        </section>
+    }
+</main>
+
+@code {
+    private LoadSkillProgressionWebResult? _load;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _load = await SkillFlow.LoadAsync();
+    }
+}

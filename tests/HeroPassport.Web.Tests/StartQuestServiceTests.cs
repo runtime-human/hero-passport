@@ -194,6 +194,7 @@ public sealed class StartQuestServiceTests
         public Task<ConfigureResult> ConfigureAsync(ConfigureRequest request, DateTimeOffset now, CancellationToken cancellationToken = default) => throw Unused();
         public Task<ProjectQuestHistoryResult> GetProjectQuestHistoryAsync(ProjectBindingContext project, CancellationToken cancellationToken = default) => throw Unused();
         public Task<QuestHistoryDetailResult?> GetQuestHistoryDetailAsync(QuestId questId, ProjectBindingContext project, CancellationToken cancellationToken = default) => throw Unused();
+        public Task<HeroSkillProgressionReadResult> GetSkillProgressionAsync(HeroId heroId, ProjectBindingContext project, CancellationToken cancellationToken = default) => throw Unused();
         public Task<CreateHeroResult> CreateHeroAsync(CreateHeroStoreCommand command, DateTimeOffset now, CancellationToken cancellationToken = default) => throw Unused();
         public Task ActivateHeroAsync(HeroId heroId, DateTimeOffset now, CancellationToken cancellationToken = default) => throw Unused();
         public Task<HeroListResult> ListHeroesAsync(CancellationToken cancellationToken = default) => throw Unused();
