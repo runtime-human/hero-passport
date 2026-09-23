@@ -1,3 +1,4 @@
+using HeroPassport.Domain.Engine;
 using HeroPassport.Domain.Primitives;
 
 namespace HeroPassport.Application.Runtime;
@@ -10,7 +11,6 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
     private static readonly string[] QuestResults = ["success", "partial", "blocked", "failed", "abandoned"];
     private static readonly string[] MetricStatuses = ["not_run", "passed", "failed", "unknown"];
     private static readonly string[] MetricEvidence = ["observed", "reported", "none"];
-    private static readonly string[] SkillKeys = ["coding", "testing_awareness", "scope_control", "documentation", "tool_use", "planning", "research", "debugging", "review", "maintenance"];
 
     public Task<BootstrapResult> BootstrapAsync(BootstrapRequest request, CancellationToken cancellationToken = default)
     {
@@ -285,7 +285,7 @@ public sealed class HeroPassportApplication(IHeroPassportStateStore store, TimeP
         for (var index = 0; index < skillsUsed.Count; index++)
         {
             var skill = skillsUsed[index];
-            if (!IsAllowed(skill, SkillKeys) || !seen.Add(skill))
+            if (!SkillCatalog.Contains(skill) || !seen.Add(skill))
             {
                 throw new HeroPassportException("HP112", "Quest skills are invalid.");
             }
